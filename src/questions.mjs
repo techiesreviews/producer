@@ -12,7 +12,7 @@ const ALTS = 2;
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; view() gives
- * { main, alts, counts: { asked, skipped, left } }. A question is { n?, text, why?, from: "list" | "agent" }.
+ * { main, alts, first, counts: { asked, skipped, left } } (first: the number of the first prepared question still open). A question is { n?, text, why?, from: "list" | "agent" }.
  */
 export function createQuestions() {
   let plan = [];
@@ -29,8 +29,9 @@ export function createQuestions() {
   function fill() {
     const on = new Set();
     const keep = (q) => q && open(q) && !on.has(key(q)) && on.add(key(q));
+    if (main && !keep(main)) main = null; // the card's own question first, so it never shows again below
     alts = alts.filter(keep);
-    if (!main || !open(main)) main = alts.shift() ?? null; else on.add(key(main));
+    main ??= alts.shift() ?? null;
     for (let n = 1; n <= plan.length && (!main || alts.length < ALTS); n++) {
       const q = prepared(n, { from: "list" });
       if (!keep(q)) continue;
@@ -87,7 +88,8 @@ export function createQuestions() {
     view() {
       const values = [...done].filter(([n]) => n <= plan.length).map(([, kind]) => kind);
       const asked = values.filter((v) => v === "asked").length;
-      return { main, alts: [...alts], counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
+      const first = plan.findIndex((_, i) => !done.has(i + 1)) + 1 || null; // the first prepared question still open
+      return { main, alts: [...alts], first, counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
     },
   };
 }
