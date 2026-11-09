@@ -14,8 +14,8 @@ export const CUE_RULES = {
   manualEveryMs: 10_000,
   slowFactor: 2,
   maxChars: 20_000,
-  // A source that sent text this recently and no pause since is still talking (a piece is at most 12 s long, so a
-  // talking source sends a final at least that often).
+  // A source that sent text this recently and no pause since is still talking. A piece is at most 12 s long, so a
+  // talking source sends a final about that often (a best guess: the text can lag when the computer reads slowly).
   talkingMs: 12_000,
 };
 

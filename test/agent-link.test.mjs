@@ -11,6 +11,10 @@ const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.test";
 
 
+// Each setup's agent calls from its own address, so the Worker's request limit (per address, in real time) never
+// carries over from one test to the next.
+let agents = 0;
+
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
 function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
   const now = { t: Date.now() };
@@ -28,6 +32,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
   });
   let token;
   let issued = 0;
+  const ip = `203.0.113.${(agents++ % 250) + 1}`;
   // Let the calls in flight reach the page: a call to /mcp hashes its token on Node's thread pool on the way, so this
   // waits in real time (at most 300 ms: a refused call never arrives).
   const flush = async () => {
@@ -38,7 +43,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
     issued += 1;
     const res = await worker.fetch(new Request(`${SITE}/mcp`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "cf-connecting-ip": ip },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
     }), env);
     return { status: res.status, body: await res.json() };
@@ -437,5 +442,27 @@ test("the cap lets a cue already handed over go when too much piles up unconfirm
   assert.deepEqual([sent.seq, sent.transcript], [2, AGENT_SAMPLE], "asking again from 0: cue 1 is gone, the Test's cue is kept and goes alone");
   await call("wait_for_cue", { seq: 2 });
   assert.deepEqual([sent.seq, sent.transcript.map((l) => l.text[0])], [6, ["1", "2", "3"]], "then the newest show cues that fit");
+  link.disconnect();
+});
+
+test("Test pressed again after a failed Test: the old Test cue is replaced, and the seconds count from the new one", async () => {
+  const { link, call, connect, flush, timers, now } = setup();
+  await connect();
+  await call("get_context");
+  link.test();
+  await timers.tick(AGENT_TEST_MS);
+  assert.equal(link.view().test.state, "fail");
+  await call("get_context"); // the agent is back (a quiet minute put the page back to waiting)
+  link.send(CUE);
+  link.test();
+  const show = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([show.cue, show.transcript.map((l) => l.text)], ["pause", ["How did it start?", "In a garage."]], "the show cue alone: the old Test cue is gone");
+  now.t += 5_000;
+  const test = (await call("wait_for_cue", { seq: show.seq })).body.result.structuredContent;
+  assert.deepEqual(test.transcript, AGENT_SAMPLE, "the sample talk once");
+  now.t += 3_000;
+  call("wait_for_cue", { seq: test.seq, suggestions: [{ text: "Retested?" }] });
+  await flush();
+  assert.deepEqual([link.view().test.state, link.view().test.seconds], ["ok", 3], "timed from when the new Test's cue was handed over");
   link.disconnect();
 });

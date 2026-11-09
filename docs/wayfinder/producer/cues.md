@@ -18,14 +18,14 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 - Only the lines heard since the last cue that went (the cursor), each labelled: the host's microphone is `HOST`, the shared studio tab is `GUEST`.
 - The run position when the show clock runs: the part on now, its name and the minutes left in it.
 - The guest's name when the plan names one.
-- The agent asks for the show itself once (`get_context`): the show name, the guest, the prepared questions (numbered) and the run order with the part on now.
+- The agent asks for the show itself once (its first question, `get_context`): the show name, the guest, the prepared questions (numbered) and the run order with the part on now.
 - The speech worker sends the pause only after the text heard before it, so a cue never misses the last words of a point.
 
 ## What comes back
 
 - The agent's answer (one to three suggestions) is kept in the page's memory as the latest suggestion, with the seconds since its cue went. An older answer never replaces a newer one; the Test's sample answer stays on the Test button.
 - The curl loop sends the same answer again on every idle round: the page takes each answer once.
-- Cues sent while the agent is still busy wait for its next call and go together, with the newest reason; a Test cue always goes alone, so its made-up talk never mixes with the show's. Asking again with the same `seq` gives the same material, so a lost answer loses nothing, unless more than 20,000 characters pile up unconfirmed: then the oldest show cues are let go first.
+- Cues sent while the agent is still busy wait for its next call and go together, with the newest reason; a Test cue always goes alone, so its made-up talk never mixes with the show's. Asking again with the same cue number (`seq`) gives the same material, so a lost answer loses nothing, unless more than 20,000 characters pile up unconfirmed: then the oldest show cues are let go first.
 - Disconnect forgets the cues and the latest suggestion.
 
 ## The speed target
@@ -46,7 +46,7 @@ A temporary local Worker (`wrangler dev`, nothing deployed), the page's own modu
 | Copy connect message (curl loop) | 4.6 s | 5.5 s | 10.4 s | 7.0 s / 11.9 s | missed |
 
 - Every cue was answered, with three one-line suggestions, most of them pointing to the prepared questions by number.
-- Why the message way is slower than in TOOLS-154 (2.5 s middle): each turn the agent types the whole command again (token, address, `BODY` with three suggestions and the loop, about 750 characters), which costs about 3 s of writing per turn; the MCP way sends about 190 characters. The first cue after the Test was the slowest (10.4 s).
+- Why the message way is slower than in TOOLS-154 (2.5 s middle): each turn the agent types the whole command again (the key, the address, its answer with three suggestions and the loop, about 750 characters), which costs about 3 s of writing per turn; the MCP way sends about 190 characters. The first cue after the Test was the slowest (10.4 s).
 - Cost seen: about 0.49 dollars (MCP) and 0.63 dollars (message) for the Test plus 10 cues on Opus.
 - Not run: Codex with MCP (the third fast way; TOOLS-154 measured 3.3 s middle, 4.5 s slowest), the slow ways (T3 Code and Codex with the message stay labelled "slower"), a whole hour, a deployed Worker.
 - Speech to text is not in these numbers: the pause comes 1.5 s after the last word, and the last piece is turned into text in that time in the middle case (TOOLS-150: 0.8 s middle, 2.1 s slowest), so the slowest case can add up to about 0.6 s.
