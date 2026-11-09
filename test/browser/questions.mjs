@@ -155,6 +155,13 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await text("#suggestBtn"), await suggest.getAttribute("aria-disabled")], ["Suggest now", null], `${name}: Suggest now is on`);
     assert.deepEqual([await text("#turnChip"), await page.locator("#slowBtn").getAttribute("aria-checked")], ["0 turns", "false"], `${name}: no turn yet, Slow down off`);
     await shot("start");
+    if (!phone) {
+      // "Next on your list." only while the card shows the first prepared question still open.
+      await page.locator("#alts .alt").nth(1).click(); // Q3 on the card
+      assert.equal(await page.locator("#qWhy").isVisible(), false, `${name}: no "Next on your list." for Q3 while Q1 is open`);
+      await page.locator("#alts .alt").nth(1).click(); // Q1 back
+      assert.equal(await text("#qWhy"), "Next on your list.", `${name}: back on Q1`);
+    }
     ok(`${name}: the first prepared question from the start, the light green, Suggest now on`);
 
     // Suggest now: the cue reaches the agent's wait at once; the button and the light say the agent thinks; the card
