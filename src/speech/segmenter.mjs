@@ -29,8 +29,9 @@ export function level(samples, from = 0, to = samples.length) {
  * push(samples) takes 16 kHz mono audio of any length and returns what it decided, in order:
  * { type: "draft" | "final", piece, audio, start, end } (start and end in seconds of the audio heard so far) and
  * { type: "pause", at }. flush() ends an open piece (Stop). Drafts are offers: the worker skips one while busy.
+ * Pieces are numbered from firstPiece.
  */
-export function createSegmenter(options = {}) {
+export function createSegmenter({ firstPiece = 1, ...options } = {}) {
   const o = { ...SEGMENT, ...options };
   const frame = Math.round((o.rate * o.frameMs) / 1000);
   const samplesOf = (ms) => Math.round((o.rate * ms) / 1000);
@@ -42,7 +43,7 @@ export function createSegmenter(options = {}) {
   let piece = null;
   let lastVoice = -Infinity;
   let spokeSincePause = false;
-  let nextPiece = 1;
+  let nextPiece = firstPiece;
 
   const seconds = (n) => n / o.rate;
   const join = (chunks, length) => {
@@ -120,5 +121,7 @@ export function createSegmenter(options = {}) {
     },
     /** Seconds of audio heard so far. */
     get heard() { return seconds(heard); },
+    /** The number the next piece will get (a new segmenter after Stop starts from it). */
+    get nextPiece() { return nextPiece; },
   };
 }

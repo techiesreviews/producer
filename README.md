@@ -14,9 +14,9 @@ A private screen for a live host: a helper beside a live stream or podcast that 
 
 ## Privacy: what is kept, and where
 
-- The sound never leaves the computer. The microphone is heard only after "Open producer screen", turned into text inside the browser, and never recorded or sent. Stop ends the microphone at once; the listening sign shows whenever the page listens. The page never plays a sound.
+- The sound never leaves the computer. The microphone is on from the Sound step, for the level meter only; it is turned into text (inside the browser) only after "Open producer screen", and the listening sign shows while that happens. It is never recorded or sent. Stop ends the microphone at once. The page never plays a sound.
 - What was heard stays in the page's memory as text, and is gone when the tab closes.
-- The browser keeps the speech model (Moonshine base and its engine, about 82 MB) in this site's storage, so it downloads once from this site. Clearing the site's data in the browser removes it. Nothing else is stored in the browser.
+- The browser keeps the speech model (Moonshine base and its engine, about 81 MB) in this site's storage, so it downloads once from this site; the engine's small scripts (about 0.7 MB) load like any page script. Clearing the site's data in the browser removes it. Nothing else is stored in the browser.
 - The guest step ("Guest agreed") is the host's own click. With "No" or "Solo show" the sign says "mic only".
 
 ## How it is built
