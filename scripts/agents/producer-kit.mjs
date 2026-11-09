@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { register } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -98,6 +99,12 @@ try {
 // The built page behind the real Worker: src/worker.mjs answers, its ASSETS binding reads dist/ and adds the
 // "/*" block of _headers, as Cloudflare does. Local port, nothing leaves the machine.
 async function startServer(dist) {
+  // The Worker's relay extends a class from "cloudflare:workers", which Node cannot load: a stand-in (as in test/runtime.mjs).
+  // These page checks never reach /mcp or /api, so only the import has to work.
+  register(`data:text/javascript,${encodeURIComponent(`export async function resolve(specifier, context, next) {
+    if (specifier === "cloudflare:workers") return { url: "data:text/javascript,export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }", shortCircuit: true };
+    return next(specifier, context);
+  }`)}`);
   const { default: worker } = await import(pathToFileURL(join(root, "src/worker.mjs")));
   const block = readFileSync(join(dist, "_headers"), "utf8").split(/^\/\S*\n/m)[1];
   const headers = [...block.matchAll(/^ {2}([\w-]+): (.*)$/gm)].map(([, name, value]) => [name, value]);
