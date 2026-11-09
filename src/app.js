@@ -1,4 +1,4 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/cues.mjs,
+// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/cues.mjs, src/questions.mjs,
 // src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
@@ -133,7 +133,7 @@ const agent = createAgentLink({
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: renderAgent,
+  onChange: (view) => { renderAgent(view); renderCard(); },
   show: agentShow,
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
@@ -227,6 +227,8 @@ function readPasted() {
   }
   $("showLine").textContent = showLine(show.plan);
   done("sPlan", Boolean(show.plan));
+  questions.setPlan(show.plan?.questions ?? []);
+  renderCard();
 }
 planIn.addEventListener("input", readPasted);
 planBtn.addEventListener("click", () => {
@@ -324,9 +326,9 @@ function lockPlan(now) {
 }
 
 // ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
-// now at least 10 s apart; Slow down doubles both (card 11 puts the button and the switch on screen). Each cue carries
-// what was heard since the last one, the run position and the guest's name. The agent's latest answer stays in its
-// link's memory (agent.suggestion()) for the question card. Nothing is stored. ----
+// now at least 10 s apart; Slow down doubles both (both on the question card below). Each cue carries what was heard
+// since the last one, the run position and the guest's name. The agent's answers go to the question card. Nothing is
+// stored. ----
 const cues = createCues({ send: (item) => agent.send(item), context: cueContext });
 
 /** Where the show is when a cue goes: the current part of the run order, and the guest the plan names. */
@@ -349,6 +351,118 @@ function agentShow() {
     segments: show.plan.parts.map((part, i) => ({ title: part.name, plannedMinutes: part.minutes, ...(rows[i]?.state === "now" ? { live: true } : {}) })),
   };
 }
+
+// ---- The Next question card (src/questions.mjs): the next prepared question from the start and while the agent is
+// slow or quiet; each answer from the agent takes the card once. Suggest now and the light in the corner show what the
+// agent does; Slow down is the cue rules' switch. All in this page's memory. ----
+const questions = createQuestions();
+const qMain = $("qMain");
+const qWhy = $("qWhy");
+const qSrc = $("qSrc");
+const altsBox = $("alts");
+const askedBtn = $("askedBtn");
+const skipBtn = $("skipBtn");
+const suggestBtn = $("suggestBtn");
+const slowBtn = $("slowBtn");
+const thinkDot = $("thinkDot");
+const asking = { since: 0, timer: 0, alts: "" }; // since: when the cue whose answer is awaited went
+
+/** A control switched off with its reason (the round "i" in front), or on again. */
+function offable(button, reason, ...content) {
+  label(button, null, reason || null, ...(reason ? [offMark(), " "] : []), ...content);
+  switchOff(button, reason);
+}
+
+function renderCard() {
+  const now = Date.now();
+  const link = agent.view().state;
+  const busy = link === "on" && isThinking(asking.since, now);
+  if (!busy) asking.since = 0;
+  const { main, alts, counts } = questions.view();
+
+  // The question, a few words why and where it came from; text is replaced only when it changes (a screen reader
+  // hears each new question once).
+  const said = main ? main.text : counts.asked + counts.skipped > 0 && !counts.left ? "No questions left" : "No question yet";
+  if (qMain.textContent !== said) qMain.textContent = said;
+  qMain.toggleAttribute("data-empty", !main);
+  const why = main?.why ?? (main?.from === "list" ? "Next on your list." : "");
+  qWhy.textContent = why;
+  qWhy.hidden = !why;
+  qSrc.hidden = !main;
+  if (main) {
+    qSrc.textContent = main.n ? `Q${main.n} · your list` : "New";
+    qSrc.className = main.n ? "chip chip--accent" : "chip";
+  }
+  const none = main ? "" : "No question on the card.";
+  offable(askedBtn, none, "Asked");
+  offable(skipBtn, none, "Skip");
+
+  // The two to swap in, rebuilt only when they change, so a focused one keeps the keyboard.
+  const altsKey = JSON.stringify(alts);
+  if (altsKey !== asking.alts) {
+    const focused = [...altsBox.children].indexOf(document.activeElement);
+    asking.alts = altsKey;
+    altsBox.replaceChildren(...alts.map((q, i) => {
+      const b = make("button", "alt");
+      b.type = "button";
+      b.dataset.i = String(i);
+      b.append(make("span", "alt__q", q.text), make("span", q.n ? "chip chip--accent" : "chip", q.n ? `Q${q.n} · your list` : "New"));
+      if (q.why) b.append(make("span", "alt__why", q.why));
+      return b;
+    }));
+    if (focused >= 0) (altsBox.children[focused] ?? altsBox.lastElementChild ?? askedBtn).focus();
+  }
+
+  // Suggest now and the light: no agent, thinking, the seconds until the next press counts, or ready.
+  const { slow, cues: turns, suggestInMs } = cues.view();
+  const button = suggestButton({ agent: link, thinking: busy, waitMs: suggestInMs, slow });
+  label(suggestBtn, button.state, button.off || null, ...(link !== "on" ? [offMark(), " "] : []), button.text);
+  switchOff(suggestBtn, button.off);
+  const light = thinkLight({ agent: link, thinking: busy });
+  thinkDot.className = light.kind ? `dot dot--${light.kind}` : "dot";
+  thinkDot.setAttribute("aria-label", light.label);
+  if (thinkDot.dataset.tip !== light.tip) {
+    thinkDot.dataset.tip = light.tip;
+    if (thinkDot.getAttribute("aria-describedby") === "tip") tooltip.show(thinkDot);
+  }
+  $("turnChip").textContent = turnsText(turns);
+
+  // The next change on its own: the light going back after a minute, or the next second of the wait.
+  clearTimeout(asking.timer);
+  const wait = busy ? asking.since + THINK_MS - now : suggestInMs > 0 ? suggestInMs % 1000 || 1000 : 0;
+  if (wait > 0 && !$("live").hidden) asking.timer = setTimeout(renderCard, wait + 10);
+}
+
+/** A cue went (a pause, or Suggest now): the light breathes until the agent's answer is in. */
+function cueWent() {
+  asking.since = Date.now();
+  renderCard();
+}
+
+agent.onSuggestions((answer) => {
+  asking.since = 0;
+  questions.suggest(answer);
+  renderCard();
+});
+
+const pressable = (button) => button.getAttribute("aria-disabled") !== "true" && button.dataset.state !== "busy";
+askedBtn.addEventListener("click", () => { if (pressable(askedBtn)) { questions.asked(); renderCard(); } });
+skipBtn.addEventListener("click", () => { if (pressable(skipBtn)) { questions.skip(); renderCard(); } });
+altsBox.addEventListener("click", (e) => {
+  const alt = e.target.closest(".alt");
+  if (alt && questions.swap(Number(alt.dataset.i))) renderCard();
+});
+suggestBtn.addEventListener("click", () => {
+  if (!pressable(suggestBtn)) return;
+  if (cues.suggestNow().ok) cueWent(); else renderCard();
+});
+slowBtn.addEventListener("click", () => {
+  const on = slowBtn.getAttribute("aria-checked") !== "true";
+  slowBtn.setAttribute("aria-checked", String(on));
+  cues.slowDown(on);
+  renderCard();
+});
+renderCard();
 
 runsMore.addEventListener("click", () => {
   const open = !runs.hasAttribute("data-open");
@@ -638,7 +752,7 @@ function onSpeech({ data }) {
     }
   } else if (data.type === "pause") {
     heard.pauses[data.source] = data.at;
-    cues.pause(data.source);
+    if (cues.pause(data.source)) cueWent();
   }
 }
 
@@ -667,7 +781,7 @@ function showScreen(live) {
   $("setup").hidden = live;
   $("live").hidden = !live;
   $("topLive").hidden = !live;
-  if (live) renderRun();
+  if (live) { renderRun(); renderCard(); }
 }
 
 goBtn.addEventListener("click", () => {

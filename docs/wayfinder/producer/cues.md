@@ -1,11 +1,11 @@
 # The cues (card 10)
 
-Written 2026-11-09. A cue is the page asking the host's connected agent for the next question. This is when the page sends one, what it carries, what comes back and how fast it is. Nothing here shows on screen yet: the question card (card 11) shows the answer and puts Suggest now and Slow down on screen.
+Written 2026-11-09. A cue is the page asking the host's connected agent for the next question. This is when the page sends one, what it carries, what comes back and how fast it is. The question card (card 11, see below) shows the answer and puts Suggest now and Slow down on screen.
 
 ## When a cue goes
 
 - **At a pause.** The speech worker notices about 1.5 s of silence after speech. A cue goes then, but only when at least 30 s of new speech was heard since the last cue, and at most once a minute.
-- **Suggest now.** A cue goes at once, with whatever was heard, at least 10 s after the last cue. It gives back how long to wait when pressed too soon, and says so when no agent is connected (card 11 shows that on the button).
+- **Suggest now.** A cue goes at once, with whatever was heard, at least 10 s after the last cue. It gives back how long to wait when pressed too soon, and says so when no agent is connected (the question card shows both on the button).
 - **Slow down.** Doubles both spacings: a pause cue at most every 2 minutes, Suggest now at least 20 s apart. The 30 s of new speech stays the same.
 - With the studio tab shared, the host and the guest are heard apart: a pause of one is no pause while the other is still talking (a side counts as talking for 12 s after its last text, until its own pause).
 - Both kinds share one clock: Suggest now restarts the minute, and a pause cue blocks Suggest now for 10 s.
@@ -27,6 +27,14 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 - The curl loop sends the same answer again on every idle round: the page takes each answer once.
 - Cues sent while the agent is still busy wait for its next call and go together, with the newest reason; a Test cue always goes alone, so its made-up talk never mixes with the show's. Asking again with the same cue number (`seq`) gives the same material, so a lost answer loses nothing, unless more than 20,000 characters pile up unconfirmed: then the oldest show cues are let go first.
 - Disconnect forgets the cues and the latest suggestion.
+
+## On the question card (card 11)
+
+- From the start, and whenever the agent is slow or quiet, the card shows the next prepared question from the plan (the first one not asked or skipped), with the next two below to swap in. With no plan and no answer it reads "No question yet".
+- An answer from the agent takes the card once: its first suggestion on the card (a prepared question by its number, or a new one), with its few words why and where it came from ("Q3 · your list" or "New"); its other suggestions and the question it replaced go below to swap in. A suggestion pointing at a question already asked or skipped is left out; when none is left, the card stays as it is.
+- Asked and Skip move to the first alternative and mark a prepared question as asked or skipped, in the page's memory (for the end report to come). An alternative pressed swaps with the question on the card.
+- While a cue waits for its answer, Suggest now reads "Thinking…" and the small light in the card's corner breathes orange; with no answer in a minute the light goes back to green. After a cue, Suggest now shows the seconds until it takes the next press. With no agent (or its loop gone quiet) it reads "Suggest now · no agent", switched off, and the light is grey; the card keeps its question.
+- The turn chip counts the cues that went to the agent this show.
 
 ## The speed target
 
