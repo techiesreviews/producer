@@ -14,6 +14,7 @@ const VIEWS = [
 ];
 const STREAM = ["Restream Studio", "Wave.video", "OBS", "Other"];
 const AGENTS = "Claude Code i Codex i T3 Code";
+const GUEST = ["Yes", "No · my mic only", "Solo show"];
 const OFF_REASON = "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.";
 
 // The colour the browser paints for a CSS colour, as [r, g, b] (a canvas turns oklch and light-dark into pixels).
@@ -33,15 +34,16 @@ const token = async (page, name) => paint(page, await page.evaluate((n) => {
 }, name));
 const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
-// The setup screen: the heading with this browser's chip, one step ("I stream with") whose choices press one at a
-// time, the step's done mark, the wide (label beside) or compact (label above) layout, and no word on the screen
-// beyond its labels (no explainer). Leaves "Restream Studio" picked, as on arrival.
+// The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Guest agreed",
+// "Sound", "Speech to text") and the open button, step 1's choices pressing one at a time with its done mark, the
+// guest step's answers, the wide (label beside) or compact (label above) layout, and no word on the screen beyond its
+// labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
 async function checkSetup(page, name, { phone, touch, chip }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.equal(words, `Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message`, `${name}: the screen says only its labels`);
-  assert.equal(await page.locator(".step").count(), 2, `${name}: two steps, until the next feature exists`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message 3 Guest agreed ${GUEST.join(" ")} 4 Sound Microphone 5 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.equal(await page.locator(".step").count(), 5, `${name}: five steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
   const pressed = () => page.locator('#streamSeg button[aria-pressed="true"]').allInnerTexts();
@@ -80,6 +82,23 @@ async function checkSetup(page, name, { phone, touch, chip }) {
   await options.nth(0).click();
   await page.evaluate(() => document.activeElement?.blur());
   assert.deepEqual(await pressed(), ["Restream Studio"], `${name}: back to Restream Studio`);
+
+  // The guest step: nothing is picked on arrival (only the host answers); one answer at a time, by mouse, tap or
+  // keyboard; the step is done once answered. The open button waits, saying what is missing first.
+  const go = page.locator("#goBtn");
+  const guestPressed = () => page.locator('#guestSeg button[aria-pressed="true"]').allInnerTexts();
+  assert.deepEqual(await guestPressed(), [], `${name}: no guest answer on arrival`);
+  assert.equal(await page.locator("#guestSeg").evaluate((el) => document.getElementById(el.getAttribute("aria-labelledby"))?.textContent), "Guest agreed", `${name}: the answers are named by their step`);
+  assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], ["true", "Answer Guest agreed first."], `${name}: the open button waits for the guest answer`);
+  const solo = page.locator("#guestSeg button").nth(2);
+  if (touch) await solo.tap(); else await solo.click();
+  assert.deepEqual(await guestPressed(), ["Solo show"], `${name}: ${touch ? "a tap" : "a click"} picks Solo show`);
+  assert.ok(await page.locator("#sGuest").evaluate((el) => el.hasAttribute("data-done")), `${name}: the guest step is done`);
+  assert.equal(await go.getAttribute("data-tip"), "Turn on the microphone first.", `${name}: then it waits for the microphone`);
+  await page.locator("#guestSeg button").nth(0).focus();
+  await page.keyboard.press("Enter");
+  assert.deepEqual(await guestPressed(), ["Yes"], `${name}: Enter picks Yes`);
+  await page.evaluate(() => document.activeElement?.blur());
 
   // Layout: the column is centred and at most 720px wide; wide puts the label beside the choices, compact above.
   const box = await page.evaluate(() => {

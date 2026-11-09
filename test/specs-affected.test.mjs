@@ -20,3 +20,12 @@ test("a suite that is not named gets the catch-all", () => {
   assert.ok(REACHES["*"].test("test/browser/other.mjs"));
   assert.deepEqual(suitesFor(["other"], ["src/app.js"]), ["other"]);
 });
+
+test("the speech suite is reached by the page, the speech worker, the pinned speech files, its clip and its scorer", () => {
+  for (const file of ["src/app.js", "src/listen.mjs", "src/speech/worker.mjs", "src/speech/segmenter.mjs", "scripts/build.mjs", "scripts/speech-files.mjs", "test/browser/speech.mjs", "test/speech-score.mjs", "test/fixtures/two-voices.wav", "test/fixtures/two-voices.json", "scripts/agents/producer-kit.mjs"]) {
+    assert.ok(suitesFor(["page", "speech"], [file]).includes("speech"), file);
+  }
+  for (const file of ["README.md", "test/speech.test.mjs", "test/browser/page.mjs", "docs/agents/features.md"]) {
+    assert.ok(!suitesFor(["page", "speech"], [file]).includes("speech"), file);
+  }
+});

@@ -16,10 +16,18 @@
 <header class="top">
   <div class="brand"><span class="brand__mark"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6l8 6 8-6v12"/></svg></span>Producer <small>· no show loaded yet</small></div>
   <button type="button" class="chip private" data-tip="Only you see this window. Never share it on stream."><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><path d="m4 4 16 16"/></svg><span class="long">Private</span></button>
+  <div class="top__end" id="topLive" hidden>
+    <span class="listen" id="listen" data-on="true">
+      <span class="dot" id="listenDot" aria-hidden="true"></span>
+      <span class="listen__txt" id="listenTxt" role="status" data-tip=""><span id="listenOn"><span class="long">Listening · </span><span id="listenSrc">mic only</span></span><span id="listenOff" hidden>Not listening</span></span>
+      <span class="chip" id="guestChip" data-tip="" hidden></span>
+      <button class="tb" type="button" id="stopBtn">Stop</button>
+    </span>
+  </div>
 </header>
 
 <main class="screen" id="screen">
-  <section class="setup" aria-labelledby="setupTitle">
+  <section class="setup" id="setup" aria-labelledby="setupTitle">
     <div class="setup__col">
       <h1 id="setupTitle">Set up <span class="chip" id="browserChip"></span></h1>
       <ol class="steps" role="list">
@@ -45,9 +53,34 @@
             <textarea class="agent-message" id="agentMessage" readonly hidden aria-label="Connect message" rows="4"></textarea>
           </div>
         </li>
+        <li class="step" id="sGuest">
+          <span class="step__n" aria-hidden="true">3</span><span class="step__label" id="guestLabel" data-tip="Only you can tick this. Your agent never does.">Guest agreed</span>
+          <div class="step__ctl"><div class="seg" id="guestSeg" role="group" aria-labelledby="guestLabel">
+            <button type="button" data-v="yes" aria-pressed="false" data-tip="Ask your guest first. Yes: their voice is turned into text on this computer.">Yes</button>
+            <button type="button" data-v="no" aria-pressed="false" data-tip="Only your own microphone is listened to.">No · my mic only</button>
+            <button type="button" data-v="solo" aria-pressed="false">Solo show</button>
+          </div></div>
+        </li>
+        <li class="step" id="sSound">
+          <span class="step__n" aria-hidden="true">4</span><span class="step__label" id="soundLabel">Sound</span>
+          <div class="step__ctl">
+            <button class="tb" type="button" id="micBtn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micTxt">Microphone</span></button>
+            <span class="meter" id="micMeter" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></span>
+          </div>
+        </li>
+        <li class="step" id="sSpeech">
+          <span class="step__n" aria-hidden="true">5</span><span class="step__label" id="speechLabel">Speech to text</span>
+          <div class="step__ctl">
+            <button class="tb" type="button" id="speechBtn" data-tip="Free model, runs inside this browser. Downloads once, then stays in this browser."><span id="speechTxt">Load speech model · <!--@SPEECH_SIZE@--></span></button>
+          </div>
+        </li>
       </ol>
+      <div class="setup__go">
+        <button class="tb tb--big tb--primary" type="button" id="goBtn">Open producer screen</button>
+      </div>
     </div>
   </section>
+  <section class="live" id="live" aria-label="Producer screen" hidden></section>
 </main>
 
 <div class="tip" id="tip" role="tooltip"></div>

@@ -8,6 +8,7 @@ const RUNNER = /^scripts\/agents\/(producer-kit|specs-affected)\.mjs$/;
 const either = (a, b) => new RegExp(`${a.source}|${b.source}`);
 export const REACHES = {
   page: either(/^(src\/(?!.*\.md$)|scripts\/build\.mjs$|wrangler\.jsonc$|test\/browser\/page\.mjs$)/, RUNNER),
+  speech: either(/^(src\/(?!.*\.md$)|scripts\/(build|speech-files)\.mjs$|wrangler\.jsonc$|test\/browser\/speech\.mjs$|test\/speech-score\.mjs$|test\/fixtures\/two-voices\.)/, RUNNER),
   "*": either(/^(src\/(?!.*\.md$)|test\/browser\/)/, RUNNER),
 };
 

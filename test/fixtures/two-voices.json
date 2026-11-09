@@ -1,0 +1,105 @@
+{
+ "about": "Two people taking turns (LibriSpeech validation-clean speakers 2277 and 2086, read English), 16 kHz mono. Fed to the browser as a fake microphone by test/browser/speech.mjs. LibriSpeech: Panayotov, Chen, Povey and Khudanpur (2015), CC BY 4.0, from the public-domain LibriVox recordings.",
+ "rate": 16000,
+ "seconds": 105.85,
+ "utterances": [
+  {
+   "who": "host",
+   "source": "2277-149896-0000",
+   "start": 1.5,
+   "end": 8.09,
+   "text": "he was in a fevered state of mind owing to the blight his wife's action threatened to cast upon his entire future"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149214-0000",
+   "start": 8.69,
+   "end": 18.5,
+   "text": "the narrative it may be is woven of so humble a texture as to require this advantage and at the same time to render it the more difficult of attainment"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0001",
+   "start": 19.4,
+   "end": 26.545,
+   "text": "he would have to pay her the money which she would now regularly demand or there would be trouble it did not matter what he did"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149214-0001",
+   "start": 27.245,
+   "end": 34.215,
+   "text": "in good faith however he is not sufficiently imaginative to flatter himself with the slightest hope of this kind"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0002",
+   "start": 35.215,
+   "end": 40.05,
+   "text": "hurstwood walked the floor mentally arranging the chief points of his situation"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149214-0003",
+   "start": 40.85,
+   "end": 49.845,
+   "text": "if permitted by the historical connection which though slight was essential to his plan the author would very willingly have avoided anything of this nature"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0003",
+   "start": 50.445,
+   "end": 53.285,
+   "text": "he also thought of his managerial position"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149220-0004",
+   "start": 54.185,
+   "end": 61.405,
+   "text": "phoebe wondered whose care and toil it could have been that had planted these vegetables and kept the soil so clean and orderly"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0004",
+   "start": 62.105,
+   "end": 64.06,
+   "text": "how would the papers talk about it"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149220-0005",
+   "start": 65.06,
+   "end": 74.15,
+   "text": "bees too strange to say had thought it worth their while to come hither possibly from the range of hives beside some farm house miles away"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0005",
+   "start": 74.95,
+   "end": 80.55,
+   "text": "many little wrinkles gathered between his eyes as he contemplated this and his brow moistened"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149220-0007",
+   "start": 81.15,
+   "end": 86.39,
+   "text": "it now contained only chanticleer his two wives and a solitary chicken"
+  },
+  {
+   "who": "host",
+   "source": "2277-149896-0006",
+   "start": 87.29,
+   "end": 92.26,
+   "text": "he could arrange that satisfactorily for carrie would be glad to wait if necessary"
+  },
+  {
+   "who": "guest",
+   "source": "2086-149220-0008",
+   "start": 92.96,
+   "end": 101.85,
+   "text": "it was evident that the race had degenerated like many a noble race besides in consequence of too strict a watchfulness to keep it pure"
+  }
+ ]
+}
