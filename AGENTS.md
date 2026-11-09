@@ -1,6 +1,6 @@
 # producer
 
-A live host's private "producer" screen: a static page plus one Cloudflare Worker, no accounts, nothing stored, an agent relay like the Prompter's Wait for MCP. Public repo: https://github.com/techiesreviews/producer. Owner: Lex (non-technical; explain in plain words). Status: the page shell, the first-run setup screen (step 1 "I stream with", browser detection, the switched-off pattern), the Worker's agent relay, step 2 "AI agent" (the paste message for Claude Code, Test, Disconnect), "Guest agreed", the microphone, the speech model, speech to text in the browser and the listening sign on `dev`, nothing deployed; the plan is in `docs/wayfinder/producer/`.
+A live host's private "producer" screen: a static page plus one Cloudflare Worker, no accounts, nothing stored, an agent relay like the Prompter's Wait for MCP. Public repo: https://github.com/techiesreviews/producer. Owner: Lex (non-technical; explain in plain words). Status: the page shell, the first-run setup screen (step 1 "I stream with", browser detection, the switched-off pattern), the Worker's agent relay, step 2 "AI agent" (Claude Code, Codex and T3 Code, the paste message and Connect with MCP, Test, Disconnect), "Guest agreed", the microphone, the speech model, speech to text in the browser and the listening sign on `dev`, nothing deployed; the plan is in `docs/wayfinder/producer/`.
 
 ## Rules
 

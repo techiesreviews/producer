@@ -25,6 +25,7 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
+  let epoch = 0; // counts every forget(): a token that arrives after the wait was given up is let go
   let retry = 0;
   let retryTimer = 0;
   let pingTimer = 0;
@@ -125,6 +126,8 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
   }
 
   function forget() {
+    epoch += 1;
+    pending = null;
     for (const t of [retryTimer, quietTimer, endTimer, testTimer]) timers.clearTimeout(t);
     timers.clearInterval(pingTimer);
     drop();
@@ -147,10 +150,12 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
       if (link.state === "on") return null;
       if (!live()) {
         if (!pending) {
+          const mine = epoch;
           link.failed = false;
           set("waiting");
           pending = net.token().then((r) => (r.ok ? r.json() : null)).then((b) => (typeof b?.token === "string" && b.token ? b.token : null)).catch(() => null);
           const token = await pending;
+          if (mine !== epoch) return null; // Disconnect (or another pick) came first; a newer press owns `pending` now
           pending = null;
           if (!token) { link.failed = true; link.state = "off"; changed(); return null; }
           // Ages use this page's clock, counted from when the token arrived (the Worker's own clock checks it too).
@@ -159,7 +164,7 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
           pingTimer = timers.setInterval(() => { try { if (ws?.readyState === 1) ws.send('{"type":"ping"}'); } catch { /* closed */ } }, 45_000);
           endTimer = timers.setTimeout(forget, AGENT_MAX_AGE_MS);
           open();
-        } else if (!(await pending)) return null;
+        } else if (!(await pending) || !link.token) return null; // no token, or the wait was given up meanwhile
       } else if (!ws) open();
       if (link.state !== "on") set("waiting");
       return { token: link.token };

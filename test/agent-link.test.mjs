@@ -179,6 +179,27 @@ test("another tab takes the relay: this one offers Use this tab, which takes it 
   link.disconnect();
 });
 
+test("giving up the wait while the token is still on its way connects nothing; the next press starts clean", async () => {
+  let release;
+  let asked = 0;
+  const { link, net } = setup({
+    tokenReply: () => (++asked === 1 ? new Promise((r) => { release = r; }) : Promise.resolve(Response.json(newToken(Date.now())))),
+  });
+  const first = link.connect();
+  assert.equal(link.view().state, "waiting");
+  link.disconnect();
+  assert.equal(link.view().state, "off");
+  release(Response.json(newToken(Date.now())));
+  assert.equal(await first, null, "the late token is let go");
+  assert.equal(link.view().state, "off", "the late token does not bring the wait back");
+  assert.equal(net.sockets.length, 0, "and opens no relay socket");
+  const next = await link.connect();
+  assert.match(next.token, /^pr1-/);
+  assert.equal(asked, 2, "the next press asks for a new token");
+  assert.equal(net.sockets.length, 1);
+  link.disconnect();
+});
+
 test("no token from the Worker (offline, or too many tries): the button says so, and the next press tries again", async () => {
   let reply = () => Promise.reject(new Error("offline"));
   const { link, connect } = setup({ tokenReply: () => reply() });

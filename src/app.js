@@ -1,5 +1,5 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/ui/tooltip.mjs, src/agent-message.mjs and
-// src/agent-link.mjs above this file.
+// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/ui/tooltip.mjs, src/agent-ways.mjs,
+// src/agent-message.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -33,16 +33,35 @@ const state = { guest: null, mic: false, speech: false, listening: false };
 // Step 1 is done from the start: one choice is always picked.
 choices(document.getElementById("streamSeg"));
 
-// Step 2, the AI agent. Copy connect message copies the message with this tab's token; the button then reads
-// Waiting for the agent, then connected (a press disconnects). Test times one sample answer. The page talks only to
-// its own site: the token from /api/agent-token and the relay at /api/relay.
-choices(document.getElementById("agentSeg"));
-const agentName = () => document.querySelector('#agentSeg [aria-pressed="true"]').textContent.trim();
+// Step 2, the AI agent. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
+// the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
+// button then reads Waiting for the agent, then connected (a press disconnects), and the way not used steps aside.
+// While an agent is connected the other agents are switched off; while the page only waits, a new pick or the other
+// way gives the wait up and revokes its token. Test times one sample answer. The page talks
+// only to its own site: the token from /api/agent-token and the relay at /api/relay.
+const agentSeg = document.getElementById("agentSeg");
+choices(agentSeg);
+const agentKey = () => agentSeg.querySelector('[data-v][aria-pressed="true"]').dataset.v;
 const connectBtn = document.getElementById("connectBtn");
+const mcpBtn = document.getElementById("mcpBtn");
 const testBtn = document.getElementById("testBtn");
 const messageBox = document.getElementById("agentMessage");
 const dot = (kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
+const tag = (text) => Object.assign(document.createElement("span"), { className: "tag", textContent: text });
+const offMark = () => {
+  const mark = Object.assign(document.createElement("span"), { className: "off-mark", textContent: "i" });
+  mark.setAttribute("aria-hidden", "true");
+  return mark;
+};
 let copyFailed = false;
+let way = null; // "paste" or "mcp": the way the connection under way was started with
+
+// Each agent's note and label on its chip.
+for (const [v, w] of Object.entries(AGENT_WAYS)) {
+  const chip = agentSeg.querySelector(`[data-v="${v}"]`);
+  if (w.chipTip) chip.dataset.tip = w.chipTip;
+  if (w.tag) chip.append(" ", tag(w.tag));
+}
 
 // A button's state and words. An open tooltip on it follows: the new tip, or none.
 function label(button, state, tip, ...content) {
@@ -54,18 +73,52 @@ function label(button, state, tip, ...content) {
 }
 
 function renderAgent({ state, failed, test, passed }) {
-  const name = agentName();
+  const key = agentKey();
+  const { name, pasteNote, pasteSlow, mcp } = AGENT_WAYS[key];
+  if (state === "off" && !failed) way = null;
   if (state !== "waiting") { copyFailed = false; messageBox.hidden = true; }
-  if (state === "on") label(connectBtn, "ok", "Click to disconnect.", dot("ok"), `${name} connected`);
-  else if (state === "waiting") label(connectBtn, "busy", copyFailed ? `Copy the message below, then paste it into ${name}.` : `Message copied. Paste it into ${name}.`, dot("think"), `Waiting for ${name}…`);
-  else if (state === "elsewhere") label(connectBtn, null, `${name} is connected in another tab. Click to use this tab.`, "Use this tab");
-  else label(connectBtn, null, `Copies a message. Paste it into ${name}.`, failed ? "No connection · try again" : "Copy connect message");
+  // Waiting can be left (pick another agent, press the other way: the unused token is revoked); a connected agent has
+  // to be disconnected first, so only then are the other agents switched off and the other way put aside.
+  const connected = state === "on" || state === "elsewhere";
+  const active = way ?? "paste";
+
+  for (const [v, w] of Object.entries(AGENT_WAYS)) {
+    const chip = agentSeg.querySelector(`[data-v="${v}"]`);
+    const locked = connected && v !== key;
+    if (locked) chip.setAttribute("aria-disabled", "true"); else chip.removeAttribute("aria-disabled");
+    const mark = chip.querySelector(".off-mark");
+    if (mark && !locked) { if (mark.nextSibling?.nodeValue === " ") mark.nextSibling.remove(); mark.remove(); }
+    if (locked && !mark) chip.prepend(offMark(), " ");
+    const tip = locked ? LOCK_TIP : w.chipTip;
+    if (tip) chip.dataset.tip = tip; else chip.removeAttribute("data-tip");
+  }
+  messageBox.setAttribute("aria-label", active === "mcp" ? "Connect line" : "Connect message");
+
+  const failure = (kind) => (failed && way === kind ? "No connection · try again" : null);
+  for (const [kind, button] of [["paste", connectBtn], ["mcp", mcpBtn]]) {
+    const mine = state !== "off" && kind === active; // this way carries the connection
+    button.hidden = connected && !mine;
+    button.removeAttribute("aria-disabled");
+    if (mine && state === "on") label(button, "ok", kind === "mcp" ? mcp.onTip : "Click to disconnect.", dot("ok"), `${name} connected`);
+    else if (mine && state === "waiting") {
+      const tip = kind === "mcp"
+        ? (copyFailed ? "Copy the line below, then run it in a terminal." : "Line copied. Run it in a terminal.")
+        : (copyFailed ? `Copy the message below, then paste it into ${name}.` : `Message copied. Paste it into ${name}.`);
+      label(button, "busy", tip, dot("think"), `Waiting for ${name}…`);
+    } else if (mine) label(button, null, `${name} is connected in another tab. Click to use this tab.`, "Use this tab");
+    else if (kind === "paste") label(button, null, `Copies a message. Paste it into ${name}.${pasteNote ? ` ${pasteNote}.` : ""}`, failure("paste") ?? "Copy connect message", ...(!failure("paste") && pasteSlow && mcp ? [" ", tag("slower")] : []));
+    else if (mcp) label(button, null, mcp.idleTip, failure("mcp") ?? "Connect with MCP");
+    else {
+      label(button, null, NO_MCP_TIP, offMark(), " Connect with MCP");
+      button.setAttribute("aria-disabled", "true");
+    }
+  }
 
   testBtn.hidden = state !== "on";
   if (test.state === "busy") label(testBtn, "busy", null, dot("think"), "Testing…");
   else if (test.state === "ok") label(testBtn, "ok", `Sample: "${test.sample}"`, `Test ✓ · ${test.seconds.toFixed(1)} s`);
   else if (test.state === "fail") label(testBtn, null, `No answer in ${AGENT_TEST_MS / 1000} seconds. Check ${name}, then test again.`, "Test · no answer");
-  else label(testBtn, null, null, "Test");
+  else label(testBtn, null, TEST_TIP, "Test");
   document.getElementById("sAgent").toggleAttribute("data-done", state === "on" && passed);
 }
 
@@ -76,11 +129,24 @@ const agent = createAgentLink({
   },
   onChange: renderAgent,
 });
+// A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
+let picked = agentKey();
+agentSeg.addEventListener("click", () => {
+  if (agentKey() !== picked) {
+    picked = agentKey();
+    if (agent.view().state === "waiting") { agent.disconnect(); return; }
+  }
+  renderAgent(agent.view());
+});
+renderAgent(agent.view());
 
-// The clipboard write starts inside the click (Safari asks for that); the message follows once the token is in.
-// Without a clipboard the message shows, selected, to copy by hand.
-async function copyMessage() {
-  const text = agent.connect().then((r) => (r ? connectMessage({ origin: location.origin, token: r.token }) : null));
+// The clipboard write starts inside the click (Safari asks for that); the text follows once the token is in. Without a
+// clipboard the text shows, selected, to copy by hand.
+async function copyWay(kind) {
+  way = kind;
+  const key = agentKey();
+  const make = (token) => (kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token }) : connectMessage({ origin: location.origin, token, agent: key }));
+  const text = agent.connect().then((r) => (r ? make(r.token) : null));
   try {
     if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((t) => { if (!t) throw new Error("no message"); return new Blob([t], { type: "text/plain" }); }) })]);
@@ -101,12 +167,17 @@ async function copyMessage() {
   }
 }
 
-connectBtn.addEventListener("click", () => {
-  const { state } = agent.view();
-  if (state === "on") agent.disconnect();
-  else if (state === "elsewhere") agent.useHere();
-  else copyMessage();
-});
+for (const [button, kind] of [[connectBtn, "paste"], [mcpBtn, "mcp"]]) {
+  button.addEventListener("click", () => {
+    const { state } = agent.view();
+    if (state === "on") agent.disconnect();
+    else if (state === "elsewhere") agent.useHere();
+    else {
+      if (state === "waiting" && way !== kind) agent.disconnect(); // the other way: the unused token is revoked first
+      copyWay(kind);
+    }
+  });
+}
 testBtn.addEventListener("click", () => agent.test());
 // Leaving or reloading the page ends the connection: the page keeps no token, so the old one is revoked rather than
 // left working for whoever holds the message.
