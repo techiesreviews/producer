@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -53,4 +53,23 @@ test("the failure message never shows the user:password part of KIT_REPO", () =>
     assert.match(r.stdout, /https:\/\/example\.invalid\/x\.git/);
     assert.doesNotMatch(r.stdout + r.stderr, /someuser|hunter2pass/);
   });
+});
+
+test("with no KIT_HOME --home prints the kit the machine's current link points at", () => {
+  const home = mkdtempSync(join(tmpdir(), "producer-current-"));
+  try {
+    const data = join(home, "data");
+    const kitDir = join(data, "agent-kit", "v1");
+    mkdirSync(kitDir, { recursive: true });
+    writeFileSync(join(kitDir, "kit"), "#!/usr/bin/env bash\n");
+    chmodSync(join(kitDir, "kit"), 0o755);
+    writeFileSync(join(kitDir, "kit-lib.sh"), "");
+    symlinkSync("v1", join(data, "agent-kit", "current"));
+    const env = { PATH: process.env.PATH, HOME: home, XDG_DATA_HOME: data, XDG_CACHE_HOME: join(home, "cache") };
+    const r = spawnSync("bash", [launcher, "--home"], { env, cwd: home, encoding: "utf8" });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, `${realpathSync(kitDir)}\n`);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

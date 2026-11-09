@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -69,5 +69,27 @@ test("a pinned kit folder that has been removed is looked up again from the mach
     const r = spawnSync("bash", [run, "stop-guard"], { env: { ...env, KIT_HOME: gone, KIT_HOME_PINNED: gone }, input: "{}", encoding: "utf8" });
     assert.equal(r.status, 0);
     assert.equal(r.stdout, "fake-kit:stop-guard:{}");
+  });
+});
+
+test("a person's own KIT_HOME that is not a whole kit is not replaced by the machine's current kit", () => {
+  withFakeKit(({ env, home }) => {
+    const broken = join(home, "broken-kit");
+    mkdirSync(broken);
+    const r = spawnSync("bash", [run, "bash-guard"], { env: { ...env, KIT_HOME: broken }, input: "{}", encoding: "utf8" });
+    assert.equal(r.status, 0);
+    assert.match(JSON.parse(r.stdout).systemMessage, /^Agent Kit not found/);
+  });
+});
+
+test("with no current link the launcher falls back to the cached copy in the cache folder", () => {
+  withFakeKit(({ env, kitDir, home }) => {
+    const cached = join(home, "cache", "agent-kit");
+    mkdirSync(join(cached, "hooks"), { recursive: true });
+    for (const file of ["kit", "kit-lib.sh", "hooks/run.sh"]) cpSync(join(kitDir, file), join(cached, file));
+    rmSync(join(env.XDG_DATA_HOME, "agent-kit", "current"));
+    const r = spawnSync("bash", [run, "context-card"], { env, input: "{}", encoding: "utf8" });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, "fake-kit:context-card:{}");
   });
 });
