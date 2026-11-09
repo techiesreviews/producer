@@ -58,6 +58,10 @@ while out=$(curl -sS -m 40 -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 - Disconnect revokes the token, so the agent's next call (and the wait in progress) gets 401. A reload forgets the token (nothing is stored): the host copies a new message.
 - `test/connect-message.test.mjs` runs the copied block in bash against the Worker: connect, Test, answer, Disconnect.
 
+## The other ways (card 09)
+
+The same relay serves Connect with MCP (Claude Code, Codex) and the message for Codex and T3 Code; see [the ways](agent-ways.md). The page's token, Test and Disconnect work the same for every way.
+
 ## Not verified yet
 
 - The 30 second hold on a real Cloudflare deploy. The tests run the relay object and the Worker locally with a fake page and fake timers. The first deploy of the preview (TOOLS-144, the lead's step) must be checked with a real wait of 25 to 30 seconds, and with the Durable Object limit of the free plan in mind.

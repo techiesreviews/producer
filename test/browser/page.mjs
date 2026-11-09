@@ -3,6 +3,8 @@
 // light and dark; then the setup screen in a real Firefox, light and dark, which names itself and keeps working.
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { AGENT_WAYS, mcpLine } from "../../src/agent-ways.mjs";
+import { connectMessage } from "../../src/agent-message.mjs";
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36";
 
@@ -13,8 +15,19 @@ const VIEWS = [
   { name: "phone-dark", colorScheme: "dark", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
 ];
 const STREAM = ["Restream Studio", "Wave.video", "OBS", "Other"];
-const AGENTS = "Claude Code i Codex i T3 Code";
+// The Worker limits tokens per client address (20 a minute); a real Cloudflare sets the address itself, and here each
+// browser context gets its own made-up one, so the many connections these checks make do not meet that limit.
+let nextClient = 0;
+const ownAddress = (context) => context.setExtraHTTPHeaders({ "cf-connecting-ip": `203.0.113.${++nextClient}` });
+
+const AGENTS = "Claude Code Codex T3 Code slower i API key";
+const CODEX_TIP = "Codex blocks the network in safe mode: allow network or use the MCP line";
+const T3_TIP = "Slower: about 6 seconds an answer. T3 Code cannot take a private MCP line, so it uses the connect message.";
+const LOCK_TIP = "Disconnect first to pick another agent.";
+const T3_MCP_TIP = "T3 Code cannot take a private MCP line. Use the connect message.";
+const TEST_TIP = "Warm-up before you go live. For quicker answers, pick a fast model setting and use a fresh small chat.";
 const GUEST = ["Yes", "No · my mic only", "Solo show"];
+const KEY_TIP = "Comes later: your own paid AI key, capped at about €5 per stream.";
 const OFF_REASON = "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.";
 
 // The colour the browser paints for a CSS colour, as [r, g, b] (a canvas turns oklch and light-dark into pixels).
@@ -42,7 +55,7 @@ async function checkSetup(page, name, { phone, touch, chip }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message 3 Guest agreed ${GUEST.join(" ")} 4 Sound Microphone 5 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Guest agreed ${GUEST.join(" ")} 4 Sound Microphone 5 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 5, `${name}: five steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
@@ -203,7 +216,7 @@ function fakeRelay() {
   window.__relay = relay;
 }
 
-// Step 2, the AI agent, as in the mock-up: Claude Code picked, Codex and T3 Code switched off with a reason; Copy
+// Step 2, the AI agent, as in the mock-up: Claude Code picked, Codex and T3 Code on with their notes, the API key off; Copy
 // connect message copies the message (the loop, this page's address and token) and reads Waiting for Claude Code;
 // the agent's first call makes it Claude Code connected and shows Test; Test hands a sample cue to the held wait and
 // shows the seconds of the answer (step 2 turns done); a press on the connected button disconnects (the token is
@@ -227,12 +240,19 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   });
 
   assert.deepEqual(await page.locator('#agentSeg button[aria-pressed="true"]').allInnerTexts(), ["Claude Code"], `${name}: Claude Code is picked`);
-  for (const off of ["codex", "t3"]) {
-    const b = page.locator(`#agentSeg [data-v="${off}"]`);
-    assert.equal(await b.getAttribute("aria-disabled"), "true", `${name}: ${off} is switched off`);
-    assert.equal(await b.getAttribute("data-tip"), "Comes next. Use Claude Code for now.", `${name}: ${off} says why`);
+  // Codex and T3 Code are on, each with its own note; Claude Code's fast way carries none; the API key stays off.
+  assert.equal(await page.locator('#agentSeg [data-v="claude"]').getAttribute("data-tip"), null, `${name}: Claude Code has no note`);
+  for (const [v, tip] of [["codex", CODEX_TIP], ["t3", T3_TIP]]) {
+    const b = page.locator(`#agentSeg [data-v="${v}"]`);
+    assert.equal(await b.getAttribute("aria-disabled"), null, `${name}: ${v} is switched on`);
+    assert.equal(await b.getAttribute("data-tip"), tip, `${name}: ${v} carries its note`);
   }
-  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: null, done: false }, `${name}: off, Test hidden`);
+  assert.equal(await page.locator('#agentSeg [data-v="t3"] .tag').innerText(), "slower", `${name}: T3 Code is labelled slower`);
+  assert.equal(await page.locator('#agentSeg .tag').count(), 1, `${name}: and only T3 Code is`);
+  const key = page.locator('#agentSeg [data-v="key"]');
+  assert.equal(await key.getAttribute("aria-disabled"), "true", `${name}: the API key is switched off`);
+  assert.equal(await key.getAttribute("data-tip"), KEY_TIP, `${name}: and says when it comes`);
+  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: off, Test hidden`);
   await shoot("off");
 
   // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token.
@@ -265,7 +285,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
   const open = await page.evaluate(() => document.querySelector("#tip[data-on]")?.textContent ?? null);
   assert.ok(open === null || open === "Click to disconnect.", `${name}: an open tooltip follows the new state (${open})`);
-  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: null, done: false }, `${name}: connected`);
+  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected`);
   const green = await page.evaluate(() => getComputedStyle(document.getElementById("connectBtn")).color);
   assert.deepEqual(await paint(page, green), await token(page, "agent-ink"), `${name}: connected reads green`);
   await shoot("connected");
@@ -294,12 +314,12 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   // The keyboard reaches every control of the step, in order.
   await page.locator('#agentSeg [data-v="claude"]').focus();
   const order = [];
-  for (let i = 0; i < 4; i++) { await page.keyboard.press("Tab"); order.push(await page.evaluate(() => document.activeElement.id || document.activeElement.textContent.trim())); }
-  assert.deepEqual(order, ["i Codex", "i T3 Code", "connectBtn", "testBtn"], `${name}: Tab order`);
+  for (let i = 0; i < 5; i++) { await page.keyboard.press("Tab"); order.push(await page.evaluate(() => document.activeElement.id || document.activeElement.textContent.trim())); }
+  assert.deepEqual(order, ["i Codex", "i T3 Code slower", "i API key", "connectBtn", "testBtn"], `${name}: Tab order (the other agents are locked while connected; the way not used steps aside)`);
   await page.keyboard.press("Escape");
 
   // Layout: every control inside the window; on a touch screen each one is finger-sized.
-  const { width, boxes } = await page.evaluate(() => ({ width: innerWidth, boxes: [...document.querySelectorAll("#sAgent button")].map((b) => b.getBoundingClientRect().toJSON()) }));
+  const { width, boxes } = await page.evaluate(() => ({ width: innerWidth, boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => b.getBoundingClientRect().toJSON()) }));
   for (const b of boxes) assert.ok(b.left >= 0 && b.right <= width + 0.5, `${name}: step 2 fits the window`);
   if (touch) for (const b of boxes) assert.ok(b.height >= 44, `${name}: finger-sized (${b.height}px)`);
 
@@ -307,7 +327,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   await press(connect);
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Copy connect message");
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: Disconnect revokes the token`);
-  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: null, done: false }, `${name}: back to off`);
+  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: back to off`);
   const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
   assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: the token was never stored`);
   // Leaving or reloading the page revokes the token too (the page keeps none).
@@ -322,6 +342,272 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   return shots;
 }
 
+// Card 09: the ways to connect, per agent. Each chip shows its note by mouse or tap and by keyboard (Claude Code
+// none, Codex its safe-mode warning, T3 Code its "slower" note); Connect with MCP copies the agent's one-line setup
+// (Claude Code, Codex) and shows the same waiting and connected looks as the message; T3 Code's MCP button is off with
+// its reason; while connecting or connected the other agents are locked; Disconnect frees them. Returns screenshots.
+async function checkWays(page, name, out, { base, touch, clipboard }) {
+  const shots = [];
+  const press = (el) => (touch ? el.tap() : el.click());
+  // Playwright counts aria-disabled as not clickable: a press on a switched-off control is forced.
+  const pressOff = (el) => (touch ? el.tap({ force: true }) : el.click({ force: true }));
+  const chip = (v) => page.locator(`#agentSeg [data-v="${v}"]`);
+  const pressed = async () => (await page.locator('#agentSeg button[aria-pressed="true"]').allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  const shownTip = () => page.evaluate(() => document.querySelector("#tip[data-on]")?.textContent ?? null);
+  // Waits for the tooltip to show exactly this text; on a miss the assertion shows the text it did show.
+  const showsTip = async (text) => {
+    try { await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, text, { timeout: 4000 }); } catch { assert.equal(await shownTip(), text, `${name}: the tooltip`); }
+  };
+  const noTip = () => page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on"));
+  // What was copied: the clipboard where the browser lets the check read it; else the text the page showed to copy by
+  // hand; null when the browser took the copy and the check cannot read it back (Firefox).
+  const copied = async () => ((await page.locator("#agentMessage").isVisible()) ? page.locator("#agentMessage").inputValue() : clipboard ? page.evaluate(() => navigator.clipboard.readText()) : null);
+  const assertCopied = async (expected, message) => { const text = await copied(); if (text !== null) assert.equal(text, expected, message); };
+  const lastToken = () => page.evaluate(() => __relay.sockets.at(-1).protocols[1].slice(2));
+  const sockets = () => page.evaluate(() => __relay.sockets.length);
+  const view = () => page.evaluate(() => {
+    const f = (id) => {
+      const b = document.getElementById(id);
+      return { label: b.textContent.trim().replace(/\s+/g, " "), state: b.dataset.state ?? null, tip: b.dataset.tip ?? null, off: b.getAttribute("aria-disabled") === "true", shown: !b.hidden && getComputedStyle(b).display !== "none" };
+    };
+    return { paste: f("connectBtn"), mcp: f("mcpBtn") };
+  });
+  const shoot = async (label) => {
+    await page.waitForTimeout(150);
+    const r = await page.locator("#sAgent").boundingBox();
+    const shot = join(out, `page-${name}-ways-${label}.png`);
+    await page.screenshot({ path: shot, clip: { x: 0, y: Math.max(0, r.y - 8), width: page.viewportSize().width, height: Math.min(r.height + 90, 340) } });
+    shots.push(shot);
+  };
+  const pick = async (v) => { await press(chip(v)); await page.mouse.move(1, 1); await page.keyboard.press("Escape"); };
+  const reset = () => page.evaluate(() => document.activeElement?.blur());
+
+  // Each chip's note, by mouse or tap: Claude Code none, Codex and T3 Code theirs.
+  await press(chip("codex"));
+  assert.deepEqual(await pressed(), ["Codex"], `${name}: ${touch ? "a tap" : "a click"} picks Codex`);
+  await showsTip(CODEX_TIP);
+  await shoot("codex-tip");
+  await press(chip("t3"));
+  assert.deepEqual(await pressed(), ["T3 Code slower"], `${name}: and T3 Code`);
+  await showsTip(T3_TIP);
+  await shoot("t3-tip");
+  await press(chip("claude"));
+  assert.deepEqual(await pressed(), ["Claude Code"], `${name}: and back to Claude Code`);
+  await page.waitForTimeout(450);
+  assert.equal(await shownTip(), null, `${name}: Claude Code's fast way shows no note`);
+  // A tip opened by the keyboard on one chip, then a mouse click on the next chip: the click moves focus away from the
+  // first chip, which must not cancel the second chip's tip that is about to open.
+  if (!touch) {
+    await chip("claude").focus();
+    await page.keyboard.press("Tab");
+    await showsTip(CODEX_TIP);
+    await press(chip("t3"));
+    await showsTip(T3_TIP);
+    await press(chip("claude"));
+    await page.mouse.move(1, 1);
+    await page.keyboard.press("Escape");
+    await reset();
+  }
+  // By keyboard: Tab onto a chip shows its note.
+  await page.keyboard.press("Escape");
+  await chip("claude").focus();
+  await page.keyboard.press("Tab");
+  await showsTip(CODEX_TIP);
+  await page.keyboard.press("Tab");
+  await showsTip(T3_TIP);
+  await page.keyboard.press("Tab");
+  await showsTip(KEY_TIP);
+  await page.keyboard.press("Escape");
+  await reset();
+  assert.deepEqual(await pressed(), ["Claude Code"], `${name}: moving over the chips by keyboard picks nothing`);
+
+  // Idle, per agent: the words and tips of the two ways.
+  const idle = (agent, pasteTip, slow) => ({
+    paste: { label: slow ? "Copy connect message slower" : "Copy connect message", state: null, tip: pasteTip, off: false, shown: true },
+    mcp: agent.mcp
+      ? { label: "Connect with MCP", state: null, tip: agent.mcp.idleTip, off: false, shown: true }
+      : { label: "i Connect with MCP", state: null, tip: T3_MCP_TIP, off: true, shown: true },
+  });
+  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", false), `${name}: Claude Code, idle`);
+  // The keyboard reaches every control of the idle step, in order.
+  await chip("claude").focus();
+  const order = [];
+  for (let i = 0; i < 5; i++) { await page.keyboard.press("Tab"); order.push(await page.evaluate(() => document.activeElement.id || document.activeElement.textContent.trim())); }
+  assert.deepEqual(order, ["Codex", "T3 Code slower", "i API key", "connectBtn", "mcpBtn"], `${name}: Tab order, idle`);
+  await page.keyboard.press("Escape");
+  await reset();
+  await pick("codex");
+  assert.deepEqual(await view(), idle(AGENT_WAYS.codex, `Copies a message. Paste it into Codex. ${CODEX_TIP}.`, true), `${name}: Codex, idle: its paste way is the slower one and carries the warning`);
+  assert.equal(await page.locator("#connectBtn .tag").innerText(), "slower", `${name}: the slower label sits on the paste way`);
+  await shoot("codex-idle");
+  await pick("t3");
+  assert.deepEqual(await view(), idle(AGENT_WAYS.t3, "Copies a message. Paste it into T3 Code.", false), `${name}: T3 Code, idle: no MCP way`);
+  assert.equal(await page.locator("#connectBtn .tag").count(), 0, `${name}: T3 Code's chip already says slower, so its button does not say it twice`);
+  // The "slower" label reads at 4.5:1 on its own fill, as the browser paints it: on the picked chip (over the ink fill)
+  // and on the paste button (over the page's surface).
+  const tagContrast = (selector, under) => page.locator(selector).evaluate((el, under) => {
+    const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const px = (...fills) => { for (const f of fills) { c.fillStyle = f; c.fillRect(0, 0, 1, 1); } return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+    const base = getComputedStyle(el.closest(under)).backgroundColor;
+    const lum = (rgb) => { const [x, y, z] = rgb.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
+    const [hi, lo] = [lum(px(getComputedStyle(el).color)), lum(px(base === "rgba(0, 0, 0, 0)" ? "white" : base, getComputedStyle(el).backgroundColor))].sort((p, q) => q - p);
+    return (hi + 0.05) / (lo + 0.05);
+  }, under);
+  assert.ok(await tagContrast('#agentSeg [data-v="t3"] .tag', "button") >= 4.5, `${name}: the label on the picked chip reads at 4.5:1`);
+  await pick("codex");
+  assert.ok(await tagContrast("#connectBtn .tag", ".steps") >= 4.5, `${name}: the label on the paste button reads at 4.5:1`);
+  assert.ok(await tagContrast('#agentSeg [data-v="t3"] .tag', ".seg") >= 4.5, `${name}: the label on an unpicked chip reads at 4.5:1`);
+  await pick("t3");
+  // Layout: everything inside the window, finger-sized on a touch screen, with the longest labels (T3 Code slower, the tag on the paste way).
+  const { width, scrollWidth, boxes } = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => b.getBoundingClientRect().toJSON()) }));
+  assert.ok(scrollWidth <= width, `${name}: no sideways scroll with the tags`);
+  for (const b of boxes) assert.ok(b.left >= 0 && b.right <= width + 0.5, `${name}: step 2 fits the window`);
+  if (touch) for (const b of boxes) assert.ok(b.height >= 44, `${name}: finger-sized (${b.height}px)`);
+  // T3 Code's MCP button is switched off: it shows its reason on a press, by mouse or tap, and by keyboard, and connects nothing.
+  const before = await sockets();
+  await pressOff(page.locator("#mcpBtn"));
+  await showsTip(T3_MCP_TIP);
+  await page.keyboard.press("Escape");
+  await noTip();
+  await page.locator("#connectBtn").focus();
+  await page.keyboard.press("Tab");
+  await showsTip(T3_MCP_TIP);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  assert.equal(await shownTip(), T3_MCP_TIP, `${name}: Enter and Space on it only show the reason`);
+  assert.equal(await sockets(), before, `${name}: no connection was started`);
+  assert.equal((await view()).mcp.state, null, `${name}: and nothing is waiting`);
+  await shoot("t3-idle");
+  await page.keyboard.press("Escape");
+  await reset();
+
+  // Giving up a wait: Codex's message was copied and nothing came back (curl is blocked in safe mode). Pressing Connect
+  // with MCP revokes that token and copies the MCP line with a new one; picking another agent revokes it too.
+  await pick("codex");
+  const w0 = await sockets();
+  await press(page.locator("#connectBtn"));
+  await page.waitForFunction((n) => __relay.sockets.length > n, w0);
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Codex…");
+  const tokenA = await lastToken();
+  let w = await view();
+  assert.equal(w.mcp.shown && w.mcp.off === false && w.mcp.label === "Connect with MCP", true, `${name}: Codex waiting on the message: Connect with MCP is still there`);
+  await page.evaluate(() => { __relay.revoked = false; });
+  const w1 = await sockets();
+  await press(page.locator("#mcpBtn"));
+  await page.waitForFunction((n) => __relay.sockets.length > n && document.getElementById("mcpBtn").textContent === "Waiting for Codex…", w1);
+  assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: giving up the wait revokes its token`);
+  const tokenB = await lastToken();
+  assert.notEqual(tokenB, tokenA, `${name}: the MCP line comes with a new token`);
+  await assertCopied(mcpLine({ agent: "codex", origin: base, token: tokenB }), `${name}: and it is the MCP line for that token`);
+  w = await view();
+  assert.deepEqual([w.mcp.state, w.paste.label.startsWith("Copy connect message"), w.paste.state], ["busy", true, null], `${name}: the buttons follow the new way`);
+  // A new pick while it waits gives that wait up too: nothing is left connected or locked.
+  await page.evaluate(() => { __relay.revoked = false; });
+  await press(chip("claude"));
+  await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP");
+  assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: a new pick while waiting revokes the token`);
+  assert.deepEqual(await pressed(), ["Claude Code"], `${name}: and the pick is the new one`);
+  assert.equal((await view()).mcp.state, null, `${name}: nothing is waiting any more`);
+  for (const k of ["codex", "t3"]) assert.equal(await chip(k).getAttribute("aria-disabled"), null, `${name}: ${k} is open`);
+  await page.mouse.move(1, 1);
+  await reset();
+
+  // Connect with MCP, Claude Code then Codex: the line is the agent's own, with this page's address and token.
+  for (const agentKey of ["claude", "codex"]) {
+    const agent = AGENT_WAYS[agentKey];
+    await pick(agentKey);
+    const first = await sockets();
+    await press(page.locator("#mcpBtn"));
+    await page.waitForFunction((n) => __relay.sockets.length > n, first);
+    const label = `Waiting for ${agent.name}…`;
+    await page.waitForFunction((l) => document.getElementById("mcpBtn").textContent === l, label);
+    const token = await lastToken();
+    await assertCopied(mcpLine({ agent: agentKey, origin: base, token }), `${name}: ${agent.name}: the copied line is its own, with this page's address and token`);
+    const boxShown = await page.locator("#agentMessage").isVisible();
+    if (clipboard) assert.equal(boxShown, false, `${name}: ${agent.name}: the line shows below only when the browser gave no clipboard`);
+    let v = await view();
+    assert.deepEqual(v.mcp, { label, state: "busy", tip: boxShown ? "Copy the line below, then run it in a terminal." : "Line copied. Run it in a terminal.", off: false, shown: true }, `${name}: ${agent.name}: waiting`);
+    assert.equal(await page.locator("#mcpBtn .dot").evaluate((el) => el.className), "dot dot--think", `${name}: ${agent.name}: with the breathing dot`);
+    // While the page only waits nothing is locked: the other way and the other agents stay open (a wait can be given up).
+    assert.equal(v.paste.shown && v.paste.state === null, true, `${name}: ${agent.name}: the message way stays open while this one waits`);
+    for (const other of Object.keys(AGENT_WAYS).filter((k) => k !== agentKey)) {
+      assert.equal(await chip(other).getAttribute("aria-disabled"), null, `${name}: ${other} stays open while ${agent.name} waits`);
+    }
+    await shoot(`${agentKey}-mcp-waiting`);
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("mcpBtn").dataset.state === "ok");
+    v = await view();
+    assert.deepEqual(v.mcp, { label: `${agent.name} connected`, state: "ok", tip: agent.mcp.onTip, off: false, shown: true }, `${name}: ${agent.name}: connected, and the tip says the entry stays until removed`);
+    assert.ok(agent.mcp.onTip.includes(agent.mcp.remove), `${name}: with the command that removes it`);
+    assert.equal(await page.locator("#testBtn").isVisible(), true, `${name}: ${agent.name}: Test appears`);
+    assert.equal(v.paste.shown, false, `${name}: ${agent.name}: the other way steps aside while connected`);
+    // Once connected the other agents are switched off: they show why and a press picks nothing.
+    for (const other of Object.keys(AGENT_WAYS).filter((k) => k !== agentKey)) {
+      assert.equal(await chip(other).getAttribute("aria-disabled"), "true", `${name}: ${other} is locked`);
+      assert.equal(await chip(other).getAttribute("data-tip"), LOCK_TIP, `${name}: ${other} says why`);
+    }
+    if (agentKey === "claude") {
+      const colours = await page.evaluate(() => { const c = document.querySelector('#agentSeg [data-v="t3"]'); return { chip: getComputedStyle(c).color, tag: getComputedStyle(c.querySelector(".tag")).color, fill: getComputedStyle(c.querySelector(".tag")).backgroundColor }; });
+      assert.equal(colours.tag, colours.chip, `${name}: the locked T3 Code's label is switched off with it`);
+      assert.equal(colours.fill, "rgba(0, 0, 0, 0)", `${name}: and has no fill`);
+    }
+    // Test works the same through MCP: a cue to the waiting agent, the answer in the next wait.
+    await page.evaluate(() => { window.__wait = __relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }); });
+    await press(page.locator("#testBtn"));
+    const cue = await page.evaluate(() => window.__wait);
+    assert.equal(cue.result.cue, "suggest_now", `${name}: ${agent.name}: Test hands a cue to the waiting agent`);
+    await page.evaluate((seq) => { __relay.call("wait_for_cue", { seq, holdMs: 25000, suggestions: [{ text: "What did the first month cost?", why: "follows the story" }] }); }, cue.result.seq);
+    await page.waitForFunction(() => document.getElementById("testBtn").dataset.state === "ok");
+    assert.match(await page.locator("#testBtn").innerText(), /^Test ✓ · \d+\.\d s$/, `${name}: ${agent.name}: Test shows its seconds`);
+    assert.equal(await page.locator("#sAgent").evaluate((el) => el.hasAttribute("data-done")), true, `${name}: ${agent.name}: step 2 is done`);
+    await shoot(`${agentKey}-mcp-connected`);
+    // Locked: a press on another chip shows why and picks nothing; the keyboard reaches it too.
+    const lockedChip = chip(agentKey === "claude" ? "codex" : "claude");
+    await pressOff(lockedChip);
+    await showsTip(LOCK_TIP);
+    assert.deepEqual(await pressed(), [agent.name], `${name}: ${agent.name}: the pick does not move while connected`);
+    await page.keyboard.press("Escape");
+    // Disconnect: the token is revoked, both ways are back, and the agents are free again with their own notes.
+    await page.evaluate(() => { __relay.revoked = false; });
+    await press(page.locator("#mcpBtn"));
+    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP");
+    assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: ${agent.name}: Disconnect revokes the token`);
+    v = await view();
+    assert.equal(v.paste.shown && v.mcp.shown, true, `${name}: ${agent.name}: both ways are back`);
+    assert.equal(v.mcp.tip, agent.mcp.idleTip, `${name}: ${agent.name}: the tip is the idle one again`);
+    for (const k of Object.keys(AGENT_WAYS).filter((x) => x !== agentKey)) {
+      assert.equal(await chip(k).getAttribute("aria-disabled"), null, `${name}: ${k} is free again`);
+      assert.equal(await chip(k).getAttribute("data-tip"), AGENT_WAYS[k].chipTip, `${name}: ${k} has its own note again`);
+    }
+    assert.equal(await page.locator("#testBtn").isVisible(), false, `${name}: Test is hidden again`);
+    await reset();
+  }
+
+  // T3 Code, the paste way: its own message, waiting, connected, Disconnect.
+  await pick("t3");
+  const firstSocket = await sockets();
+  await press(page.locator("#connectBtn"));
+  await page.waitForFunction((n) => __relay.sockets.length > n, firstSocket);
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for T3 Code…");
+  await assertCopied(connectMessage({ origin: base, token: await lastToken(), agent: "t3" }), `${name}: T3 Code: the copied message is the T3 Code one`);
+  const waitingView = await view();
+  assert.deepEqual([waitingView.mcp.shown, waitingView.mcp.off], [true, true], `${name}: T3 Code: while it waits, its MCP button stays, switched off`);
+  await page.evaluate(() => __relay.call("get_context"));
+  await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
+  assert.equal((await view()).paste.label, "T3 Code connected", `${name}: T3 Code: connected`);
+  assert.equal((await view()).mcp.shown, false, `${name}: T3 Code: once connected the MCP button steps aside`);
+  await press(page.locator("#connectBtn"));
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent.startsWith("Copy connect message"));
+
+  // Back to the start, and nothing was stored.
+  await pick("claude");
+  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", false), `${name}: back to the start`);
+  const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
+  assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: nothing was stored`);
+  await reset();
+  return shots;
+}
+
 export async function run({ browser, playwright, base, out }) {
   const checks = [];
   const screenshots = [];
@@ -330,6 +616,7 @@ export async function run({ browser, playwright, base, out }) {
   for (const view of VIEWS) {
     const { name, ...options } = view;
     const context = await browser.newContext(options);
+    await ownAddress(context);
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
     const page = await context.newPage();
     await page.addInitScript(fakeRelay);
@@ -412,9 +699,11 @@ export async function run({ browser, playwright, base, out }) {
     ok(`${name}: the setup screen (browser chip, step 1, picking by mouse${options.hasTouch ? ", tap" : ""} and keyboard, ${options.isMobile ? "compact" : "wide"} layout, no extra words)`);
 
     screenshots.push(...await checkAgent(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
-    assert.deepEqual(requests, [`${base}/`, `${base}/api/agent-token`, `${base}/api/agent-token`], `${name}: besides the page, only this site's token was asked for (once per connection)`);
+    screenshots.push(...await checkWays(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
+    assert.deepEqual(requests, [`${base}/`, ...Array(7).fill(`${base}/api/agent-token`)], `${name}: besides the page, only this site's token was asked for (once per connection)`);
     assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation while connecting`);
     ok(`${name}: step 2 (copy the connect message, waiting, connected, Test with its seconds, Disconnect), by ${options.hasTouch ? "tap" : "mouse"} and keyboard`);
+    ok(`${name}: step 2 ways (each agent's note by ${options.hasTouch ? "tap" : "mouse"} and keyboard, the slower label, Connect with MCP for Claude Code and Codex, none for T3 Code, the agents locked while connected)`);
 
     // The Private chip is a real control (a button), so a screen reader and the keyboard reach it as one.
     assert.equal(await page.locator(".private").evaluate((el) => el.tagName), "BUTTON", `${name}: the chip is a button`);
@@ -535,10 +824,41 @@ export async function run({ browser, playwright, base, out }) {
   }
   ok("the setup goes compact at a 620px window, as in the mock-up");
 
+  // A 320px phone, connected through MCP with the other agents locked (each with its mark): nothing overflows and every
+  // button is finger-sized. Then the agent goes quiet for a minute (a fast-forwarded clock): the page waits again, the
+  // other agents are open again and both ways are shown.
+  {
+    const context = await browser.newContext({ viewport: { width: 320, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID });
+    await ownAddress(context);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    const page = await context.newPage();
+    await page.addInitScript(fakeRelay);
+    await page.clock.install();
+    await page.goto(`${base}/`);
+    await page.locator("#mcpBtn").tap();
+    await page.waitForFunction(() => __relay.sockets.length === 1);
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("mcpBtn").dataset.state === "ok");
+    const fit = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => b.getBoundingClientRect().toJSON()), locked: document.querySelectorAll('#agentSeg [aria-disabled="true"] .off-mark').length }));
+    assert.equal(fit.locked, 3, "320px: Codex and T3 Code carry the switched-off mark while locked, as the API key always does");
+    assert.ok(fit.scrollWidth <= fit.width, `320px: no sideways scroll while connected (${fit.scrollWidth} > ${fit.width})`);
+    for (const b of fit.boxes) { assert.ok(b.left >= 0 && b.right <= fit.width + 0.5, "320px: every control fits the window"); assert.ok(b.height >= 44, `320px: finger-sized (${b.height}px)`); }
+    await page.clock.fastForward(61_000);
+    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Waiting for Claude Code…");
+    const quiet = await page.evaluate(() => ({ locked: document.querySelectorAll('#agentSeg [data-v="codex"][aria-disabled], #agentSeg [data-v="t3"][aria-disabled]').length, paste: !document.getElementById("connectBtn").hidden, test: !document.getElementById("testBtn").hidden }));
+    assert.deepEqual(quiet, { locked: 0, paste: true, test: false }, "a quiet agent: the page waits again, the other agents are open, both ways shown, no Test");
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("mcpBtn").dataset.state === "ok");
+    assert.equal(await page.locator('#agentSeg [data-v="codex"]').getAttribute("aria-disabled"), "true", "and when the agent calls again the other agents are locked again");
+    await context.close();
+  }
+  ok("a 320px phone connected through MCP fits and is finger-sized; a quiet agent frees the page to wait again");
+
   // Step 2 when things go wrong, in Chromium: no token (the Worker says too many tries), no clipboard (the message
   // shows, selected, to copy by hand), and the real relay socket under the page's policy.
   {
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ownAddress(context);
     const page = await context.newPage();
     const problems = [];
     page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
@@ -554,6 +874,15 @@ export async function run({ browser, playwright, base, out }) {
     await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "No connection · try again");
     assert.equal(await page.evaluate(() => __relay.sockets.length), 0, "no token: no relay socket");
     assert.equal(await page.locator("#agentMessage").isHidden(), true, "no token: no message");
+    // The same through Connect with MCP: its button says so, the message button is back to normal; the label stays on
+    // the MCP button when another agent with that way is picked.
+    await page.locator("#mcpBtn").click();
+    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "No connection · try again");
+    assert.equal(await page.locator("#connectBtn").innerText(), "Copy connect message", "no token: the message button is not marked");
+    await page.locator('#agentSeg [data-v="codex"]').click();
+    assert.equal(await page.locator("#mcpBtn").innerText(), "No connection · try again", "no token: still said on the MCP button for Codex");
+    await page.locator('#agentSeg [data-v="claude"]').click();
+    assert.equal(await page.evaluate(() => __relay.sockets.length), 0, "no token: no relay socket through MCP either");
     await page.unroute("**/api/agent-token");
     await connect.click();
     await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
@@ -578,6 +907,7 @@ export async function run({ browser, playwright, base, out }) {
     // The real WebSocket under the page's own policy: the browser may try this site's relay (the upgrade fails here,
     // there is no relay object), and the policy does not block it.
     const real = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ownAddress(real);
     await real.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
     const plain = await real.newPage();
     const blocked = [];
@@ -605,6 +935,7 @@ export async function run({ browser, playwright, base, out }) {
     for (const colorScheme of ["light", "dark"]) {
       const name = `firefox-desktop-${colorScheme}`;
       const context = await fox.newContext({ colorScheme, viewport: { width: 1366, height: 900 } });
+      await ownAddress(context);
       const page = await context.newPage();
       const requests = [];
       const problems = [];
@@ -624,6 +955,7 @@ export async function run({ browser, playwright, base, out }) {
       await page.reload();
       await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/ });
       screenshots.push(...await checkAgent(page, name, out, { base, touch: false, clipboard: false }));
+      screenshots.push(...await checkWays(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkSwitchedOff(page, name, out, { touch: false }));
       ok(`${name}: loads alone, names Firefox, the setup screen works and a switched-off choice shows its reason`);
       await context.close();

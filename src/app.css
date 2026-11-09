@@ -100,6 +100,11 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* A finger needs a taller target than a mouse; the pressed colour replaces the browser's tap flash. */
 @media (pointer: coarse) { .seg button { min-block-size: 2.75rem; -webkit-tap-highlight-color: transparent; } }
 
+/* A small label inside a choice or a button ("slower"): it is the one way a slower route shows without a sentence. */
+.tag { display: inline-flex; align-items: center; padding: 0 0.4rem; border-radius: 99px; background: var(--raised); color: var(--muted); font-size: 0.68rem; font-weight: 600; line-height: 1.5; }
+[aria-disabled="true"] .tag { background: transparent; color: inherit; }
+.seg button[aria-pressed="true"] .tag { background: color-mix(in oklch, var(--on-ink) 20%, transparent); color: var(--on-ink); }
+
 /* The connect message, shown only when the browser gave no clipboard: selected, to copy by hand. */
 .agent-message {
   flex-basis: 100%; resize: vertical; padding: 0.5rem 0.6rem; border: 1px solid var(--line-strong); border-radius: var(--radius);

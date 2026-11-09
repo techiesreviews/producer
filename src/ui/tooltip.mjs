@@ -28,12 +28,16 @@ export function installTooltip(doc = document) {
     tip.style.left = `${x}px`;
     tip.style.top = `${y}px`;
   };
-  function hide() {
-    clearTimeout(timer);
-    clearTimeout(leaveTimer);
+  // Takes the open tooltip away. A tooltip that is about to open for another control (its delay running) is left alone.
+  function close() {
     tip.removeAttribute("data-on");
     owner?.removeAttribute("aria-describedby");
     owner = null;
+  }
+  function hide() {
+    clearTimeout(timer);
+    clearTimeout(leaveTimer);
+    close();
   }
   doc.addEventListener("pointerover", (e) => {
     clearTimeout(leaveTimer);
@@ -53,8 +57,9 @@ export function installTooltip(doc = document) {
     const el = e.target.closest("[data-tip]");
     if (el && el.matches(":focus-visible")) show(el);
   });
-  // Only the control that owns the tooltip takes it away: a tap that moves focus to another control must keep its own.
-  doc.addEventListener("focusout", (e) => { if (e.target === owner) hide(); });
+  // Only the control that owns the tooltip takes it away: a tap that moves focus to another control must keep its own,
+  // and so must a click on the next control after hovering it (the click moves focus, which must not cancel its delay).
+  doc.addEventListener("focusout", (e) => { if (e.target === owner) close(); });
   doc.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
   doc.addEventListener("scroll", hide, true);
   doc.addEventListener("click", (e) => {

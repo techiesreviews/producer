@@ -44,6 +44,26 @@ test("the same message works for the preview: only the address changes", () => {
   assert.equal(live.split(LIVE).length, 2, "the address appears once");
 });
 
+test("each agent gets the same ready-made loop, with the time limit its own tool takes, and no sleep for any of them", () => {
+  const claude = connectMessage({ origin: LIVE, token: FAKE, agent: "claude" });
+  assert.equal(claude, connectMessage({ origin: LIVE, token: FAKE }), "Claude Code is the default");
+  const codex = connectMessage({ origin: LIVE, token: FAKE, agent: "codex" });
+  const t3 = connectMessage({ origin: LIVE, token: FAKE, agent: "t3" });
+  for (const message of [claude, codex, t3]) {
+    assert.equal(block(message), block(claude), "the block is the same, word for word");
+    assert.match(message, /in the foreground/);
+    assert.match(message, /No sleep, no helper files or scripts, no background jobs/);
+    assert.match(message, /the network is blocked/, "a blocked network is one of the errors it reports and stops on");
+    assert.doesNotMatch(message, /\bsleep\s+\d|nohup/);
+  }
+  assert.match(claude, /with a time limit of 10 minutes/);
+  assert.match(t3, /with a time limit of 10 minutes/);
+  assert.match(codex, /with a timeout of 600 seconds \(600000 ms\)/, "Codex's shell call takes milliseconds, so the message names both");
+  assert.doesNotMatch(codex, /time limit of 10 minutes/);
+  assert.equal(codex.replace("a timeout of 600 seconds (600000 ms)", "a time limit of 10 minutes"), claude, "nothing else differs");
+  assert.equal(connectMessage({ origin: LIVE, token: FAKE, agent: "nobody" }), claude, "an unknown agent gets the default");
+});
+
 async function serve(relay) {
   const env = { ASSETS: { fetch: async () => new Response("page") }, RELAY: { idFromName: (n) => n, get: () => ({ op: (m) => relay.op(m) }) } };
   const server = createServer(async (req, res) => {

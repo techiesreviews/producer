@@ -45,10 +45,12 @@
           <div class="step__ctl">
             <div class="seg" id="agentSeg" role="group" aria-labelledby="agentLabel">
               <button type="button" data-v="claude" aria-pressed="true">Claude Code</button>
-              <button type="button" data-v="codex" aria-pressed="false" aria-disabled="true" data-tip="Comes next. Use Claude Code for now."><span class="off-mark" aria-hidden="true">i</span> Codex</button>
-              <button type="button" data-v="t3" aria-pressed="false" aria-disabled="true" data-tip="Comes next. Use Claude Code for now."><span class="off-mark" aria-hidden="true">i</span> T3 Code</button>
+              <button type="button" data-v="codex" aria-pressed="false">Codex</button>
+              <button type="button" data-v="t3" aria-pressed="false">T3 Code</button>
+              <button type="button" data-v="key" aria-pressed="false" aria-disabled="true" data-tip="Comes later: your own paid AI key, capped at about €5 per stream."><span class="off-mark" aria-hidden="true">i</span> API key</button>
             </div>
             <button type="button" class="tb" id="connectBtn" data-tip="Copies a message. Paste it into Claude Code.">Copy connect message</button>
+            <button type="button" class="tb" id="mcpBtn">Connect with MCP</button>
             <button type="button" class="tb" id="testBtn" hidden>Test</button>
             <textarea class="agent-message" id="agentMessage" readonly hidden aria-label="Connect message" rows="4"></textarea>
           </div>
