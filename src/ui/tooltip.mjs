@@ -37,18 +37,18 @@ export function installTooltip(doc = document) {
   }
   doc.addEventListener("pointerover", (e) => {
     clearTimeout(leaveTimer);
+    clearTimeout(timer);
     if (e.target.closest("#tip")) return;
     const el = e.target.closest("[data-tip]");
-    clearTimeout(timer);
     if (!el) {
-      if (owner && e.pointerType === "mouse") leaveTimer = setTimeout(hide, 150);
+      if (owner && e.pointerType !== "touch") leaveTimer = setTimeout(hide, 150);
       else hide();
     } else if (el !== owner) {
-      if (e.pointerType === "mouse") timer = setTimeout(() => show(el), 250);
+      if (e.pointerType !== "touch") timer = setTimeout(() => show(el), 250);
       else show(el);
     }
   });
-  doc.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-tip]")) hide(); });
+  doc.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-tip], #tip")) hide(); });
   doc.addEventListener("focusin", (e) => {
     const el = e.target.closest("[data-tip]");
     if (el && el.matches(":focus-visible")) show(el);
