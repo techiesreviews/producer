@@ -379,14 +379,14 @@ function renderCard() {
   // Thinking while the newest cue waits for the agent's turn (an answer to an older cue does not end it), at most a minute.
   const busy = link === "on" && agent.asking() && isThinking(asking.since, now);
   if (!busy) asking.since = 0;
-  const { main, alts, counts } = questions.view();
+  const { main, alts, first, counts } = questions.view();
 
   // The question, a few words why and where it came from; text is replaced only when it changes (a screen reader
   // hears each new question once).
   const said = main ? main.text : counts.asked + counts.skipped > 0 && !counts.left ? "No questions left" : "No question yet";
   if (qMain.textContent !== said) qMain.textContent = said;
   qMain.toggleAttribute("data-empty", !main);
-  const why = main?.why ?? (main?.from === "list" ? "Next on your list." : "");
+  const why = main?.why ?? (main?.from === "list" && main.n === first ? "Next on your list." : "");
   qWhy.textContent = why;
   qWhy.hidden = !why;
   qSrc.hidden = !main;

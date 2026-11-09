@@ -36,6 +36,27 @@ test("three suggestions: the first on the card, the second and the replaced ques
   assert.deepEqual(texts(q.view()), ["Who paid first?", "What went wrong?", "New one?"], "the replaced new question is kept, the third suggestion gives way");
 });
 
+test("the agent picking the question already on the card shows it once", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.suggest({ seq: 1, suggestions: [{ question: 1, why: "a good opener" }, { text: "New?" }] });
+  assert.deepEqual(texts(q.view()), ["How did it start?", "New?", "Who paid first?"]);
+  assert.equal(q.view().main.why, "a good opener");
+});
+
+test("first: the first prepared question still open", () => {
+  const q = createQuestions();
+  assert.equal(q.view().first, null);
+  q.setPlan(PLAN);
+  assert.equal(q.view().first, 1);
+  q.swap(1); // Q3 on the card, Q2 and Q1 below
+  q.skip(); // Q3 skipped: Q2 on the card
+  assert.deepEqual([q.view().main.n, q.view().first], [2, 1], "Q1 is still open, so Q2 is not the next on the list");
+  q.asked(); // Q2
+  q.asked(); // Q1
+  assert.deepEqual([q.view().main.n, q.view().first], [4, 4]);
+});
+
 test("an answer is shown once: the same or an older seq changes nothing", () => {
   const q = createQuestions();
   q.setPlan(PLAN);

@@ -240,11 +240,27 @@ export async function run({ browser, base, out }) {
     await press(suggest);
     assert.equal(await text("#suggestBtn"), "Thinking…", `${name}: thinking`);
     assert.equal((await page.evaluate(() => window.__wait)).result.seq, 3, `${name}: the cue reached the agent's wait`);
-    await page.evaluate(() => { window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
     await page.waitForFunction(() => document.querySelector("#thinkDot").className === "dot dot--ok");
     assert.match(await text("#suggestBtn"), /^Suggest now · (19|20) s$/, `${name}: Suggest now counts down again`);
     assert.deepEqual(await card(), kept, `${name}: no answer leaves the card as it is`);
     ok(`${name}: an agent that gives no answer: the card stays; the light and Suggest now are back at once`);
+
+    // An agent that takes the cue and keeps calling (an older seq: the cue comes again) but never answers: after a
+    // minute the light goes back to green and Suggest now is on again; the card stays as it is.
+    await page.clock.fastForward(20_000);
+    await press(suggest);
+    assert.equal((await page.evaluate(() => window.__wait)).result.seq, 4, `${name}: the cue reached the agent's wait`);
+    for (let i = 0; i < 4; i++) {
+      const again = await page.evaluate(() => window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }));
+      assert.equal(again.result.seq, 4, `${name}: the agent is handed the cue again`);
+      assert.equal(await text("#suggestBtn"), "Thinking…", `${name}: still thinking (${i * 16} s)`);
+      await page.clock.fastForward(16_000);
+    }
+    await page.waitForFunction(() => document.querySelector("#thinkDot").className === "dot dot--ok");
+    assert.deepEqual([await text("#suggestBtn"), await suggest.getAttribute("aria-disabled")], ["Suggest now", null], `${name}: after a minute Suggest now is on again`);
+    assert.deepEqual(await card(), kept, `${name}: the card stays as it is`);
+    ok(`${name}: an agent that never answers: after a minute the light and Suggest now are back`);
 
     // The agent disconnects mid-show: the card keeps its question, Suggest now says "no agent" on itself, the light is grey.
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));
