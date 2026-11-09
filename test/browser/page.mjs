@@ -147,6 +147,10 @@ export async function run({ browser, base, out }) {
       await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2, { steps: 8 });
       await page.waitForTimeout(400);
       assert.notEqual(await tip.getAttribute("data-on"), null, `${name}: the tooltip stays while the pointer is on it`);
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      assert.notEqual(await tip.getAttribute("data-on"), null, `${name}: a press on the tooltip (to select its words) does not close it`);
       await page.mouse.move(5, 600, { steps: 4 });
       await page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on"));
       ok(`${name}: the tooltip can be hovered, and leaves with the pointer`);
