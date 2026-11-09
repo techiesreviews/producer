@@ -81,7 +81,7 @@ Each entry:
 
 ### F-setup-07 Step 3 "Show, questions & plan": paste the plan by hand
 - Try: Press Paste it myself; paste a plan (Show:, Guest:, parts like "10 Intro", numbered questions); then paste a line the page cannot read; press the button again.
-- Good: The box opens under the button with a short example under it; the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast, no explainer text. The plan is never stored.
+- Good: The box opens under the button with the example's lines under it (the only words beyond the labels: no other explainer); the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast. The plan is never stored.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`
 - Phone: yes
 - Spec: `test/browser/runorder.mjs`

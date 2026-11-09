@@ -287,7 +287,9 @@ function renderRun() {
   if (view.started) {
     const ahead = view.delta < 0;
     const words = view.delta === 0 ? "on plan" : `${ahead ? "ahead of" : "behind"} plan by ${clockText(Math.abs(view.delta))}`;
-    delta.replaceChildren(clockText(view.delta, true), make("span", "sr", ` ${words}`));
+    // Rebuilt only when it changes, so a screen reader following the clock hears no churn.
+    const said = `${clockText(view.delta, true)} ${words}`;
+    if (delta.textContent !== said) delta.replaceChildren(clockText(view.delta, true), make("span", "sr", ` ${words}`));
     setTone(delta, view.delta > 0 ? "late" : ahead ? "early" : "");
     tip = `Show time, ${words}.`;
   }

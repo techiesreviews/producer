@@ -63,6 +63,23 @@ const paintedContrast = (locator) => locator.evaluate((el) => {
   return (hi + 0.05) / (lo + 0.05);
 });
 
+// The colour a theme token computes to, as an element's text colour would.
+const tokenColour = (page, name) => page.evaluate((n) => {
+  const probe = document.body.appendChild(document.createElement("i"));
+  probe.style.color = `var(--${n})`;
+  const colour = getComputedStyle(probe).color;
+  probe.remove();
+  return colour;
+}, name);
+// Contrast of the clock's plan difference on the clock's own background, as the browser paints it.
+const clockContrast = (page) => page.locator("#clockDelta").evaluate((el) => {
+  const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const px = (fill) => { c.clearRect(0, 0, 1, 1); c.fillStyle = fill; c.fillRect(0, 0, 1, 1); return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+  const lum = (rgb) => { const [x, y, z] = rgb.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
+  const [hi, lo] = [lum(px(getComputedStyle(el).color)), lum(px(getComputedStyle(el.closest(".clock")).backgroundColor))].sort((p, q) => q - p);
+  return (hi + 0.05) / (lo + 0.05);
+});
+
 export async function run({ browser, base, out }) {
   const checks = [];
   const screenshots = [];
@@ -193,6 +210,9 @@ export async function run({ browser, base, out }) {
     assert.ok(contrast >= 4.5, `${name}: the late time reads at ${contrast.toFixed(2)}:1 on the current part's tint`);
     assert.deepEqual([await text("clockDelta"), await page.locator("#clockDelta").getAttribute("data-tone")], ["+0:20 behind plan by 0:20", "late"], `${name}: behind plan`);
     assert.equal(await page.locator("#clock").getAttribute("data-tip"), "Show time, behind plan by 0:20.", `${name}: the clock's tooltip says it in words`);
+    assert.equal(await page.locator("#clockDelta").evaluate((el) => getComputedStyle(el).color), await tokenColour(page, "accent-ink"), `${name}: behind plan is painted orange`);
+    const behindContrast = await clockContrast(page);
+    assert.ok(behindContrast >= 4.5, `${name}: and reads at ${behindContrast.toFixed(2)}:1 on the clock`);
     await shot("live-over");
     ok(`${name}: over time shows on the part and as the plan difference`);
 
@@ -228,6 +248,9 @@ export async function run({ browser, base, out }) {
     await press(runBtn); // Her story: 7:00 of 8:00, a minute early
     assert.deepEqual([(await times())[1], await text("clockDelta")], ["−1:00", "−0:40 ahead of plan by 0:40"], `${name}: ahead of plan by 0:40 overall`);
     assert.equal(await page.locator("#clockDelta").getAttribute("data-tone"), "early", `${name}: in green`);
+    assert.equal(await page.locator("#clockDelta").evaluate((el) => getComputedStyle(el).color), await tokenColour(page, "agent-ink"), `${name}: ahead of plan is painted green`);
+    const aheadContrast = await clockContrast(page);
+    assert.ok(aheadContrast >= 4.5, `${name}: and reads at ${aheadContrast.toFixed(2)}:1 on the clock`);
     ok(`${name}: Next part keeps each part's real time; ahead and behind add up`);
 
     // Two presses on Next part 200 ms apart move on one part only; a press a second later moves on again.
@@ -270,6 +293,33 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(requests, [`${base}/`], `${name}: the plan went nowhere: the page is the only request`);
     assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation`);
     ok(`${name}: the plan stays in page memory: nothing stored, nothing sent`);
+    await context.close();
+  }
+
+  // Long names with no spaces (a pasted link, say): the bar stays one row and nothing scrolls sideways, in setup and
+  // on the producer screen, where the part's name wraps inside its row.
+  {
+    const context = await browser.newContext(VIEWS[0]);
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await page.locator("#planBtn").click();
+    await page.locator("#planIn").fill(`Show: ${"x".repeat(150)}\nGuest: ${"y".repeat(80)}\n5 ${"z".repeat(200)}\n4 Outro`);
+    const fits = () => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth, bar: document.querySelector(".top").getBoundingClientRect().height, clock: document.querySelector("#clock").getBoundingClientRect().right }));
+    let box = await fits();
+    assert.ok(box.scroll <= box.width && box.bar < 60, `long names: setup keeps one bar row and no sideways scroll (${JSON.stringify(box)})`);
+    await page.locator("#guestSeg button").first().click();
+    await page.locator("#micBtn").click();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await page.locator("#speechBtn").click();
+    await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    await page.locator("#goBtn").click();
+    box = await fits();
+    assert.ok(box.scroll <= box.width && box.bar < 60 && box.clock <= box.width, `long names: the producer screen keeps one bar row, the clock inside the window (${JSON.stringify(box)})`);
+    const shot = join(out, "runorder-long-names.png");
+    await page.screenshot({ path: shot });
+    screenshots.push(shot);
+    ok("long names: one bar row, no sideways scroll, the clock inside the window");
     await context.close();
   }
 

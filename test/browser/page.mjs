@@ -48,9 +48,9 @@ const token = async (page, name) => paint(page, await page.evaluate((n) => {
 const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
 // The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Show,
-// questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at a time with its done mark, the
-// guest step's answers, the wide (label beside) or compact (label above) layout, and no word on the screen beyond its
-// labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
+// questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at
+// a time with its done mark, the guest step's answers, the wide (label beside) or compact (label above) layout, and no
+// word on the screen beyond its labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
 async function checkSetup(page, name, { phone, touch, chip }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();

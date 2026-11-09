@@ -9,7 +9,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 }
 .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; }
 .brand__mark { inline-size: 1.4rem; block-size: 1.4rem; border-radius: 6px; background: var(--accent); display: grid; place-items: center; color: var(--on-accent); }
-.brand small { font-weight: 500; color: var(--muted); font-size: 0.8rem; }
+/* The show line: one line, cut short with an ellipsis, so a long show or guest name never pushes the bar sideways. */
+.brand small { font-weight: 500; color: var(--muted); font-size: 0.8rem; max-inline-size: min(40ch, 35vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip { display: inline-flex; border: 0; cursor: default; align-items: center; gap: 0.3rem; padding: 0.1rem 0.45rem; border-radius: 99px; font-size: 0.72rem; font-weight: 600; background: var(--raised); color: var(--muted); white-space: nowrap; }
 .private { position: relative; }
 /* On a touch screen the chip's tap area grows past its looks. */
@@ -132,8 +133,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .run[data-s="now"] { background: var(--accent-faint); }
 .run__bar { grid-column: 1 / -1; block-size: 4px; border-radius: 99px; background: var(--line); overflow: clip; }
 .run__bar > i { display: block; block-size: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
-[data-tone="late"] { color: var(--accent-ink); }
-[data-tone="early"] { color: var(--agent-ink); }
+.run__t[data-tone="late"], .clock small[data-tone="late"] { color: var(--accent-ink); }
+.run__t[data-tone="early"], .clock small[data-tone="early"] { color: var(--agent-ink); }
 /* "All" exists only on a narrow window, where the list shows just the current and the next part. */
 .runs__more { display: none; }
 @media (max-width: 680px) {
