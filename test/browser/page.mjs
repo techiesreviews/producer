@@ -291,6 +291,14 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: null, done: false }, `${name}: back to off`);
   const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
   assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: the token was never stored`);
+  // Leaving or reloading the page revokes the token too (the page keeps none).
+  await press(connect);
+  await page.waitForFunction(() => __relay.sockets.length === 2);
+  await page.evaluate(() => __relay.call("get_context"));
+  await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
+  await page.evaluate(() => { __relay.revoked = false; dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })); });
+  assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: leaving the page revokes the token`);
+  assert.equal((await state()).label, "Copy connect message", `${name}: and the step starts over`);
   await page.evaluate(() => document.activeElement?.blur());
   return shots;
 }
@@ -385,7 +393,7 @@ export async function run({ browser, playwright, base, out }) {
     ok(`${name}: the setup screen (browser chip, step 1, picking by mouse${options.hasTouch ? ", tap" : ""} and keyboard, ${options.isMobile ? "compact" : "wide"} layout, no extra words)`);
 
     screenshots.push(...await checkAgent(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
-    assert.deepEqual(requests, [`${base}/`, `${base}/api/agent-token`], `${name}: besides the page, only this site's token was asked for`);
+    assert.deepEqual(requests, [`${base}/`, `${base}/api/agent-token`, `${base}/api/agent-token`], `${name}: besides the page, only this site's token was asked for (once per connection)`);
     assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation while connecting`);
     ok(`${name}: step 2 (copy the connect message, waiting, connected, Test with its seconds, Disconnect), by ${options.hasTouch ? "tap" : "mouse"} and keyboard`);
 

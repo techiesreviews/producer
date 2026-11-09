@@ -123,7 +123,8 @@ async function startServer(dist) {
     let response;
     try {
       response = await worker.fetch(new Request(`http://${req.headers.host}${req.url}`, { method: req.method, headers: req.headers, body, duplex: "half" }), { ASSETS: assets });
-    } catch {
+    } catch (error) {
+      if (!req.url.startsWith("/api/relay")) throw error;
       response = new Response("No relay in the page checks", { status: 502 });
     }
     res.writeHead(response.status, Object.fromEntries(response.headers));
