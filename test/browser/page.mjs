@@ -327,6 +327,22 @@ export async function run({ browser, playwright, base, out }) {
     await context.close();
   }
 
+  // The compact switch point is the mock-up's: at a 620px window the choices sit under the label, at 625px beside it (the old switch point sat near 630px).
+  for (const [width, compact] of [[620, true], [625, false]]) {
+    const context = await browser.newContext({ viewport: { width, height: 700 } });
+    const page = await context.newPage();
+    await page.goto(`${base}/`);
+    const box = await page.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect().toJSON();
+      return { label: r("#sStream .step__label"), seg: r("#streamSeg"), scrollWidth: document.documentElement.scrollWidth };
+    });
+    assert.ok(box.scrollWidth <= width, `${width}px: no sideways scroll`);
+    if (compact) assert.ok(box.seg.top >= box.label.bottom, `${width}px: compact, the choices sit under the label`);
+    else assert.ok(box.seg.left >= box.label.right && box.seg.top < box.label.bottom, `${width}px: wide, the choices sit beside the label`);
+    await context.close();
+  }
+  ok("the setup goes compact at a 620px window, as in the mock-up");
+
   // The same screen in a real Firefox: it names itself, lays out the same and keeps every rule (no request, no
   // console problem). Firefox has no switched-off row of its own yet: the rows that switch off there come with
   // their features.
