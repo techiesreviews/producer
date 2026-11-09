@@ -94,7 +94,13 @@ async function view(browser, base, out, [name, , options, answer, chip]) {
   await press(page.locator("#micBtn"));
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   const shots = [join(out, `speech-${name}-setup.png`), join(out, `speech-${name}-listening.png`), join(out, `speech-${name}-stopped.png`)];
-  await page.screenshot({ path: shots[0], fullPage: true });
+  // The whole setup screen. A fullPage screenshot of a page taller than the window (a phone, from card 09) makes Chromium
+  // forget the phone's touch pointer for the rest of the run, so the window is made as tall as the page and put back.
+  const tall = await page.evaluate(() => document.documentElement.scrollHeight);
+  const size = page.viewportSize();
+  await page.setViewportSize({ width: size.width, height: Math.max(size.height, tall) });
+  await page.screenshot({ path: shots[0] });
+  await page.setViewportSize(size);
   await press(page.locator("#goBtn"));
   assert.equal(await text(page, "listenTxt"), "Listening · mic only", `${name}: the sign (its words are read aloud on a phone too)`);
   assert.equal(await page.locator("#guestChip").isVisible(), Boolean(chip), `${name}: the guest chip ${chip ? "shows" : "is left out on a solo show"}`);
