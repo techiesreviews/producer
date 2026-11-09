@@ -46,3 +46,37 @@ Each entry:
 - Phone: yes
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
+
+### F-setup-03 Guest agreed
+- Try: Pick Yes, No · my mic only or Solo show by mouse, tap and keyboard; hover the step's label and the answers.
+- Good: Nothing is picked on arrival; one answer at a time; the step turns green once answered. Only the host picks it. "Open producer screen" stays switched off until it is answered, its tooltip saying so.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
+- Phone: yes
+- Spec: `test/browser/page.mjs`, `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)
+
+### F-setup-04 Microphone with a level meter
+- Try: Press Microphone (allow it when the browser asks); speak; press it again to turn it off.
+- Good: The button turns green and a small meter beside it moves with your voice; turned off, the meter goes. A blocked or missing microphone says so on the button, with the way out in its tooltip. A browser without a microphone shows the button switched off with its reason.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
+- Phone: yes
+- Spec: `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)
+
+### F-setup-05 Load the speech model
+- Try: Press "Load speech model · 82 MB"; reload the page and press it again.
+- Good: The button counts up "Loading N%" and then says "Speech ready" in green; the second time it loads without downloading. A failure says so on the button, with the reason in its tooltip.
+- Files: `src/page.html`, `src/app.js`, `src/speech/*.mjs`, `scripts/speech-files.mjs`, `scripts/build.mjs`
+- Phone: yes
+- Spec: `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)
+
+## Live
+
+### F-live-01 The listening sign, Stop and Listen
+- Try: With every step done, press "Open producer screen"; then Stop, then Listen.
+- Good: The setup makes way for the producer screen (a frame; its panels come later). The top bar shows a breathing red dot, "Listening · mic only" (on a phone "mic only"), the guest's answer ("Guest ✓", "Guest: no", none on a solo show) and Stop. Stop ends the microphone at once and the sign reads "Not listening" with an orange Listen; a Listen that fails says so on itself ("Microphone blocked · Listen"). A microphone that ends by itself stops the sign; a model that fails brings back the setup with its reason. The page never plays a sound.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
+- Phone: yes
+- Spec: `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)

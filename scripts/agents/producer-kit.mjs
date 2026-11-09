@@ -3,7 +3,7 @@
 // Unit tests run through the shared `kit unit`. Evidence: .scratch/producer/<command>-<time>/. No installs, no deploys.
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -19,7 +19,7 @@ const oneLine = (text) => String(text).replace(/\s+/g, " ").trim();
 const kitResult = (status, text) => console.log(`RESULT: ${status} ${oneLine(text)}`);
 const usage = {
   specs: `Usage: kit specs [suite] [--affected [--base REF]]\nRuns the browser suites in test/browser/ with screenshots (each file one suite; a name runs only the suites whose file name holds it: kit specs page).\n--affected (kit pr uses it) runs the suites the changes since --base (default ${landBase}, from branches.land in scripts/agents/kit.json; committed or not, new files too) can reach, as scripts/agents/specs-affected.mjs says: the page suite for anything under src/, the build, wrangler.jsonc and the suite itself; none for docs (.md) only.\nThe page suite serves the build through the real Worker (src/worker.mjs) on a local port, with the page's own headers as Cloudflare sends them.\nWhat each suite checks: the comments and assertion messages in its file. A failure names error.txt (the full error with the values) in the evidence folder.\nPlaywright: KIT_PLAYWRIGHT_MODULE (the path of its index.mjs), else the one in ~/Projects/native-site-editor-dev/node_modules.`,
-  size: "Usage: kit size\nReports raw and gzip bytes of the built page and the Worker source. Report only; no budget.",
+  size: "Usage: kit size\nReports raw and gzip bytes of the built page, the Worker source and the speech worker, and the speech files (count, bytes, largest part). Report only; fails only if a served file is over Cloudflare's 25 MiB per static asset.",
 };
 if (args.includes("--help") || args.includes("-h")) { console.log(usage[command] || "Unknown command"); process.exit(0); }
 
@@ -32,9 +32,12 @@ const out = join(root, ".scratch/producer", `${command}-${stamp}`);
 mkdirSync(out, { recursive: true });
 const run = (cmd, argv) => execFileSync(cmd, argv, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
+// The build with the speech model, as a deploy builds it: the pinned files are fetched once into their cache
+// outside the repo (scripts/speech-files.mjs), then copied in.
 async function buildInto(dir) {
   const { build } = await import(pathToFileURL(join(root, "scripts/build.mjs")));
-  return build(dir);
+  const { cacheDir, fetchSpeechFiles } = await import(pathToFileURL(join(root, "scripts/speech-files.mjs")));
+  return build(dir, { speechDir: await fetchSpeechFiles(cacheDir(), { log: (line) => console.log(line) }) });
 }
 
 const cleanups = [];
@@ -76,8 +79,14 @@ try {
     const dist = join(out, "dist");
     await buildInto(dist);
     const files = [["dist/index.html", join(dist, "index.html")], ["dist/_headers", join(dist, "_headers")], ["src/worker.mjs", join(root, "src/worker.mjs")]];
+    for (const f of readdirSync(join(dist, "speech")).filter((f) => f.endsWith(".mjs"))) files.push([`dist/speech/${f}`, join(dist, "speech", f)]);
     const report = files.map(([file, path]) => { const data = readFileSync(path); return { file, bytes: data.length, gzipBytes: gzipSync(data).length }; });
-    const summary = { files: report, note: "Report only. Free plan Worker limit is 3 MB compressed; the page is one self-contained file." };
+    // The speech files: downloaded once by the browser; each served part must stay under Cloudflare's 25 MiB per asset.
+    const parts = readdirSync(join(dist, "speech"), { recursive: true }).map((f) => join(dist, "speech", f)).filter((p) => statSync(p).isFile());
+    const largest = parts.reduce((a, p) => (statSync(p).size > a.bytes ? { file: p.slice(dist.length + 1), bytes: statSync(p).size } : a), { file: "", bytes: 0 });
+    const speech = { files: parts.length, bytes: parts.reduce((n, p) => n + statSync(p).size, 0), largestPart: largest, assetLimit: 25 * 1024 * 1024 };
+    if (largest.bytes > speech.assetLimit) throw Error(`${largest.file} is ${largest.bytes} bytes, over the 25 MiB a Worker static asset may be`);
+    const summary = { files: report, speech, note: "Report only. Free plan Worker limit is 3 MB compressed; the page is one self-contained file; the speech files are static assets of at most 25 MiB each." };
     writeFileSync(join(out, "size.json"), JSON.stringify(summary, null, 2));
     console.log(JSON.stringify(summary, null, 2));
   } else {
@@ -97,8 +106,9 @@ try {
   for (const stop of cleanups.reverse()) { try { await stop(); } catch { /* best effort */ } }
 }
 
-// The built page behind the real Worker: src/worker.mjs answers, its ASSETS binding reads dist/ and adds the
-// "/*" block of _headers, as Cloudflare does. Local port, nothing leaves the machine.
+// The built page behind the real Worker: src/worker.mjs answers, its ASSETS binding reads dist/ and adds the headers
+// of every _headers rule that matches the path, as Cloudflare does ("/*" and "/speech/*" end in a wildcard; any other
+// rule is one exact path). Local port, nothing leaves the machine.
 async function startServer(dist) {
   // The Worker's relay extends a class from "cloudflare:workers", which Node cannot load: a stand-in (as in test/runtime.mjs).
   // There is no relay object here: the page checks replace the page's relay socket, and the one check that keeps the
@@ -108,14 +118,21 @@ async function startServer(dist) {
     return next(specifier, context);
   }`)}`);
   const { default: worker } = await import(pathToFileURL(join(root, "src/worker.mjs")));
-  const block = readFileSync(join(dist, "_headers"), "utf8").split(/^\/\S*\n/m)[1];
-  const headers = [...block.matchAll(/^ {2}([\w-]+): (.*)$/gm)].map(([, name, value]) => [name, value]);
+  const rules = readFileSync(join(dist, "_headers"), "utf8").split(/^(?=\/)/m).filter(Boolean).map((block) => {
+    const [path, ...lines] = block.split("\n");
+    return { path: path.trim(), headers: lines.map((l) => l.match(/^ {2}([\w-]+): (.*)$/)).filter(Boolean).map(([, name, value]) => [name, value]) };
+  });
+  const matches = (rule, pathname) => (rule.path.endsWith("*") ? pathname.startsWith(rule.path.slice(0, -1)) : pathname === rule.path);
+  const TYPES = { html: "text/html; charset=utf-8", txt: "text/plain; charset=utf-8", mjs: "text/javascript; charset=utf-8", js: "text/javascript; charset=utf-8", json: "application/json", wasm: "application/wasm" };
   const assets = {
     async fetch(request) {
       const { pathname } = new URL(request.url);
-      const file = { "/": "index.html", "/index.html": "index.html", "/robots.txt": "robots.txt" }[pathname];
-      if (!file) return new Response("Not found", { status: 404 });
-      return new Response(request.method === "HEAD" ? null : readFileSync(join(dist, file)), { headers: [...headers, ["Content-Type", file.endsWith(".html") ? "text/html; charset=utf-8" : "text/plain; charset=utf-8"]] });
+      const file = pathname === "/" ? "index.html" : pathname.slice(1);
+      const path = join(dist, file);
+      if (file.split("/").includes("..") || file === "_headers" || !existsSync(path) || !statSync(path).isFile()) return new Response("Not found", { status: 404 });
+      const headers = rules.filter((r) => matches(r, pathname)).flatMap((r) => r.headers);
+      const type = TYPES[file.split(".").pop()] || "application/octet-stream";
+      return new Response(request.method === "HEAD" ? null : readFileSync(path), { headers: [...headers, ["Content-Type", type]] });
     },
   };
   const server = createServer(async (req, res) => {

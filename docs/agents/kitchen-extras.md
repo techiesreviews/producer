@@ -18,10 +18,10 @@ file wins.
   - `kit specs [suite]`, the browser checks, for any change to the page, the Worker or the build;
     `kit pr` runs the suites a change reaches (`--affected`). Each file in `test/browser/` is one suite:
     `page.mjs` is the whole page at desktop 1366x900 and phone 390x844, light and dark, served through the
-    real Worker with the page's own headers, then the setup screen in Playwright's Firefox (light and dark; Playwright's Firefox browser must be installed beside it). What it checks lives in its file, not here. Screenshots land in
+    real Worker with the page's own headers, then the setup screen in Playwright's Firefox (light and dark; Playwright's Firefox browser must be installed beside it). `speech.mjs` loads the speech model, plays `test/fixtures/two-voices.wav` (two LibriSpeech voices taking turns, 106 s) as a fake microphone and checks the delay (middle under 1.5 s), the word errors (at most 20 %), Stop and Listen, the requests and what is stored, then the sign on a phone, in dark and in Firefox; it takes about three minutes. The build fetches the pinned speech files once into `~/.cache/producer-speech` (network on the first run only). What it checks lives in its file, not here. Screenshots land in
     the evidence folder (`.scratch/producer/specs-<time>/`). Playwright stays outside the repo: set
     `KIT_PLAYWRIGHT_MODULE` (the path of its `index.mjs`), else `~/Projects/native-site-editor-dev/node_modules` is used.
-  - `kit size`: bytes of the built page, its headers and the Worker source. Report only.
+  - `kit size`: bytes of the built page, its headers, the Worker source, the speech worker and the speech files (with the largest served part, which must stay under 25 MiB). Report only.
 - **Shared file:** none.
 - **Docs the shared rulebook names:** no runner guide, issue tracker guide, UX rulebook or routines
   yet. The plan and research: `docs/wayfinder/producer/`.

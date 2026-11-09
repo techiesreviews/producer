@@ -22,6 +22,7 @@
       "^src/page\\.html$",
       "^src/(app|theme)\\.css$",
       "^src/app\\.js$",
+      "^src/listen\\.mjs$",
       "^src/ui/",
       "^scripts/build\\.mjs$"
     ]
