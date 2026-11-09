@@ -47,17 +47,18 @@ const token = async (page, name) => paint(page, await page.evaluate((n) => {
   probe.remove();
   return colour;
 }, name));
+const text = (page, id) => page.locator(`#${id}`).evaluate((el) => el.innerText.replace(/\s+/g, " ").trim());
 const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
 // The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Show,
 // questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at
 // a time with its done mark, the guest step's answers, the wide (label beside) or compact (label above) layout, and no
 // word on the screen beyond its labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
-async function checkSetup(page, name, { phone, touch, chip, tabOff }) {
+async function checkSetup(page, name, { phone, touch, chip, tabOff, service = true }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
@@ -277,6 +278,101 @@ function countDisplayCalls() {
   window.__displayCalls = 0;
   const media = navigator.mediaDevices;
   if (media?.getDisplayMedia) media.getDisplayMedia = async () => { window.__displayCalls++; throw new DOMException("refused for the check", "NotAllowedError"); };
+}
+
+// Step 6's two ways to turn speech into text: the model on this computer (picked on arrival) and the browser's own
+// speech service (opt-in, its one warning line on the choice itself, no toast or explainer). Where the browser has
+// no such service the choice is greyed with the "i" and its reason, and pressing it picks nothing. Returns the screenshot.
+const SERVICE_TIP = "Your voice goes to Google, and your guest's too without headphones."; // the guest answer is Yes here
+const NO_SERVICE_REASON = "This browser has no speech service of its own.";
+const PHONE_SERVICE_REASON = "The browser's speech service is only offered on a computer. Use the model on this computer.";
+async function checkEngine(page, name, out, { touch, available, reason = NO_SERVICE_REASON }) {
+  const choice = page.locator("#browserChoice");
+  const local = page.locator('#engineSeg [data-v="local"]');
+  // Scrolls the control into view and waits until the page has stopped scrolling.
+  const settled = async (l) => {
+    await l.scrollIntoViewIfNeeded();
+    await page.evaluate(() => new Promise((done) => {
+      let last = -1;
+      let still = 0;
+      const frame = () => { if (scrollY === last) { if (++still >= 4) return done(); } else { still = 0; last = scrollY; } requestAnimationFrame(frame); };
+      frame();
+    }));
+  };
+  const press = async (l) => {
+    await settled(l);
+    await (touch ? l.tap({ force: true }) : l.click({ force: true }));
+  };
+  const pressed = () => page.locator('#engineSeg button[aria-pressed="true"]').allInnerTexts();
+  const shows = async (el, tip) => {
+    // On a phone this step sits below the fold: scroll to it first, because a scroll takes an open tooltip away.
+    await settled(el);
+    if (touch) await el.tap({ force: true }); else await el.hover();
+    await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, tip, { timeout: 3000 }).catch(async (error) => {
+      throw new Error(`${name}: the tooltip did not show "${tip}" (shows ${JSON.stringify(await page.evaluate(() => [document.querySelector("#tip").textContent, document.querySelector("#tip").hasAttribute("data-on")]))})`, { cause: error });
+    });
+  };
+  assert.deepEqual(await pressed(), ["On this computer"], `${name}: the model on this computer is picked on arrival`);
+  assert.equal(await page.locator("#speechBtn").isVisible(), true, `${name}: with its load button`);
+  assert.equal(await page.locator("#sSpeech").evaluate((el) => el.hasAttribute("data-done")), false, `${name}: and the step not done`);
+  assert.equal(await local.getAttribute("data-tip"), null, `${name}: the default way carries no note (a tip under it would cover the other choice on a phone)`);
+  assert.equal(await page.locator("#engineSeg").getAttribute("role"), "group", `${name}: the two ways are one named group`);
+  assert.equal(await page.locator("#engineSeg").evaluate((el) => document.getElementById(el.getAttribute("aria-labelledby"))?.textContent), "Speech to text", `${name}: named by its step`);
+
+  if (!available) {
+    assert.equal(await choice.getAttribute("aria-disabled"), "true", `${name}: the browser service is switched off here`);
+    assert.equal(await choice.locator(".off-mark").count(), 1, `${name}: with the round "i"`);
+    await shows(choice, reason);
+    await press(choice);
+    assert.deepEqual(await pressed(), ["On this computer"], `${name}: pressing it picks nothing`);
+    assert.equal(await page.locator("#speechBtn").isVisible(), true, `${name}: the load button stays`);
+    await page.keyboard.press("Escape");
+    return [];
+  }
+
+  assert.equal(await choice.getAttribute("aria-disabled"), null, `${name}: the browser service can be picked`);
+  assert.equal(await text(page, "browserChoice"), "Browser service · audio goes to Google", `${name}: the warning is one plain line on the choice itself`);
+  await shows(choice, SERVICE_TIP);
+  assert.equal(await page.locator("#sSpeech").evaluate((el) => el.querySelectorAll("p, small, .note, [role=note]").length), 0, `${name}: no explainer text`);
+  assert.equal(await page.locator(".toast, [role=alert]").count(), 0, `${name}: no toast`);
+
+  // By keyboard: Tab from the first choice reaches the service, a Space picks it (with a visible focus ring), Shift+Tab and Space pick the model again.
+  if (!touch) {
+    await local.focus();
+    await page.keyboard.press("Tab");
+    assert.ok(await choice.evaluate((el) => el === document.activeElement), `${name}: Tab reaches the browser service`);
+    assert.notEqual(await choice.evaluate((el) => getComputedStyle(el).outlineStyle), "none", `${name}: and it shows a focus ring`);
+    await page.keyboard.press("Space");
+    assert.deepEqual(await pressed(), ["Browser service · audio goes to Google"], `${name}: Space picks it`);
+    assert.equal(await page.locator("#speechBtn").isVisible(), false, `${name}: and the load button steps aside`);
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Space");
+    assert.deepEqual(await pressed(), ["On this computer"], `${name}: Shift+Tab and Space pick the model again`);
+    await page.keyboard.press("Escape");
+  }
+
+  await press(choice);
+  assert.deepEqual(await pressed(), ["Browser service · audio goes to Google"], `${name}: picking it is the opt-in, and the warning stays on it`);
+  assert.equal(await page.locator("#speechBtn").isVisible(), false, `${name}: nothing to load, so the load button steps aside`);
+  assert.equal(await page.locator("#sSpeech").evaluate((el) => el.hasAttribute("data-done")), true, `${name}: the step is done`);
+  const box = await page.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    return { choice: r("#browserChoice"), seg: r("#engineSeg"), width: innerWidth, scrollWidth: document.documentElement.scrollWidth };
+  });
+  assert.ok(box.scrollWidth <= box.width && box.choice.left >= box.seg.left - 0.5 && box.choice.right <= box.seg.right + 0.5 && box.choice.right <= box.width, `${name}: the long choice fits its row and the window`);
+  if (touch) assert.ok(box.choice.height >= 44, `${name}: finger-sized (${box.choice.height}px)`);
+  await page.keyboard.press("Escape");
+  await page.mouse.move(0, 0);
+  const shot = join(out, `page-${name}-speech-engine.png`);
+  const step = await page.locator("#sSpeech").boundingBox();
+  await page.screenshot({ path: shot, clip: { x: Math.max(0, step.x - 8), y: Math.max(0, step.y - 8), width: Math.min(page.viewportSize().width, step.width + 16), height: step.height + 16 } });
+
+  await press(local);
+  assert.deepEqual(await pressed(), ["On this computer"], `${name}: switching back picks the model again`);
+  assert.equal(await page.locator("#speechBtn").isVisible(), true, `${name}: its load button comes back`);
+  assert.equal(await page.locator("#sSpeech").evaluate((el) => el.hasAttribute("data-done")), false, `${name}: and the step is not done until it is loaded`);
+  await page.keyboard.press("Escape");
+  return [shot];
 }
 
 // A stand-in for the browser's WebSocket, put in before the page runs: the page's relay socket talks to it instead of
@@ -794,8 +890,13 @@ export async function run({ browser, playwright, base, out }) {
     await page.screenshot({ path: plain });
     screenshots.push(plain);
 
-    await checkSetup(page, name, { phone: Boolean(options.isMobile), touch: Boolean(options.hasTouch), chip: options.isMobile ? /^Chrome 157 · phone$/ : /^Chrome \d+ · desktop$/, tabOff: Boolean(options.isMobile) });
+    await checkSetup(page, name, { phone: Boolean(options.isMobile), touch: Boolean(options.hasTouch), chip: options.isMobile ? /^Chrome 157 · phone$/ : /^Chrome \d+ · desktop$/, tabOff: Boolean(options.isMobile), service: !options.isMobile });
     ok(`${name}: the setup screen (browser chip, step 1, picking by mouse${options.hasTouch ? ", tap" : ""} and keyboard, ${options.isMobile ? "compact" : "wide"} layout, no extra words)`);
+
+    screenshots.push(...await checkEngine(page, name, out, { touch: Boolean(options.hasTouch), available: !options.isMobile, reason: PHONE_SERVICE_REASON }));
+    ok(options.isMobile
+      ? `${name}: step 6 shows the browser service switched off on a phone, with its plain reason`
+      : `${name}: step 6 offers the browser service as an opt-in with its warning on the choice, and switching back to the model works`);
 
     screenshots.push(...await checkTabSound(page, name, out, { touch: Boolean(options.hasTouch), reason: options.isMobile ? PHONE_REASON : null }));
     ok(`${name}: the tab-sound button (${options.isMobile ? "switched off with the phone reason" : "ready, with how to share and the headphones advice"}; the guest's answer switches it off and on; fits its row)`);
@@ -1056,12 +1157,13 @@ export async function run({ browser, playwright, base, out }) {
       await page.addInitScript(fakeRelay);
       await page.addInitScript(countDisplayCalls);
       await page.reload();
-      await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/, tabOff: true });
+      await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/, tabOff: true, service: false });
+      await checkEngine(page, name, out, { touch: false, available: false });
       screenshots.push(...await checkTabSound(page, name, out, { touch: false, reason: OFF_REASON }));
       screenshots.push(...await checkAgent(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkWays(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkSwitchedOff(page, name, out, { touch: false }));
-      ok(`${name}: loads alone, names Firefox, the setup screen works and a switched-off choice shows its reason, with the tab-sound button off for Firefox`);
+      ok(`${name}: loads alone, names Firefox, the setup screen works, the browser service is switched off with its reason, and a switched-off choice shows its reason, with the tab-sound button off for Firefox`);
       await context.close();
     }
   } finally {

@@ -1,12 +1,12 @@
 // What the guest step, the tab-sound button, the open button and the listening sign say (src/listen.mjs).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GUEST, listeningSign, loudness, meterFill, openBlocked, tabButton, tabProblem } from "../src/listen.mjs";
+import { browserService, GUEST, listeningSign, loudness, meterFill, openBlocked, tabButton, tabProblem } from "../src/listen.mjs";
 import { REASONS } from "../src/browser.mjs";
 
 test("the sign names what is heard: the host's mic, plus the guest's tab when it is shared", () => {
   assert.deepEqual(listeningSign({ listening: true, guest: "yes", tab: true }), {
-    on: true, source: "host mic + guest tab", tip: GUEST.yes.signTip, button: "Stop",
+    on: true, source: "host mic + guest tab", engine: "", tip: GUEST.yes.signTip, button: "Stop",
     chip: { text: "Guest ✓", ok: true, tip: "Your guest said yes to being listened to." },
   });
   const noTab = listeningSign({ listening: true, guest: "yes", tab: false });
@@ -32,6 +32,56 @@ test("the sign never names the guest tab for a guest who said no, even if a tab 
 
 const chrome = { on: true };
 const firefox = { on: false, reason: REASONS.tabFirefox };
+
+test("the browser service's one warning line names who gets the audio, and says so plainly when that is not known", () => {
+  const google = browserService("Google");
+  assert.equal(google.choice, "Browser service · audio goes to Google");
+  assert.equal(google.choice, `${google.label} · ${google.warning}`);
+  assert.equal(google.tip, "Your voice goes to Google. Nothing to download.");
+  assert.equal(google.guestTip, "Your voice goes to Google, and your guest's too without headphones.", "for a guest who said yes the tip says the guest can be heard through the microphone");
+  assert.equal(browserService("").guestTip, "Your voice leaves this computer, and your guest's too without headphones.");
+  assert.equal(google.signTip, "Browser service: your voice goes to Google to become text.");
+  assert.equal(browserService("Microsoft").choice, "Browser service · audio goes to Microsoft");
+  assert.equal(browserService("Apple").signTip, "Browser service: your voice goes to Apple to become text.");
+  const unknown = browserService("");
+  assert.equal(unknown.choice, "Browser service · audio leaves this computer");
+  assert.equal(unknown.signTip, "Browser service: your voice leaves this computer to become text.");
+  assert.equal(browserService(undefined).choice, unknown.choice);
+  for (const c of ["Google", "Microsoft", "Apple", ""]) assert.ok(browserService(c).guestTip.length <= 80, `${c || "unknown"}: the guest tip stays short`);
+  for (const c of ["Google", "Microsoft", "Apple", ""]) assert.ok(browserService(c).tip.length <= 60, `${c || "unknown"}: the tooltip stays short`);
+});
+
+test("with the browser's speech service the sign says so and the tip says where the audio goes", () => {
+  for (const guest of ["yes", "no", "solo"]) {
+    const sign = listeningSign({ listening: true, guest, tab: false, engine: "browser", company: "Google" });
+    assert.deepEqual([sign.source, sign.engine], ["host mic", "browser service"], guest);
+    assert.equal(sign.tip, "Browser service: your voice goes to Google to become text.", `${guest}: never says nothing is sent`);
+  }
+  assert.equal(listeningSign({ listening: true, guest: "yes", tab: false, engine: "browser", company: "Microsoft" }).tip, "Browser service: your voice goes to Microsoft to become text.", "Edge names Microsoft");
+  assert.equal(listeningSign({ listening: true, guest: "yes", tab: false, engine: "browser" }).tip, "Browser service: your voice leaves this computer to become text.", "an unknown company is said plainly");
+  assert.equal(listeningSign({ listening: true, guest: "yes", tab: false, engine: "local" }).engine, "");
+  const off = listeningSign({ listening: false, guest: "yes", tab: false, engine: "browser", company: "Google" });
+  assert.deepEqual([off.on, off.engine, off.tip], [false, "", "Not listening. The microphone is off."], "nothing is sent while not listening");
+});
+
+test("the browser service hears the host's microphone only: the sign never says guest tab, and the tab button is off", () => {
+  // Even if a tab were still shared, the guest's sound is not what the service hears, so the sign must not claim it.
+  const sign = listeningSign({ listening: true, guest: "yes", tab: true, engine: "browser", company: "Google" });
+  assert.equal(sign.source, "host mic");
+  const b = tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "restream", engine: "browser" });
+  assert.deepEqual([b.off, b.text], [true, "Share the studio tab with sound"]);
+  assert.equal(b.tip, "Browser service hears your microphone only. Without headphones your guest's voice goes to it too.");
+  assert.ok(b.tip.length <= 100, "a tab-sound tooltip stays short (the other tab reasons are under 100 characters)");
+  // The browser's own reason still comes first; with the model on this computer the button works as before.
+  assert.equal(tabButton({ feature: firefox, guest: "yes", phase: "idle", stream: "restream", engine: "browser" }).tip, REASONS.tabFirefox);
+  // The guest's own answers and OBS keep their own reasons: the browser service's line about a guest would not fit them.
+  assert.match(tabButton({ feature: chrome, guest: "solo", phase: "idle", stream: "restream", engine: "browser" }).tip, /^Solo show/);
+  assert.match(tabButton({ feature: chrome, guest: "no", phase: "idle", stream: "restream", engine: "browser" }).tip, /^Your guest said no/);
+  assert.match(tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "obs", engine: "browser" }).tip, /^No tab sound with OBS/);
+  assert.equal(tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "restream", engine: "local" }).off, false);
+  assert.equal(tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "restream" }).off, false);
+});
+
 
 test("the tab button: idle in Chrome says how to share and asks the host to wear headphones", () => {
   const b = tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "restream" });

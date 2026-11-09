@@ -15,6 +15,7 @@ export const REASONS = {
   tabOther: "This browser cannot share a tab with sound. Use Chrome or Edge on a computer.",
   wasm: "This browser cannot run the speech model (WebAssembly is off). Use a current Chrome, Edge, Firefox or Safari.",
   webSpeech: "This browser has no speech service of its own.",
+  webSpeechPhone: "The browser's speech service is only offered on a computer. Use the model on this computer.",
 };
 
 // Most specific first: Edge, Opera and Samsung Internet also say "Chrome"; every browser says "Safari".
@@ -72,7 +73,13 @@ export function detectBrowser(win) {
       microphone,
       tabSound,
       wasm: can(win.WebAssembly?.instantiate) ? on() : off(REASONS.wasm),
-      webSpeech: can(win.SpeechRecognition) || can(win.webkitSpeechRecognition) ? on() : off(REASONS.webSpeech),
+      // The company whose service turns the sound into text (the sound goes to it): Chrome's is Google's, Edge's is
+      // Microsoft's, and Safari's is Apple's. Any other browser (Opera, an unnamed one) has none to name, because where it sends the sound is not confirmed.
+      // Only on a computer: on a phone the service restarts after every phrase (with a chime on some) and on an iPhone it
+      // can take the microphone from the page, and none of that can be checked here.
+      webSpeech: !(can(win.SpeechRecognition) || can(win.webkitSpeechRecognition)) ? off(REASONS.webSpeech)
+        : device !== "desktop" ? off(REASONS.webSpeechPhone)
+        : on({ company: engine === "webkit" ? "Apple" : name === "Edge" ? "Microsoft" : name === "Chrome" ? "Google" : "" }),
     },
   };
 }

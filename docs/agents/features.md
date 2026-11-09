@@ -95,14 +95,22 @@ Each entry:
 - Spec: `test/browser/page.mjs`, `test/browser/speech.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-setup-09 Speech to text: the browser's own speech service as a warned option
+- Try: In step 6 read the two choices; pick "Browser service · audio goes to Google" and read its tooltip, and the tab-sound button's; pick "On this computer" again; open the page in Firefox.
+- Good: The model on this computer is picked on arrival. The browser service is the second choice and carries its one warning line on itself ("audio goes to Google"; Microsoft in Edge, Apple in Safari); picking it is the opt-in, the model's load button steps aside, the step turns green and the tab-sound button is switched off with its reason (the service hears only the microphone). Picking "On this computer" brings the button back. In a browser without the service (Firefox), and on a phone or tablet (it is offered on computers only), the choice is greyed with the round "i" and says why. No toast, no explainer text.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/web-speech.mjs`, `src/browser.mjs`
+- Phone: yes
+- Spec: `test/browser/page.mjs`, `test/browser/service.mjs`
+- Steps: none yet (no kit shots command)
+
 ## Live
 
 ### F-live-01 The listening sign, Stop and Listen
 - Try: With every step done, press "Open producer screen"; then Stop, then Listen.
-- Good: The setup makes way for the producer screen (a frame; its panels come later). The top bar shows a breathing red dot and what is heard: "Listening · host mic + guest tab" while the studio tab is shared, "Listening · host mic" otherwise (on a phone only the source words), the guest's answer ("Guest ✓", "Guest: no", none on a solo show) and Stop. Stop ends the microphone and the shared tab at once and the sign reads "Not listening" with an orange Listen; Listen starts the microphone again and asks the browser for the tab again (the browser never remembers a share). A Listen that fails says so on itself ("Microphone blocked · Listen"). A microphone that ends by itself stops the sign; a tab that ends by itself leaves "host mic" in the sign while listening goes on; a model that fails brings back the setup with its reason. The host's words and the guest's are kept apart and labelled host and guest, never mixed. The page never plays a sound.
-- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/speech/lanes.mjs`, `src/speech/worker.mjs`
+- Good: The setup makes way for the producer screen (a frame; its panels come later). The top bar shows a breathing red dot and what is heard: "Listening · host mic + guest tab" while the studio tab is shared, "Listening · host mic" otherwise (on a phone only the source words), the guest's answer ("Guest ✓", "Guest: no", none on a solo show) and Stop. Stop ends the microphone and the shared tab at once and the sign reads "Not listening" with an orange Listen; Listen starts the microphone again and asks the browser for the tab again (the browser never remembers a share). A Listen that fails says so on itself ("Microphone blocked · Listen"). A microphone that ends by itself stops the sign; a tab that ends by itself leaves "host mic" in the sign while listening goes on; a model that fails brings back the setup with its reason. The host's words and the guest's are kept apart and labelled host and guest, never mixed. The page never plays a sound. With the browser's speech service the sign reads "Listening · host mic · browser service" (never "guest tab") and its tooltip says the voice goes to Google; a service that fails brings back the setup with its reason on its choice.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/web-speech.mjs`, `src/speech/lanes.mjs`, `src/speech/worker.mjs`
 - Phone: yes
-- Spec: `test/browser/speech.mjs`
+- Spec: `test/browser/speech.mjs`, `test/browser/service.mjs`
 - Steps: none yet (no kit shots command)
 
 ### F-live-02 The run order and the show clock

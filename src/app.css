@@ -204,8 +204,15 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
   padding: 0.3rem 0.6rem; border-radius: var(--radius-small); font-weight: 600; font-size: 0.8rem; color: var(--muted); white-space: nowrap;
 }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+/* A choice with a long label (the browser service's warning line) wraps rather than outgrow a narrow phone. */
+.seg button.seg__long { white-space: normal; text-align: start; }
+.nowrap { white-space: nowrap; }
+.seg button[data-state="error"] { color: var(--accent-ink); }
 .seg button:active:not([aria-pressed="true"]) { background: var(--pressed); }
-@media (hover: hover) and (pointer: fine) { .seg button:hover:not([aria-pressed="true"]) { background: var(--hover); color: var(--text); } }
+@media (hover: hover) and (pointer: fine) {
+  .seg button:hover:not([aria-pressed="true"], [data-state="error"]) { background: var(--hover); color: var(--text); }
+  .seg button[data-state="error"]:hover { background: var(--hover); }
+}
 /* A finger needs a taller target than a mouse; the pressed colour replaces the browser's tap flash. */
 @media (pointer: coarse) { .seg button { min-block-size: 2.75rem; -webkit-tap-highlight-color: transparent; } }
 

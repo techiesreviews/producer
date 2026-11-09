@@ -20,7 +20,7 @@
     <span class="clock num" id="clock" role="timer" data-tip="" hidden><span id="clockTime">0:00</span><small id="clockDelta" hidden></small></span>
     <span class="listen" id="listen" data-on="true">
       <span class="dot" id="listenDot" aria-hidden="true"></span>
-      <span class="listen__txt" id="listenTxt" role="status" data-tip=""><span id="listenOn"><span class="long">Listening · </span><span id="listenSrc">host mic</span></span><span id="listenOff" hidden>Not listening</span></span>
+      <span class="listen__txt" id="listenTxt" role="status" data-tip=""><span id="listenOn"><span class="long">Listening · </span><span id="listenSrc">host mic</span><span id="listenEngine"></span></span><span id="listenOff" hidden>Not listening</span></span>
       <span class="chip" id="guestChip" data-tip="" hidden></span>
       <button class="tb" type="button" id="stopBtn">Stop</button>
     </span>
@@ -86,6 +86,10 @@
         <li class="step" id="sSpeech">
           <span class="step__n" aria-hidden="true">6</span><span class="step__label" id="speechLabel">Speech to text</span>
           <div class="step__ctl">
+            <div class="seg" id="engineSeg" role="group" aria-labelledby="speechLabel">
+              <button type="button" data-v="local" aria-pressed="true">On this computer</button>
+              <button type="button" data-v="browser" aria-pressed="false" id="browserChoice">Browser service</button>
+            </div>
             <button class="tb" type="button" id="speechBtn" data-tip="Free model, runs inside this browser. Downloads once, then stays in this browser."><span id="speechTxt">Load speech model · <!--@SPEECH_SIZE@--></span></button>
           </div>
         </li>
