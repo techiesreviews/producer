@@ -1,0 +1,21 @@
+{
+  "project": "producer",
+  "mainRoot": "/home/ubulex/Projects/producer",
+  "branches": {
+    "land": "dev",
+    "release": "main"
+  },
+  "commands": "scripts/agents/project.d",
+  "maps": "docs/wayfinder",
+  "rulebookExtras": "docs/agents/kitchen-extras.md",
+  "checks": {
+    "test": "scripts/agents/kit unit"
+  },
+  "unit": {
+    "run": "node --test",
+    "files": "test/*.test.mjs"
+  },
+  "standards": [
+    "AGENTS.md"
+  ]
+}
