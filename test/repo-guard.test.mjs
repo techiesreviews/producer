@@ -27,10 +27,13 @@ const TOKEN_PATTERNS = [
   ["secret assignment, unquoted", /^\s*(export\s+)?[A-Z][A-Z0-9_]*(SECRET|TOKEN|PASSWORD|API_?KEY)\s*=\s*[A-Za-z0-9._~+/=-]{20,}\s*$/m],
   // Shapes with no fixed prefix are only caught in an assignment to a name that says what they are.
   ["Cloudflare API token", /(?<![A-Za-z])(cloudflare|cf)[_-]?(api[_-]?)?(token|key)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{40}(?![A-Za-z0-9_-])|[a-z]Cf(Api)?(Token|Key)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{40}(?![A-Za-z0-9_-])/i],
+  // An account id is not secret, but it is kept out of the repo on purpose: a Worker config reads it from CLOUDFLARE_ACCOUNT_ID.
   ["Cloudflare account id", /(?<![A-Za-z])account[_-]?id["']?\s*[:=]\s*["']?[0-9a-f]{32}(?![0-9a-zA-Z])|[a-z]AccountId["']?\s*[:=]\s*["']?[0-9a-f]{32}(?![0-9a-zA-Z])/i],
-  ["Restream client secret", /restream[_-]?(client[_-]?)?secret["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{16,}/i],
+  ["Restream client secret", /(?<![A-Za-z])restream[_-]?(client[_-]?)?secret["']?\s*[:=]\s*["']?[A-Za-z0-9_~+/=-]{16,}(?![A-Za-z0-9_.~+/=-])/i],
   // A long base64 or hex value, with a letter and a digit in it, after a name that ends in key, secret, token or password.
   ["long value after a key name", /(?<![A-Za-z])[A-Za-z0-9_-]*(secret|token|password|passwd|pass|key)["']?\s*[:=]\s*["']?(?=[A-Za-z0-9+/]*[0-9])(?=[A-Za-z0-9+/]*[A-Za-z])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])/i],
+  // A path inside a person's home folder shows a local user name; write ~/Projects/... in docs instead.
+  ["home folder path", /(?<![A-Za-z0-9_.-])\/(home|Users)\/[A-Za-z0-9_.-]+\//],
 ];
 
 test("README and LICENSE exist and are not empty", () => {
@@ -87,10 +90,11 @@ const SAMPLES = {
   "Cloudflare API token | quoted camelCase": ['cfApi' + 'Token: "' + "Zy9-".repeat(10) + '"', 'cfApiToken: "' + "Zy9-".repeat(5) + '"'],
   "Cloudflare account id": ["CLOUDFLARE_ACCOUNT_" + "ID=" + "0123456789abcdef".repeat(2), "CLOUDFLARE_ACCOUNT_ID=your-account-id"],
   "Cloudflare account id | wrangler json": ['"account' + '_id": "' + "fedcba9876543210".repeat(2) + '"', '"account_id": "<account id>"'],
-  "Restream client secret": ["RESTREAM_CLIENT_" + "SECRET=" + "q".repeat(16), "RESTREAM_CLIENT_SECRET=" + "q".repeat(8)],
+  "Restream client secret": ["RESTREAM_CLIENT_" + "SECRET=" + "q".repeat(16), "const restreamClientSecret = context.env." + "RESTREAM_CLIENT_SECRET;"],
+  "home folder path": ["/ho" + "me/someone/Projects/x", "~/Projects/x"],
   "long value after a key name": ['private_' + 'key = "' + "A1b2C3d4".repeat(5) + '"', 'key = "ordinary-words-only-no-digits-in-this-long-name"'],
   "long value after a key name | hex, camelCase": ["signing" + "Key: " + "0123456789abcdef".repeat(2), "checksum: " + "0123456789abcdef".repeat(2)],
-  "long value after a key name | unquoted base64": ["DB_PASS" + "WORD=" + "aGVsbG8gd29ybGQgdGhpcyBpcyBsb25n" + "Zm9vYmFy", "password: ask the host"],
+  "long value after a key name | unquoted base64": ["DB_PASS" + "WORD=" + "aGVsbG8gd29ybGQgdGhpcyBpcyBsb25n" + "Zm9vYmFy", "DB_PASS" + "WORD=" + "a".repeat(40)],
 };
 
 test("the guard itself catches each token shape and lets a near miss through", () => {
