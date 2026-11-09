@@ -47,9 +47,19 @@ async function checkSetup(page, name, { phone, touch, chip }) {
   assert.deepEqual(await pressed(), ["Restream Studio"], `${name}: Restream Studio is picked on arrival`);
   assert.equal(await page.locator("#streamSeg").getAttribute("role"), "group", `${name}: the choices are one named group`);
   assert.equal(await page.locator("#streamSeg").evaluate((el) => document.getElementById(el.getAttribute("aria-labelledby"))?.textContent), "I stream with", `${name}: named by its step`);
-  // Done: the step number turns green.
-  const doneColour = await page.locator("#sStream .step__n").evaluate((el) => getComputedStyle(el).color);
-  assert.deepEqual(await paint(page, doneColour), await token(page, "agent"), `${name}: the done step's number is green`);
+  // Done: the step number turns green, and reads at 4.5:1 on its green tint as the browser paints it over the panel.
+  const done = await page.locator("#sStream .step__n").evaluate((el) => {
+    const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const px = (...fills) => { for (const f of fills) { c.fillStyle = f; c.fillRect(0, 0, 1, 1); } return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+    const panel = getComputedStyle(el.closest(".steps")).backgroundColor;
+    return { number: px(getComputedStyle(el).color), tint: px(panel, getComputedStyle(el).backgroundColor) };
+  });
+  const [r, g, b] = done.number;
+  assert.ok(g > r + 40 && g > b + 20, `${name}: the done step's number is green (${done.number})`);
+  const lum = (rgb) => { const [x, y, z] = rgb.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
+  const [hi, lo] = [lum(done.number), lum(done.tint)].sort((p, q) => q - p);
+  const contrast = (hi + 0.05) / (lo + 0.05);
+  assert.ok(contrast >= 4.5, `${name}: the done number reads at ${contrast.toFixed(2)}:1 on its tint (4.5:1 needed)`);
   assert.ok(await page.locator("#sStream").evaluate((el) => el.hasAttribute("data-done")), `${name}: step 1 is done`);
 
   // Pick by mouse or tap, then by keyboard; one choice is pressed at a time.
