@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, "..");
 const text = (file) => readFileSync(resolve(root, file), "utf8");
 const config = JSON.parse(text("wrangler.jsonc").replace(/^\s*\/\/.*$/gm, ""));
 const preview = config.env?.preview;
-const STORAGE = ["kv_namespaces", "d1_databases", "r2_buckets", "durable_objects", "migrations", "queues", "services", "ai", "vectorize", "hyperdrive", "analytics_engine_datasets", "tail_consumers", "vars", "unsafe", "browser", "send_email", "mtls_certificates", "pipelines", "version_metadata"];
+const STORAGE = ["kv_namespaces", "d1_databases", "r2_buckets", "queues", "services", "ai", "vectorize", "hyperdrive", "analytics_engine_datasets", "tail_consumers", "vars", "unsafe", "browser", "send_email", "mtls_certificates", "pipelines", "version_metadata"];
 
 test("two Workers: producer (live) and producer-preview, each with its planned address", () => {
   assert.equal(config.name, "producer");
@@ -32,6 +32,16 @@ test("no KV, D1, R2 or any other place to keep text, in either Worker", () => {
   for (const [where, c] of [["live", config], ["preview", preview]]) {
     for (const key of STORAGE) assert.equal(c[key], undefined, `${where} sets ${key}`);
   }
+});
+
+test("two Durable Object classes only (the request limit and the relay), SQLite-backed so the free plan allows them", () => {
+  const bindings = [{ name: "MCP_LIMITER", class_name: "McpLimiter" }, { name: "RELAY", class_name: "Relay" }];
+  for (const [where, c] of [["live", config], ["preview", preview]]) {
+    assert.deepEqual(c.durable_objects, { bindings }, `${where}: the preview names them again, they are not inherited`);
+  }
+  const migrations = [{ tag: "v1", new_sqlite_classes: ["McpLimiter"] }, { tag: "v2", new_sqlite_classes: ["Relay"] }];
+  assert.deepEqual(config.migrations, migrations);
+  assert.deepEqual(preview.migrations, migrations, "written again for the preview, so its own objects exist whatever Wrangler inherits");
 });
 
 test("no address of its own on workers.dev and no preview links", () => {

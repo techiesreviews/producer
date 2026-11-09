@@ -1,6 +1,10 @@
 {
-  // One Worker serving one static page from ./dist. Free plan only. No KV, D1, R2 or Durable Object:
-  // nothing is stored, and no request is logged. NOTHING IS DEPLOYED YET: the addresses below are planned.
+  // One Worker serving one static page from ./dist, the MCP endpoint at /mcp and the live line to the host's page at
+  // /api/*. Free plan only. No KV, D1 or R2: nothing is stored, and no request is logged. Two Durable Object classes
+  // (SQLite-backed, as the free plan requires): the /mcp request limit counts in memory per hashed client and never
+  // touches its storage (src/limiter.mjs); the relay keeps only a short note per agent token, { createdAt,
+  // expiresAt, revoked, agent }, that an alarm erases, and passes the talk through memory only (src/relay.mjs).
+  // NOTHING IS DEPLOYED YET: the addresses below are planned.
   // The live address and the preview's are Cloudflare custom domains on techies.tools. A deploy waits for the
   // Cloudflare token (TOOLS-144); the lead runs the first one.
   "name": "producer",
@@ -17,12 +21,24 @@
     "not_found_handling": "none",
     "html_handling": "auto-trailing-slash"
   },
+  // MCP_LIMITER: one object per hashed client. RELAY: one object per hashed agent token, between the agent and the page.
+  "durable_objects": {
+    "bindings": [
+      { "name": "MCP_LIMITER", "class_name": "McpLimiter" },
+      { "name": "RELAY", "class_name": "Relay" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["McpLimiter"] },
+    { "tag": "v2", "new_sqlite_classes": ["Relay"] }
+  ],
   // No request logs: a host's talk, chat and questions must never be recorded.
   "observability": { "enabled": false },
   "build": { "command": "node scripts/build.mjs" },
   // The preview: its own Worker, producer-preview, on preview-producer.techies.tools, so a test build never touches
   // the live one. Built from dev by .github/workflows/deploy-preview.yml (once the secrets exist). Its build keeps
-  // search engines out (scripts/build.mjs --host). Settings that are not inherited are written again.
+  // search engines out (scripts/build.mjs --host). Settings that are not inherited are written again, the Durable
+  // Objects and their migrations too: the preview's objects are its own, empty, apart from the live ones.
   "env": {
     "preview": {
       "name": "producer-preview",
@@ -37,6 +53,16 @@
         "not_found_handling": "none",
         "html_handling": "auto-trailing-slash"
       },
+      "durable_objects": {
+        "bindings": [
+          { "name": "MCP_LIMITER", "class_name": "McpLimiter" },
+          { "name": "RELAY", "class_name": "Relay" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["McpLimiter"] },
+        { "tag": "v2", "new_sqlite_classes": ["Relay"] }
+      ],
       "observability": { "enabled": false },
       "build": { "command": "node scripts/build.mjs --host preview-producer.techies.tools" }
     }
