@@ -137,6 +137,7 @@ export async function run({ browser, base, out }) {
     assert.equal(await text("planBtn"), "12 questions · 5 parts ✓", `${name}: and still says what was read`);
     ok(`${name}: a good plan shows "12 questions · 5 parts ✓", the step done and the show line`);
 
+    const boxBackground = await box.evaluate((el) => getComputedStyle(el).backgroundColor);
     // Guest, microphone (stand-in), speech (stand-in), then the producer screen.
     await press(page.locator("#guestSeg button").first());
     await press(page.locator("#micBtn"));
@@ -210,6 +211,8 @@ export async function run({ browser, base, out }) {
     // Once the clock runs the plan is fixed: the box takes no edits and its button says why. Even a change that
     // reaches the box (a reworded question and a changed part, then an empty box) leaves the run order as it started.
     assert.deepEqual([await box.evaluate((el) => el.readOnly), await planBtn.getAttribute("data-tip")], [true, "The show has started, so the plan stays as it is."], `${name}: the plan is fixed once the clock runs`);
+    assert.notEqual(await box.evaluate((el) => getComputedStyle(el).backgroundColor), boxBackground, `${name}: and the box looks fixed (greyed)`);
+    // The two changes below are set from a script, standing in for an edit the host can no longer make.
     assert.equal(await text("planBtn"), "12 questions · 5 parts ✓", `${name}: and its button still says what runs`);
     const before = await text("clockTime");
     await page.evaluate((plan) => { const box = document.querySelector("#planIn"); box.value = plan; box.dispatchEvent(new Event("input")); }, PLAN.replace("Question number 3?", "A reworded question?").replace("4 Wrap-up", "5 Wrap-up"));
