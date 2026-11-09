@@ -9,7 +9,7 @@ file wins.
   change lands on `dev` through `scripts/agents/kit pr`; `main` only takes `dev`, through
   `scripts/agents/kit pr --release --base main`. The repo is public, so there is no direct push to
   `main` after the first commit.
-- **Checks:** `kit unit` (all of `test/*.test.mjs`, under a second) on every change; it is the one
+- **Checks:** `kit unit` (all of `test/*.test.mjs`, a few seconds) on every change; it is the one
   entry in `checks` (`test`). GitHub runs the same files in `.github/workflows/checks.yml` on every
   pull request and every push to `dev` or `main` (Node 24, no secrets, no deploy).
   `test/repo-guard.test.mjs` is the public-repo guard: no `.env`, `*.key`, `*.pem` or `.dev.vars*` file, no
@@ -46,6 +46,7 @@ file wins.
 
 ## Other
 
+- **A temporary https link for QA:** `scripts/qa-tunnel.sh` (`npm run qa:tunnel`, README section "A temporary link for testing") runs the Worker locally with wrangler and puts a Cloudflare quick tunnel in front of it: no account, no deploy, no change to Cloudflare. It is a stop-gap until the preview deploys (TOOLS-144). Its tests run in `kit unit` with stand-ins for wrangler and cloudflared; the real run is by hand.
 - This repo is public. No key, token or private note goes in, and the Restream app secret lives only
   in Cloudflare.
 - `docs/wayfinder/producer/` is a copy of the planning map first written in the chat project's

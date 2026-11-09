@@ -4,6 +4,7 @@
   "description": "Nothing to install: these are shortcuts. Wrangler is fetched by npx, at the version the preview workflow pins.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "deploy:preview": "npx --yes wrangler@4.159.0 deploy --env preview"
+    "deploy:preview": "npx --yes wrangler@4.159.0 deploy --env preview",
+    "qa:tunnel": "bash scripts/qa-tunnel.sh"
   }
 }
