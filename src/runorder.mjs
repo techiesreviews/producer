@@ -5,8 +5,9 @@
 // The plan's format, one thing per line (blank lines are fine):
 //   Show: Techies Live        the show's name (optional)
 //   Guest: Jane Doe           the guest's name (optional)
-//   10 Intro                  a part of the run order: its planned minutes, then its name ("10 min Intro" too)
-//   1. How did it start?      a question: numbered (1. or 1)), or ending with a question mark
+//   10 Intro                  a part of the run order: its planned minutes, then its name ("10 min Intro" too);
+//                             a line that starts with minutes is a part even when it ends with ? ("10 Any questions?")
+//   1. How did it start?      a question: numbered (1. or 1)), or any other line ending with a question mark
 
 /** The short example under the paste box: one line of each kind. */
 export const PLAN_EXAMPLE = ["Show: Techies Live", "Guest: Jane Doe", "10 Intro", "20 Her story", "1. How did it start?"];
@@ -34,8 +35,8 @@ export function readPlan(text) {
     const part = line.match(PLAN_PART);
     if (named && named[2].trim()) plan[named[1].toLowerCase()] = named[2].trim();
     else if (numbered) plan.questions.push(numbered[1].trim());
-    else if (line.endsWith("?")) plan.questions.push(line);
     else if (part) plan.parts.push({ name: part[2].trim(), minutes: Number(part[1]) });
+    else if (line.endsWith("?")) plan.questions.push(line);
     else return { ok: false, line: i + 1, text: raw.trim() };
   }
   if (!any) return { ok: false, empty: true };

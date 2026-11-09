@@ -30,6 +30,12 @@ test("a plan: Show and Guest lines, parts as minutes and a name, questions numbe
   });
 });
 
+test("a line that starts with minutes is a part, even when its name ends with a question mark", () => {
+  assert.deepEqual(readPlan("10 Any questions?").parts, [{ name: "Any questions?", minutes: 10 }]);
+  assert.deepEqual(readPlan("5 Intro\n1. Why?").questions, ["Why?"], "a numbered question stays a question");
+  assert.deepEqual(readPlan("5 Intro\nWhy now?").questions, ["Why now?"], "so does any other line ending with ?");
+});
+
 test("the example under the paste box is a plan the page reads", () => {
   const plan = readPlan(PLAN_EXAMPLE.join("\n"));
   assert.equal(plan.ok, true);
