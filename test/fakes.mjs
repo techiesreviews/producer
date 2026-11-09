@@ -38,6 +38,7 @@ export function relayWith(now) {
   const ctx = fakeCtx();
   const relay = new Relay(ctx, {});
   relay.now = () => now.t;
+  relay.graceMs = 0; // tests that need the grace for a reloading page set it
   const tab = async (born = T0) => {
     const res = await relay.fetch(new Request("https://relay/tab", { headers: { Upgrade: "websocket", "X-Token-Born": String(born) } }));
     assert.equal(res.status, 101);
