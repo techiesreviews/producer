@@ -38,7 +38,7 @@ function label(button, state, tip, ...content) {
   if (open) { if (tip) tooltip.show(button); else tooltip.hide(); }
 }
 
-function renderAgent({ state, failed, test }) {
+function renderAgent({ state, failed, test, passed }) {
   const name = agentName();
   if (state !== "waiting") { copyFailed = false; messageBox.hidden = true; }
   if (state === "on") label(connectBtn, "ok", "Click to disconnect.", dot("ok"), `${name} connected`);
@@ -51,7 +51,7 @@ function renderAgent({ state, failed, test }) {
   else if (test.state === "ok") label(testBtn, "ok", `Sample: "${test.sample}"`, `Test ✓ · ${test.seconds.toFixed(1)} s`);
   else if (test.state === "fail") label(testBtn, null, `No answer in ${AGENT_TEST_MS / 1000} seconds. Check ${name}, then test again.`, "Test · no answer");
   else label(testBtn, null, null, "Test");
-  document.getElementById("sAgent").toggleAttribute("data-done", test.state === "ok");
+  document.getElementById("sAgent").toggleAttribute("data-done", state === "on" && passed);
 }
 
 const agent = createAgentLink({
@@ -93,3 +93,6 @@ connectBtn.addEventListener("click", () => {
   else copyMessage();
 });
 testBtn.addEventListener("click", () => agent.test());
+// Leaving or reloading the page ends the connection: the page keeps no token, so the old one is revoked rather than
+// left working for whoever holds the message.
+addEventListener("pagehide", () => agent.disconnect());

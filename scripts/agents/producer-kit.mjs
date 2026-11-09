@@ -101,7 +101,8 @@ try {
 // "/*" block of _headers, as Cloudflare does. Local port, nothing leaves the machine.
 async function startServer(dist) {
   // The Worker's relay extends a class from "cloudflare:workers", which Node cannot load: a stand-in (as in test/runtime.mjs).
-  // These page checks never reach /mcp or /api, so only the import has to work.
+  // There is no relay object here: the page checks replace the page's relay socket, and the one check that keeps the
+  // real socket only needs the browser to try it (its upgrade fails with 502).
   register(`data:text/javascript,${encodeURIComponent(`export async function resolve(specifier, context, next) {
     if (specifier === "cloudflare:workers") return { url: "data:text/javascript,export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }", shortCircuit: true };
     return next(specifier, context);
@@ -119,7 +120,12 @@ async function startServer(dist) {
   };
   const server = createServer(async (req, res) => {
     const body = ["GET", "HEAD"].includes(req.method) ? undefined : req;
-    const response = await worker.fetch(new Request(`http://${req.headers.host}${req.url}`, { method: req.method, headers: req.headers, body, duplex: "half" }), { ASSETS: assets });
+    let response;
+    try {
+      response = await worker.fetch(new Request(`http://${req.headers.host}${req.url}`, { method: req.method, headers: req.headers, body, duplex: "half" }), { ASSETS: assets });
+    } catch {
+      response = new Response("No relay in the page checks", { status: 502 });
+    }
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));
   });

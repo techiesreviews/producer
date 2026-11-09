@@ -22,7 +22,7 @@ export const AGENT_SAMPLE = [
 ];
 
 export function createAgentLink({ net, onChange = () => {}, now = () => Date.now(), timers = globalThis }) {
-  const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" } };
+  const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
   let retry = 0;
@@ -36,7 +36,8 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
   let held = null; // the agent's wait the page is holding: { id, timer }
   const answered = new Set();
 
-  const view = () => ({ state: link.state, failed: link.failed, test: { ...link.test } });
+  // passed: a Test was answered on this connection (step 2 is done while the agent is connected).
+  const view = () => ({ state: link.state, failed: link.failed, test: { ...link.test }, passed: link.passed });
   const changed = () => onChange(view());
   const set = (state) => { if (link.state !== state) { link.state = state; changed(); } };
   const live = () => Boolean(link.token) && now() - link.at < AGENT_MAX_AGE_MS;
@@ -71,6 +72,7 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
       const first = suggestions[0];
       const sample = typeof first.text === "string" ? first.text : `Question ${first.question}`;
       link.test = { state: "ok", seconds: Math.round((now() - (cue.deliveredAt ?? now())) / 100) / 10, sample };
+      link.passed = true;
       changed();
     }
     return suggestions.length;
@@ -129,7 +131,7 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     const sock = ws;
     ws = null;
     try { sock?.close(1000, "bye"); } catch { /* closed */ }
-    Object.assign(link, { state: "off", token: null, at: 0, test: { state: "idle" } });
+    Object.assign(link, { state: "off", token: null, at: 0, test: { state: "idle" }, passed: false });
     cue = null;
     answered.clear();
     changed();
@@ -140,6 +142,8 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
 
     /** Copy connect message: a fresh token when there is none, the relay opened, and the message's parts. */
     async connect() {
+      // A token past its eight hours whose timer has not fired yet (a laptop waking from sleep): let it go first.
+      if (link.token && !live()) forget();
       if (link.state === "on") return null;
       if (!live()) {
         if (!pending) {

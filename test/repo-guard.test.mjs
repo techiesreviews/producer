@@ -21,6 +21,8 @@ const TOKEN_PATTERNS = [
   ["Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
   ["Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
   ["bearer token", /\bBearer\s+[A-Za-z0-9._~+/=-]{30,}/],
+  // The producer's own agent token (src/token.mjs), anywhere: a real one pasted into a doc, a log or a test.
+  ["producer agent token", /(?<![A-Za-z0-9_-])pr1-[0-9a-z]{8,10}-[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/],
   // A quoted value after a secret-like name (also after an underscore, in quotes, or camelCase).
   ["secret assignment", /(?<![A-Za-z])(secret|token|password|api[_-]?key)["']?\s*[:=]\s*["'][A-Za-z0-9._~+/=-]{20,}["']|[a-z](Secret|Token|Password|ApiKey)["']?\s*[:=]\s*["'][A-Za-z0-9._~+/=-]{20,}["']/i],
   // An unquoted value, as in a dotenv line, only for an ALL_CAPS name, so ordinary code is not caught.
@@ -78,6 +80,7 @@ const SAMPLES = {
   "Slack token": ["xox" + "b-1234567890-abcdefghij", "xoxo hugs"],
   "Google API key": ["AIza" + "Sy" + "a".repeat(33), "AIza" + "short"],
   "bearer token": ["Authorization: Bearer " + "a1B2c3D4".repeat(4), "Authorization: Bearer <token>"],
+  "producer agent token": ["the agent printed pr1" + "-m0abcdef-" + "Ab3_".repeat(10) + "xyz", "pr1" + "-<time>-<random>"],
   "secret assignment": ['api_key = "' + "x".repeat(24) + '"', 'token = "short"'],
   "secret assignment | name after an underscore": ["RESTREAM_CLIENT_" + 'SECRET = "' + "x".repeat(24) + '"', "RESTREAM_CLIENT_SECRET = process.env"],
   "secret assignment | camelCase": ["const clientSec" + 'ret = "' + "x".repeat(24) + '"', 'const clientSecret = config.restreamClientSecret'],
