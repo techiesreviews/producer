@@ -72,3 +72,9 @@ test("the checks workflow stays: unit tests on every pull request and push", () 
   assert.match(flow, /pull_request:/);
   assert.match(flow, /node --test test\/\*\.test\.mjs/);
 });
+
+test("a deploy by hand uses the same Wrangler version as the workflow", () => {
+  const pinned = text(".github/workflows/deploy-preview.yml").match(/wrangler@(\d+\.\d+\.\d+) deploy --env preview$/m)[1];
+  const { scripts } = JSON.parse(text("package.json"));
+  assert.equal(scripts["deploy:preview"], `npx --yes wrangler@${pinned} deploy --env preview`);
+});

@@ -1,9 +1,9 @@
 {
   "name": "producer",
   "private": true,
-  "description": "Nothing to install: these are shortcuts. Wrangler comes from the npx cache.",
+  "description": "Nothing to install: these are shortcuts. Wrangler is fetched by npx, at the version the preview workflow pins.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "deploy:preview": "npx --no-install --package wrangler wrangler deploy --env preview"
+    "deploy:preview": "npx --yes wrangler@4.159.0 deploy --env preview"
   }
 }

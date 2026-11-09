@@ -1,6 +1,6 @@
 # producer
 
-A live host's private "producer" screen: a static page plus one Cloudflare Worker, no accounts, nothing stored, an agent relay like the Prompter's Wait for MCP. Public repo: https://github.com/techiesreviews/producer. Owner: Lex (non-technical; explain in plain words). Status: not built yet; the plan is in `docs/wayfinder/producer/`.
+A live host's private "producer" screen: a static page plus one Cloudflare Worker, no accounts, nothing stored, an agent relay like the Prompter's Wait for MCP. Public repo: https://github.com/techiesreviews/producer. Owner: Lex (non-technical; explain in plain words). Status: an empty page shell on `dev` (top bar, tooltip), nothing deployed; the plan is in `docs/wayfinder/producer/`.
 
 ## Rules
 

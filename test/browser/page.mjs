@@ -103,6 +103,9 @@ export async function run({ browser, base, out }) {
     await page.screenshot({ path: plain });
     screenshots.push(plain);
 
+    // The Private chip is a real control (a button), so a screen reader and the keyboard reach it as one.
+    assert.equal(await page.locator(".private").evaluate((el) => el.tagName), "BUTTON", `${name}: the chip is a button`);
+
     // The one shared tooltip: hover (after a short delay), focus, tap; inside the window; Escape and leaving hide it.
     const chip = page.locator(".private");
     const tip = page.locator("#tip");
@@ -134,6 +137,36 @@ export async function run({ browser, base, out }) {
     await page.waitForSelector("#tip[data-on]");
     assert.equal(await tip.textContent(), expected, `${name}: tooltip text on focus`);
     ok(`${name}: tooltip on keyboard focus`);
+    // More controls with a tip: one at each edge. After one is shown the next stays inside the window (its size is
+    // measured fresh), and a switched-off control shows its reason when pressed without doing what it says.
+    // (Built with the DOM, not markup: the page's policy forbids inline styles and handlers.)
+    await page.evaluate(() => {
+      const add = (id, text, tip, css, extra = {}) => {
+        const b = Object.assign(document.createElement("button"), { id, textContent: text, ...extra });
+        b.dataset.tip = tip;
+        b.style.cssText = `position:fixed;${css}`;
+        document.body.append(b);
+        return b;
+      };
+      add("edge-r", "R", "A long reason that wraps onto a few lines when it is shown at the right edge of the window.", "right:0;bottom:0");
+      add("edge-l", "L", "Left edge, so the tooltip must not hang off the left side.", "left:0;top:200px");
+      const off = add("off", "Off", "Not available yet.", "left:40%;top:300px");
+      off.setAttribute("aria-disabled", "true");
+      off.onclick = () => { window.pressed = true; };
+    });
+    for (const id of ["edge-r", "edge-l", "off"]) {
+      await page.locator(`#${id}`).evaluate((el) => el.scrollIntoView());
+      if (options.hasTouch) await page.locator(`#${id}`).tap({ force: true }); else await page.locator(`#${id}`).hover({ force: true });
+      await page.waitForSelector("#tip[data-on]");
+      await page.waitForTimeout(150);
+      assert.ok(await tipInside(), `${name}: the tooltip of #${id} is inside the window`);
+      await page.keyboard.press("Escape");
+    }
+    await page.locator("#off").click({ force: true });
+    await page.waitForSelector("#tip[data-on]");
+    assert.equal(await tip.textContent(), "Not available yet.", `${name}: a switched-off control shows its reason when pressed`);
+    assert.equal(await page.evaluate(() => window.pressed ?? false), false, `${name}: and does not run its action`);
+    ok(`${name}: tooltip placement at both edges, and the reason of a switched-off control`);
     await context.close();
   }
 

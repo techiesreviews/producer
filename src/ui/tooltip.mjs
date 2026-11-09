@@ -14,6 +14,9 @@ export function installTooltip(doc = document) {
     tip.textContent = text;
     tip.setAttribute("data-on", "");
     el.setAttribute("aria-describedby", tip.id);
+    // Measure from the corner, so the size does not depend on where the last tooltip was.
+    tip.style.left = "0px";
+    tip.style.top = "0px";
     const r = el.getBoundingClientRect();
     const t = tip.getBoundingClientRect();
     const view = doc.documentElement;
@@ -33,14 +36,18 @@ export function installTooltip(doc = document) {
     const el = e.target.closest("[data-tip]");
     clearTimeout(timer);
     if (!el) hide();
-    else if (el !== owner) timer = setTimeout(() => show(el), e.pointerType === "mouse" ? 250 : 0);
+    else if (el !== owner) {
+      if (e.pointerType === "mouse") timer = setTimeout(() => show(el), 250);
+      else show(el);
+    }
   });
   doc.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-tip]")) hide(); });
   doc.addEventListener("focusin", (e) => {
     const el = e.target.closest("[data-tip]");
     if (el && el.matches(":focus-visible")) show(el);
   });
-  doc.addEventListener("focusout", hide);
+  // Only the control that owns the tooltip takes it away: a tap that moves focus to another control must keep its own.
+  doc.addEventListener("focusout", (e) => { if (e.target === owner) hide(); });
   doc.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
   doc.addEventListener("scroll", hide, true);
   doc.addEventListener("click", (e) => {

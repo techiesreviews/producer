@@ -42,3 +42,14 @@ test("the theme is a light and a dark one that follow the system", () => {
   assert.match(css, /color-scheme:\s*light dark/);
   assert.ok(Object.values(tokens).filter((t) => t.light !== t.dark).length >= 8, "most tokens differ between light and dark");
 });
+
+test("the keyboard focus ring meets 3:1 on every surface it can sit on, in light and dark", () => {
+  const ring = css.match(/:focus-visible\s*\{[^}]*outline:\s*\S+\s+\S+\s+var\(--([\w-]+)\)/)?.[1];
+  assert.ok(ring, "the focus ring takes its colour from a theme token");
+  for (const mode of ["light", "dark"]) {
+    for (const bg of ["bg", "surface", "raised"]) {
+      const r = ratio(oklchToRgb(tokens[ring][mode]), oklchToRgb(tokens[bg][mode]));
+      assert.ok(r >= 3, `${mode}: the ring (--${ring}) on --${bg} is ${r.toFixed(2)}:1`);
+    }
+  }
+});
