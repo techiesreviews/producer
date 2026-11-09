@@ -29,7 +29,7 @@ const TOKEN_PATTERNS = [
   ["Cloudflare API token", /(?<![A-Za-z])(cloudflare|cf)[_-]?(api[_-]?)?(token|key)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{40}(?![A-Za-z0-9_-])|[a-z]Cf(Api)?(Token|Key)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{40}(?![A-Za-z0-9_-])/i],
   // An account id is not secret, but it is kept out of the repo on purpose: a Worker config reads it from CLOUDFLARE_ACCOUNT_ID.
   ["Cloudflare account id", /(?<![A-Za-z])account[_-]?id["']?\s*[:=]\s*["']?[0-9a-f]{32}(?![0-9a-zA-Z])|[a-z]AccountId["']?\s*[:=]\s*["']?[0-9a-f]{32}(?![0-9a-zA-Z])/i],
-  ["Restream client secret", /(?<![A-Za-z])restream[_-]?(client[_-]?)?secret["']?\s*[:=]\s*["']?[A-Za-z0-9_~+/=-]{16,}(?![A-Za-z0-9_.~+/=-])/i],
+  ["Restream client secret", /(?<![A-Za-z])restream[_-]?(client[_-]?)?secret["']?\s*[:=]\s*["']?(?=[A-Za-z0-9_~+/=-]*[0-9])[A-Za-z0-9_~+/=-]{16,}(?![A-Za-z0-9_~+/=-])/i],
   // A long base64 or hex value, with a letter and a digit in it, after a name that ends in key, secret, token or password.
   ["long value after a key name", /(?<![A-Za-z])[A-Za-z0-9_-]*(secret|token|password|passwd|pass|key)["']?\s*[:=]\s*["']?(?=[A-Za-z0-9+/]*[0-9])(?=[A-Za-z0-9+/]*[A-Za-z])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/=])/i],
   // A path inside a person's home folder shows a local user name; write ~/Projects/... in docs instead.
@@ -90,7 +90,11 @@ const SAMPLES = {
   "Cloudflare API token | quoted camelCase": ['cfApi' + 'Token: "' + "Zy9-".repeat(10) + '"', 'cfApiToken: "' + "Zy9-".repeat(5) + '"'],
   "Cloudflare account id": ["CLOUDFLARE_ACCOUNT_" + "ID=" + "0123456789abcdef".repeat(2), "CLOUDFLARE_ACCOUNT_ID=your-account-id"],
   "Cloudflare account id | wrangler json": ['"account' + '_id": "' + "fedcba9876543210".repeat(2) + '"', '"account_id": "<account id>"'],
-  "Restream client secret": ["RESTREAM_CLIENT_" + "SECRET=" + "q".repeat(16), "const restreamClientSecret = context.env." + "RESTREAM_CLIENT_SECRET;"],
+  "Restream client secret": ["RESTREAM_CLIENT_" + "SECRET=" + "q1".repeat(8), "const restreamClientSecret = context.env." + "RESTREAM_CLIENT_SECRET;"],
+  "Restream client secret | placeholder": ["RESTREAM_CLIENT_" + "SECRET=" + "q1".repeat(8) + ".", "RESTREAM_CLIENT_SECRET=your-client-secret"],
+  "Restream client secret | function call": ["restreamClient" + "Secret = " + "a1".repeat(10), "const restreamClientSecret = getRestreamClientSecret(env)"],
+  "home folder path | macOS, kit.json shape": ['"mainRoot": "/Us' + 'ers/someone/x"', "https://example.com/Users/a/"],
+  "home folder path | inside a word": ["/ho" + "me/someone/x", "src/home/components/x"],
   "home folder path": ["/ho" + "me/someone/Projects/x", "~/Projects/x"],
   "long value after a key name": ['private_' + 'key = "' + "A1b2C3d4".repeat(5) + '"', 'key = "ordinary-words-only-no-digits-in-this-long-name"'],
   "long value after a key name | hex, camelCase": ["signing" + "Key: " + "0123456789abcdef".repeat(2), "checksum: " + "0123456789abcdef".repeat(2)],
