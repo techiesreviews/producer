@@ -42,7 +42,10 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .num { font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { .tb { min-block-size: 2.75rem; } }
 
-/* The microphone's level, live while it is on (a bar that fills from the left). */
+/* A source of sound: its button and its level meter stay together when the row wraps. */
+.source { display: inline-flex; align-items: center; gap: 0.5rem; }
+
+/* A source's level, live while it is on (a bar that fills from the left). */
 .meter { inline-size: 4.5rem; block-size: 6px; border-radius: 99px; background: var(--line); overflow: clip; }
 .meter > i { display: block; block-size: 100%; background: var(--agent); transform-origin: left; transform: scaleX(0); transition: transform 90ms linear; }
 @media (prefers-reduced-motion: reduce) { .meter > i { transition: none; } }

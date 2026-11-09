@@ -5,12 +5,14 @@
 // The model and its engine come from this site once (manifest.json lists every file and its parts), are checked
 // against their SHA-256 and kept in the browser's cache, so a later visit loads without downloading.
 //
-// Page -> worker: { type: "load" }, { type: "audio", samples: Float32Array, rate }, { type: "stop" }.
+// One stream per source: "host" (the microphone) and "guest" (the shared tab), kept apart in lanes.mjs and never mixed.
+// Page -> worker: { type: "load" }, { type: "audio", source, samples: Float32Array, rate },
+//   { type: "stop" } (every source) or { type: "stop", source }.
 // Worker -> page: { type: "progress", loaded, total }, { type: "ready" }, { type: "error", reason },
-//   { type: "text", piece, final, text, start, end } and { type: "pause", at }.
-import { createResampler } from "./resample.mjs";
+//   { type: "text", source, piece, final, text, start, end } and { type: "pause", source, at }.
+// Times are seconds of the sound that source has delivered since it last started.
 import { guardRepeats } from "./repeat.mjs";
-import { createSegmenter } from "./segmenter.mjs";
+import { createJobs, createLanes } from "./lanes.mjs";
 
 const CACHE_PREFIX = "producer-speech-";
 const MODEL_ID = "speech/model";
@@ -18,13 +20,8 @@ const here = (path) => new URL(path, self.location.href).href;
 
 let asr = null;
 let loading = null;
-let segmenter = null;
-// Piece numbers go on across Stop and Listen, so a late piece from before a Stop never shares a number with a new one.
-let nextPiece = 1;
-let resample = null;
-let resampleRate = 0;
-const finals = [];
-let draft = null;
+const lanes = createLanes();
+const jobs = createJobs();
 let busy = false;
 
 const post = (message) => self.postMessage(message);
@@ -113,17 +110,16 @@ async function transcribe(job) {
   return guardRepeats(result.text);
 }
 
-/** One piece at a time: every final in order; a draft only when nothing else waits (the newest one). */
+/** One piece at a time: every final in order; a draft only when no final waits (see createJobs). */
 async function pump() {
   if (busy || !asr) return;
   busy = true;
   try {
     for (;;) {
-      const job = finals.shift() ?? draft;
+      const job = jobs.next();
       if (!job) break;
-      if (job === draft) draft = null;
       const text = await transcribe(job);
-      if (text) post({ type: "text", piece: job.piece, final: job.type === "final", text, start: job.start, end: job.end });
+      if (text) post({ type: "text", source: job.source, piece: job.piece, final: job.type === "final", text, start: job.start, end: job.end });
     }
   } finally {
     busy = false;
@@ -132,11 +128,8 @@ async function pump() {
 
 function take(events) {
   for (const e of events) {
-    if (e.type === "pause") post({ type: "pause", at: e.at });
-    else if (e.type === "final") {
-      if (draft?.piece === e.piece) draft = null;
-      finals.push(e);
-    } else draft = e;
+    if (e.type === "pause") post({ type: "pause", source: e.source, at: e.at });
+    else jobs.add(e);
   }
   pump().catch((error) => post({ type: "error", reason: String(error?.message || error) }));
 }
@@ -149,16 +142,9 @@ self.onmessage = ({ data }) => {
     );
   } else if (data.type === "audio") {
     if (!asr) return;
-    if (!segmenter) segmenter = createSegmenter({ firstPiece: nextPiece });
-    if (data.rate !== resampleRate) { resample = createResampler(data.rate); resampleRate = data.rate; }
-    take(segmenter.push(resample(data.samples)));
+    take(lanes.push(data.source, data.samples, data.rate));
   } else if (data.type === "stop") {
-    if (segmenter) {
-      take(segmenter.flush());
-      nextPiece = segmenter.nextPiece;
-    }
-    draft = null;
-    segmenter = null;
-    resampleRate = 0;
+    take(lanes.stop(data.source));
+    jobs.dropDrafts(data.source);
   }
 };

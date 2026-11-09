@@ -29,6 +29,8 @@ const TEST_TIP = "Warm-up before you go live. For quicker answers, pick a fast m
 const GUEST = ["Yes", "No · my mic only", "Solo show"];
 const KEY_TIP = "Comes later: your own paid AI key, capped at about €5 per stream.";
 const OFF_REASON = "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.";
+const PHONE_REASON = "Phone and tablet browsers generally cannot share a tab with sound. Use Chrome or Edge on a computer.";
+const TAB_LABEL = "Share the studio tab with sound";
 
 // The colour the browser paints for a CSS colour, as [r, g, b] (a canvas turns oklch and light-dark into pixels).
 const paint = (page, expression) => page.evaluate((e) => {
@@ -51,11 +53,11 @@ const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 // questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at
 // a time with its done mark, the guest step's answers, the wide (label beside) or compact (label above) layout, and no
 // word on the screen beyond its labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
-async function checkSetup(page, name, { phone, touch, chip }) {
+async function checkSetup(page, name, { phone, touch, chip, tabOff }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone 6 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
@@ -181,6 +183,91 @@ async function checkSwitchedOff(page, name, out, { touch }) {
   await page.keyboard.press("Escape");
   await page.evaluate(() => { document.activeElement?.blur(); document.getElementById("offChoice").remove(); });
   return [shot];
+}
+
+// The tab-sound button in the Sound step. Chrome on a computer: ready, with how to share it and the headphones advice
+// in its tooltip, no meter yet. A browser that cannot (Firefox, a phone): switched off with the "i" mark and the plain
+// reason, shown by hover, tap or focus, and a press never asks the browser to share anything. The guest's answer No or
+// Solo show switches it off with its own reason, and Yes brings it back. It fits its row and is finger-sized on touch.
+// `reason` is the browser's reason, or null when the browser can. Leaves the guest answer Yes. Returns screenshots.
+async function checkTabSound(page, name, out, { touch, reason }) {
+  const btn = page.locator("#tabBtn");
+  const tip = page.locator("#tip");
+  const shots = [];
+  const asked = () => page.evaluate(() => window.__displayCalls);
+  const showsTip = (t) => page.waitForFunction((x) => document.querySelector("#tip[data-on]")?.textContent === x, t);
+  const press = async () => { if (touch) await btn.tap({ force: true }); else await btn.click({ force: true }); };
+  const answer = async (label) => { const b = page.getByRole("button", { name: label, exact: true }); if (touch) await b.tap(); else await b.click(); await page.evaluate(() => document.activeElement?.blur()); };
+  const close = async () => { await page.keyboard.press("Escape"); await page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on")); };
+  const shoot = async (label) => {
+    await page.waitForTimeout(150);
+    const r = await page.locator("#sSound").boundingBox();
+    const shot = join(out, `page-${name}-tab-${label}.png`);
+    await page.screenshot({ path: shot, clip: { x: 0, y: Math.max(0, r.y - 8), width: page.viewportSize().width, height: Math.min(r.height + 130, 300) } });
+    shots.push(shot);
+  };
+
+  assert.equal(await page.locator("#tabTxt").innerText(), TAB_LABEL, `${name}: the button says what it does`);
+  assert.equal(await page.locator("#tabMeter").isHidden(), true, `${name}: no tab meter until a tab is shared`);
+  assert.equal(await btn.getAttribute("data-state"), null, `${name}: the tab button starts plain`);
+  const box = await page.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, tab: r("#tabBtn"), row: r("#sSound .step__ctl"), mic: r("#micBtn") };
+  });
+  assert.ok(box.tab.left >= box.row.left - 0.5 && box.tab.right <= box.row.right + 0.5 && box.tab.right <= box.width, `${name}: the tab button sits inside its row and the window`);
+  assert.ok(box.scrollWidth <= box.width, `${name}: no sideways scroll with the tab button`);
+  if (touch) assert.ok(box.tab.height >= 44, `${name}: the tab button is a finger-sized target (${box.tab.height}px)`);
+
+  if (reason) {
+    assert.equal(await btn.getAttribute("aria-disabled"), "true", `${name}: switched off in this browser`);
+    assert.equal(await btn.getAttribute("data-tip"), reason, `${name}: with the plain reason`);
+    assert.equal(await btn.locator(".off-mark").count(), 1, `${name}: carrying the round "i" mark`);
+    const look = await btn.evaluate((el) => ({ color: getComputedStyle(el).color, cursor: getComputedStyle(el).cursor }));
+    assert.deepEqual(await paint(page, look.color), await token(page, "faint"), `${name}: greyed`);
+    if (!touch) assert.equal(look.cursor, "help", `${name}: the pointer asks "why?"`);
+    if (touch) await btn.tap({ force: true }); else await btn.hover();
+    await showsTip(reason);
+    await shoot("off");
+    await close();
+    await press();
+    await showsTip(reason);
+    assert.equal(await asked(), 0, `${name}: pressing it asks the browser for nothing`);
+    await close();
+    assert.equal(await page.locator("#sSound").evaluate((el) => el.hasAttribute("data-done")), false, `${name}: the Sound step waits for the microphone`);
+  } else {
+    assert.equal(await btn.getAttribute("aria-disabled"), null, `${name}: ready in this browser`);
+    const idle = await btn.getAttribute("data-tip");
+    assert.match(idle, /^Pick a browser tab and tick "Also share tab audio"\./, `${name}: the tooltip says how to share`);
+    assert.match(idle, /Wear headphones/, `${name}: and asks the host for headphones`);
+    if (touch) await btn.tap(); else await btn.hover();
+    await showsTip(idle);
+    await shoot("ready");
+    await close();
+    await page.evaluate(() => document.activeElement?.blur());
+  }
+
+  // The guest's answer: No and Solo show switch it off with their own reasons (a browser's own reason wins); Yes brings it back.
+  const expect = { "No · my mic only": "Your guest said no: only your microphone is listened to.", "Solo show": "Solo show: no guest to hear." };
+  for (const [label, why] of Object.entries(expect)) {
+    await answer(label);
+    assert.equal(await btn.getAttribute("aria-disabled"), "true", `${name}: ${label}: the tab button is switched off`);
+    assert.equal(await btn.getAttribute("data-tip"), reason ?? why, `${name}: ${label}: ${reason ? "the browser's own reason stays" : "with the reason"}`);
+  }
+  if (!reason) { await answer("No · my mic only"); await shoot("guest-no"); }
+  await answer("Yes");
+  assert.equal(await btn.getAttribute("aria-disabled"), reason ? "true" : null, `${name}: Yes: ${reason ? "still off in this browser" : "the tab button is ready again"}`);
+  // Leave nothing open for the next check: the pointer moves off and the tooltip the last answer opened is closed.
+  if (!touch) await page.mouse.move(5, 600);
+  await close();
+  return shots;
+}
+
+// Counts how often the page asks the browser to share a tab or screen (window.__displayCalls), for the checks that a
+// switched-off tab button asks for nothing. The call itself is refused, so no real picker is ever involved.
+function countDisplayCalls() {
+  window.__displayCalls = 0;
+  const media = navigator.mediaDevices;
+  if (media?.getDisplayMedia) media.getDisplayMedia = async () => { window.__displayCalls++; throw new DOMException("refused for the check", "NotAllowedError"); };
 }
 
 // A stand-in for the browser's WebSocket, put in before the page runs: the page's relay socket talks to it instead of
@@ -620,6 +707,7 @@ export async function run({ browser, playwright, base, out }) {
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
     const page = await context.newPage();
     await page.addInitScript(fakeRelay);
+    await page.addInitScript(countDisplayCalls);
     const requests = [];
     const problems = [];
     page.on("request", (r) => requests.push(r.url()));
@@ -697,8 +785,11 @@ export async function run({ browser, playwright, base, out }) {
     await page.screenshot({ path: plain });
     screenshots.push(plain);
 
-    await checkSetup(page, name, { phone: Boolean(options.isMobile), touch: Boolean(options.hasTouch), chip: options.isMobile ? /^Chrome 157 · phone$/ : /^Chrome \d+ · desktop$/ });
+    await checkSetup(page, name, { phone: Boolean(options.isMobile), touch: Boolean(options.hasTouch), chip: options.isMobile ? /^Chrome 157 · phone$/ : /^Chrome \d+ · desktop$/, tabOff: Boolean(options.isMobile) });
     ok(`${name}: the setup screen (browser chip, step 1, picking by mouse${options.hasTouch ? ", tap" : ""} and keyboard, ${options.isMobile ? "compact" : "wide"} layout, no extra words)`);
+
+    screenshots.push(...await checkTabSound(page, name, out, { touch: Boolean(options.hasTouch), reason: options.isMobile ? PHONE_REASON : null }));
+    ok(`${name}: the tab-sound button (${options.isMobile ? "switched off with the phone reason" : "ready, with how to share and the headphones advice"}; the guest's answer switches it off and on; fits its row)`);
 
     screenshots.push(...await checkAgent(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
     screenshots.push(...await checkWays(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
@@ -954,12 +1045,14 @@ export async function run({ browser, playwright, base, out }) {
       await page.screenshot({ path: plain });
       screenshots.push(plain);
       await page.addInitScript(fakeRelay);
+      await page.addInitScript(countDisplayCalls);
       await page.reload();
-      await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/ });
+      await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/, tabOff: true });
+      screenshots.push(...await checkTabSound(page, name, out, { touch: false, reason: OFF_REASON }));
       screenshots.push(...await checkAgent(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkWays(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkSwitchedOff(page, name, out, { touch: false }));
-      ok(`${name}: loads alone, names Firefox, the setup screen works and a switched-off choice shows its reason`);
+      ok(`${name}: loads alone, names Firefox, the setup screen works and a switched-off choice shows its reason, with the tab-sound button off for Firefox`);
       await context.close();
     }
   } finally {

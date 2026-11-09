@@ -87,12 +87,20 @@ Each entry:
 - Spec: `test/browser/runorder.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-setup-08 Tab sound: hear the guest through the studio's tab
+- Try: In Chrome or Edge on a computer, pick Yes at Guest agreed, turn on the Microphone, then press "Share the studio tab with sound", pick the studio's browser tab and tick "Also share tab audio". Press the button again to stop sharing. Pick No or Solo show while it is shared. Open the page in Firefox, Safari or a phone browser and hover or tap the button. Share a window instead of a tab, or leave out the sound.
+- Good: A second button beside Microphone, with its own small level meter that moves with the tab's sound and not the microphone's. Once shared it turns green and reads "Restream Studio tab" (or "Wave.video tab", else "Studio tab"). Its tooltip asks the host to wear headphones. A browser that cannot do it (Firefox, Safari, a phone) shows it switched off with the round "i" and the plain reason; No or Solo show switch it off too and stop a share that is already running. A closed picker, a tab without sound or a window says so on the button itself ("Tab not shared", "No tab sound", "Share a browser tab", each "· try again"), with the way out in the tooltip. The Sound step turns green only when the microphone is on and the tab is shared or switched off, and "Open producer screen" waits for it ("Share the studio tab with sound first."). The page never plays the tab's sound.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/browser.mjs`
+- Phone: yes
+- Spec: `test/browser/page.mjs`, `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)
+
 ## Live
 
 ### F-live-01 The listening sign, Stop and Listen
 - Try: With every step done, press "Open producer screen"; then Stop, then Listen.
-- Good: The setup makes way for the producer screen (a frame; its panels come later). The top bar shows a breathing red dot, "Listening · mic only" (on a phone "mic only"), the guest's answer ("Guest ✓", "Guest: no", none on a solo show) and Stop. Stop ends the microphone at once and the sign reads "Not listening" with an orange Listen; a Listen that fails says so on itself ("Microphone blocked · Listen"). A microphone that ends by itself stops the sign; a model that fails brings back the setup with its reason. The page never plays a sound.
-- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
+- Good: The setup makes way for the producer screen (a frame; its panels come later). The top bar shows a breathing red dot and what is heard: "Listening · host mic + guest tab" while the studio tab is shared, "Listening · host mic" otherwise (on a phone only the source words), the guest's answer ("Guest ✓", "Guest: no", none on a solo show) and Stop. Stop ends the microphone and the shared tab at once and the sign reads "Not listening" with an orange Listen; Listen starts the microphone again and asks the browser for the tab again (the browser never remembers a share). A Listen that fails says so on itself ("Microphone blocked · Listen"). A microphone that ends by itself stops the sign; a tab that ends by itself leaves "host mic" in the sign while listening goes on; a model that fails brings back the setup with its reason. The host's words and the guest's are kept apart and labelled host and guest, never mixed. The page never plays a sound.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/speech/lanes.mjs`, `src/speech/worker.mjs`
 - Phone: yes
 - Spec: `test/browser/speech.mjs`
 - Steps: none yet (no kit shots command)
