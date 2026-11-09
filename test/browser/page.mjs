@@ -661,10 +661,12 @@ export async function run({ browser, playwright, base, out }) {
       return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight, top, chip, screen };
     });
     assert.ok(box.scrollWidth <= box.width, `${name}: no sideways scroll (${box.scrollWidth} > ${box.width})`);
-    assert.ok(box.scrollHeight <= box.height, `${name}: the setup screen does not scroll (${box.scrollHeight} > ${box.height})`);
+    // A computer's window shows the whole setup screen. A phone's may need a scroll once step 2 has its four agent choices
+    // and two ways (card 09: five steps, about 70px over 844); it never scrolls sideways (checked above).
+    if (!options.isMobile) assert.ok(box.scrollHeight <= box.height, `${name}: the setup screen does not scroll (${box.scrollHeight} > ${box.height})`);
     assert.ok(box.top.left === 0 && Math.round(box.top.width) === box.width, `${name}: the bar spans the window`);
     assert.ok(box.chip.right <= box.width && box.chip.left >= 0, `${name}: the Private chip is inside the window`);
-    assert.ok(box.screen.top >= box.top.bottom - 0.5 && Math.round(box.screen.bottom) === box.height, `${name}: the screen fills the rest`);
+    assert.ok(box.screen.top >= box.top.bottom - 0.5 && (options.isMobile ? Math.round(box.screen.bottom) >= box.height : Math.round(box.screen.bottom) === box.height), `${name}: the screen fills the rest`);
     ok(`${name}: layout`);
 
     // The words: the name always; the label "Private" always readable (shown wide, hidden visually on a phone), the show line wide only.
