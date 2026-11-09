@@ -30,15 +30,15 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 
 ## The speed target
 
-On the fast way, a suggestion is on the page within 5 s (middle) and 10 s (slowest 1 in 10) after the speech ends.
+On the fast way, a suggestion is on the page within 5 s in the middle case (half the suggestions come faster) and 10 s in the slowest one in ten, after the speech ends.
 
 ### The page's own share (checked on every change)
 
-`test/speed.test.mjs` runs the real Worker over HTTP with the relay object and a stand-in agent that answers each cue after a set delay. From the pause to the answer kept on the page, minus the agent's own delay, must stay under 0.3 s on each of 10 cues. Measured (2026-11-09, this computer): 4 ms middle and 7 ms slowest one tool call per turn; 16 ms middle and 23 ms slowest with the curl loop run in bash (it starts bash and curl for each answer). The browser suite `kit specs cues` checks the same in Chromium: the cue reaches the agent's wait in a few milliseconds after the pause.
+`test/speed.test.mjs` runs this site's real server code on the computer, with the same go-between the agent's calls pass through, and a stand-in agent that answers each cue after a set delay. From the pause to the answer kept on the page, minus the agent's own delay, must stay under 0.3 s on each of 10 cues. Measured (2026-11-09, this computer): 4 ms middle and 7 ms slowest one tool call per turn; 16 ms middle and 23 ms slowest with the curl loop run in bash (it starts bash and curl for each answer). The browser suite `kit specs cues` checks the same in Chromium: the cue reaches the agent's wait in a few milliseconds after the pause.
 
 ### Real runs with Claude Code (2026-11-09)
 
-A temporary local Worker (`wrangler dev`, nothing deployed), the page's own modules driving the connection, Claude Code (Opus 5.5) in print mode, 10 real transcript pieces of about 45 to 70 words, a cue every 30 s (the rule says a minute; halved to keep the run short), one Test first. Times are from the pause to the answer on the page; add the 1.5 s pause for "after the speech ends". One machine, 10 cues: the slowest is just the worst of 10.
+A temporary copy of the site running only on this computer (Cloudflare's own local tool, nothing deployed), the page's own modules driving the connection, Claude Code (Opus 5.5) started from a script with no window, 10 real transcript pieces of about 45 to 70 words, a cue every 30 s (the rule says a minute; halved to keep the run short), one Test first. Times are from the pause to the answer on the page; add the 1.5 s pause for "after the speech ends". One machine, 10 cues: the slowest is just the worst of 10.
 
 | Way | Test (warm-up) | Middle | Slowest | From speech end: middle / slowest | Target |
 |---|---|---|---|---|---|
