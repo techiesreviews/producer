@@ -4,7 +4,8 @@
 // loop went quiet), "on" (the agent's loop is alive) and "elsewhere" (a newer tab took the relay). Test is the
 // warm-up: one sample cue, timed until the agent's answer comes back.
 // This is the agent's own part of the page: the cue rules (src/cues.mjs) hand it a cue with send(), it gives the agent
-// the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()).
+// the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()). asking() says whether
+// the newest show cue still waits for the agent's turn (the question card's thinking light).
 // Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
 // The inlined page script keeps this file's code as it is (the build only drops `export`).
@@ -52,6 +53,14 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
   let latest = null; // the agent's latest answer: { seq, cue, suggestions, ms }
   let suggested = () => {};
   const answered = new Set();
+  let askedSeq = 0; // the newest show cue sent
+  let settledSeq = 0; // the newest cue the agent answered, or came back past with no answer
+  let onSettled = () => {};
+  function settle(upTo) {
+    if (upTo <= settledSeq) return;
+    settledSeq = upTo;
+    if (settledSeq >= askedSeq) onSettled();
+  }
 
   // passed: a Test was answered on this connection (step 2 is done while the agent is connected).
   const view = () => ({ state: link.state, failed: link.failed, test: { ...link.test }, passed: link.passed });
@@ -99,6 +108,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
       chars -= cues.splice(i, 1)[0].transcript.reduce((m, l) => m + l.text.length, 0);
     }
     sent.set(seq, { cue: item.cue, sentAt: now(), test });
+    if (!test) askedSeq = seq;
     if (sent.size > SENT_KEPT) sent.delete(sent.keys().next().value);
     if (held) {
       const { id, after } = held;
@@ -119,6 +129,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
       latest = { seq: after, cue: of.cue, suggestions, ms: now() - of.sentAt };
       suggested(latest);
     }
+    if (of && !of.test) settle(after);
     // The Test is done by the answer to its cue, or, while it still runs, by any later answer.
     if (cue && link.test.state !== "ok" && (after === cue.seq || (link.test.state === "busy" && after > cue.seq))) {
       timers.clearTimeout(testTimer);
@@ -136,6 +147,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     take(asked, args.suggestions);
     // A seq ahead of this page (the agent kept it from another tab of the same connection) counts from the page's own.
     const after = Math.min(asked, seq);
+    // Back past a cue with no answer: the agent chose to give none, so the page stops waiting for it.
+    if (!Array.isArray(args.suggestions) || !args.suggestions.length) settle(after);
     drop(); // a newer wait replaces the one held (the relay has already ended it)
     cues = cues.filter((c) => c.seq > after); // the agent has seen these
     if (cues.length) return deliver(id, after);
@@ -201,6 +214,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     sent.clear();
     latest = null;
     answered.clear();
+    askedSeq = 0;
+    settledSeq = 0;
     changed();
   }
 
@@ -287,5 +302,13 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
 
     /** The agent's latest answer, kept in memory for the question card (null before one, and after Disconnect). */
     suggestion: () => latest,
+
+    /** True while the newest show cue waits for the agent's turn: no answer yet, and the agent has not come back past it. */
+    asking: () => askedSeq > settledSeq,
+
+    /** Called when the agent's turn on the newest show cue is over (answered, or passed by with no answer). */
+    onSettled(fn) {
+      onSettled = fn;
+    },
   };
 }

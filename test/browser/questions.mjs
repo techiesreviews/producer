@@ -5,7 +5,7 @@
 // Checks: the first prepared question shows from the start; Suggest now sends a cue at once, says Thinking… on itself
 // and lights the quiet thinking light without moving the card; the agent's answer takes the card once (question, a few
 // words why, its source chip, the two to swap in) and the spacing shows on the button; Slow down doubles it; an
-// alternative swaps in; Asked and Skip move on, by touch and by keyboard; a quiet agent leaves the card as it is; a
+// alternative swaps in; Asked and Skip move on, by touch and by keyboard; an agent with no answer leaves the card; a
 // disconnected agent leaves the list question and switches Suggest now off with "no agent"; layouts; nothing stored.
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -176,8 +176,14 @@ export async function run({ browser, base, out }) {
 
     // The answer: the agent's first suggestion takes the card with its why and source; the others and the old question
     // to swap in. The spacing shows on the button; a press too soon sends nothing and shows why.
-    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000, suggestions: [{ question: 3, why: "She hinted at a hard first year." }, { text: "What surprised you most about who pays?", why: "Ties to her pricing story." }] }); });
-    await page.waitForFunction(() => document.querySelector("#qMain").textContent === "What went wrong first?");
+    // The card's own share of the time: from the agent's answer arriving to the new question on screen.
+    const onScreenMs = await page.evaluate(() => new Promise((resolve) => {
+      const main = document.querySelector("#qMain");
+      const t0 = performance.now();
+      new MutationObserver((_, o) => { if (main.textContent === "What went wrong first?") { o.disconnect(); resolve(performance.now() - t0); } }).observe(main, { childList: true, characterData: true, subtree: true });
+      window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000, suggestions: [{ question: 3, why: "She hinted at a hard first year." }, { text: "What surprised you most about who pays?", why: "Ties to her pricing story." }] });
+    }));
+    assert.ok(onScreenMs < 300, `${name}: answer in to question on screen in ${onScreenMs.toFixed(1)} ms, under 300 ms`);
     assert.deepEqual(await card(), { q: "What went wrong first?", why: "She hinted at a hard first year.", src: "Q3 · your list", alts: [["What surprised you most about who pays?", "New"], ["How did it start?", "Q1 · your list"]] }, `${name}: the agent's answer on the card`);
     assert.deepEqual(await light(), { cls: "dot dot--ok", label: "Agent ready", tip: "Agent ready." }, `${name}: the light is green again`);
     assert.match(await text("#suggestBtn"), /^Suggest now · (9|10) s$/, `${name}: the 10 s spacing on the button`);
@@ -190,10 +196,11 @@ export async function run({ browser, base, out }) {
     const accent = await paintedContrast(page.locator("#qSrc"));
     assert.ok(accent >= 4.5, `${name}: the source chip reads at ${accent.toFixed(2)}:1`);
     await shot("suggestion");
-    ok(`${name}: the answer takes the card with why and source, the two to swap in; the 10 s spacing on the button`);
+    ok(`${name}: the answer takes the card with why and source, the two to swap in (on screen in ${onScreenMs.toFixed(1)} ms); the 10 s spacing on the button`);
 
     // The curl loop sends the same answer again after an idle round: shown once.
-    await press(page.locator("#skipBtn"));
+    // Skip: a tap on a phone, the keyboard (Enter) on a computer.
+    if (phone) await press(page.locator("#skipBtn")); else { await page.locator("#skipBtn").focus(); await page.keyboard.press("Enter"); }
     assert.equal((await card()).q, "What surprised you most about who pays?", `${name}: Skip moves to the first alternative`);
     await page.evaluate(() => window.__relay.call("post_suggestions", { suggestions: [{ question: 3, why: "She hinted at a hard first year." }, { text: "What surprised you most about who pays?", why: "Ties to her pricing story." }] }));
     assert.equal((await card()).q, "What surprised you most about who pays?", `${name}: the same answer again changes nothing`);
@@ -203,8 +210,9 @@ export async function run({ browser, base, out }) {
     await page.clock.fastForward(10_000);
     await page.waitForFunction(() => document.querySelector("#suggestBtn").textContent === "Suggest now");
     assert.equal(await suggest.getAttribute("aria-disabled"), null, `${name}: Suggest now is on again after 10 s`);
-    await press(page.locator("#slowBtn"));
+    if (phone) await press(page.locator("#slowBtn")); else { await page.locator("#slowBtn").focus(); await page.keyboard.press("Space"); }
     assert.equal(await page.locator("#slowBtn").getAttribute("aria-checked"), "true", `${name}: Slow down on`);
+    assert.equal(await page.locator("#turnChip").getAttribute("data-tip"), "Agent turns this show. At most one in 2 minutes on its own.", `${name}: the turn chip's tooltip follows Slow down`);
     await press(suggest);
     await page.evaluate(() => window.__wait);
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000, suggestions: [{ text: "Who was your first hire, and why them?" }] }); });
@@ -215,29 +223,28 @@ export async function run({ browser, base, out }) {
     assert.equal(await text("#turnChip"), "2 turns", `${name}: two turns`);
     ok(`${name}: Slow down doubles the spacing; a suggestion with no why shows none`);
 
-    // An alternative swaps in; Asked and Skip move on (Asked by keyboard).
+    // An alternative swaps in (by keyboard on a computer: the focus stays on it); Asked by keyboard moves on.
     const before = await card();
-    await press(page.locator("#alts .alt").nth(1));
+    if (phone) await press(page.locator("#alts .alt").nth(1)); else { await page.locator("#alts .alt").nth(1).focus(); await page.keyboard.press("Enter"); }
     const swapped = await card();
     assert.deepEqual([swapped.q, swapped.alts[1][0]], [before.alts[1][0], before.q], `${name}: an alternative swaps with the card`);
+    if (!phone) assert.ok(await page.evaluate(() => document.activeElement === document.querySelectorAll("#alts .alt")[1]), `${name}: the focus stays on the alternative`);
     await page.locator("#askedBtn").focus();
     await page.keyboard.press("Enter");
     assert.equal((await card()).q, swapped.alts[0][0], `${name}: Asked (Enter) moves to the first alternative`);
     ok(`${name}: an alternative swaps in; Asked by keyboard moves on`);
 
-    // A quiet agent: a cue with no answer keeps the card; after a minute the light goes back to ready.
+    // An agent that takes the cue and gives no answer: the card stays as it is; the light and the button are back at once.
     await page.clock.fastForward(20_000);
     const kept = await card();
     await press(suggest);
     assert.equal(await text("#suggestBtn"), "Thinking…", `${name}: thinking`);
-    // The agent's loop stays alive (idle waits), but no answer comes.
-    for (let i = 0; i < 4; i++) {
-      await page.evaluate(() => { window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
-      await page.clock.fastForward(16_000);
-    }
+    assert.equal((await page.evaluate(() => window.__wait)).result.seq, 3, `${name}: the cue reached the agent's wait`);
+    await page.evaluate(() => { window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
     await page.waitForFunction(() => document.querySelector("#thinkDot").className === "dot dot--ok");
-    assert.deepEqual(await card(), kept, `${name}: a quiet agent leaves the card as it is`);
-    ok(`${name}: a quiet agent: the card stays, the light goes back to ready after a minute`);
+    assert.match(await text("#suggestBtn"), /^Suggest now · (19|20) s$/, `${name}: Suggest now counts down again`);
+    assert.deepEqual(await card(), kept, `${name}: no answer leaves the card as it is`);
+    ok(`${name}: an agent that gives no answer: the card stays; the light and Suggest now are back at once`);
 
     // The agent disconnects mid-show: the card keeps its question, Suggest now says "no agent" on itself, the light is grey.
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));

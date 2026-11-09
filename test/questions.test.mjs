@@ -28,6 +28,14 @@ test("the agent's answer takes the card: its first suggestion, the others and th
   assert.deepEqual(v.alts, [{ text: "What surprised you?", why: "ties to the van", from: "agent" }, { n: 1, text: "How did it start?", from: "list" }], "the second suggestion, then the question it replaced");
 });
 
+test("three suggestions: the first on the card, the second and the replaced question to swap in", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.suggest({ seq: 1, suggestions: [{ text: "New one?" }] });
+  q.suggest({ seq: 2, suggestions: [{ question: 2 }, { question: 3 }, { question: 4 }] });
+  assert.deepEqual(texts(q.view()), ["Who paid first?", "What went wrong?", "New one?"], "the replaced new question is kept, the third suggestion gives way");
+});
+
 test("an answer is shown once: the same or an older seq changes nothing", () => {
   const q = createQuestions();
   q.setPlan(PLAN);

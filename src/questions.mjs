@@ -69,7 +69,8 @@ export function createQuestions() {
       if (!fresh.length) return false;
       const before = main;
       main = fresh[0];
-      alts = [...fresh.slice(1), ...(before ? [before] : [])];
+      // The question it replaced stays to swap back, second after the agent's next pick (a third suggestion gives way).
+      alts = [fresh[1], before, ...fresh.slice(2)].filter(Boolean);
       fill();
       return true;
     },
