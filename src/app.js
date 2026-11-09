@@ -1,4 +1,5 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/cues.mjs, src/questions.mjs,
+// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
+// src/questions.mjs,
 // src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
@@ -28,7 +29,11 @@ function choices(group, onPick = () => {}) {
   });
 }
 
-const state = { guest: null, mic: false, tab: false, speech: false, listening: false };
+// engine: "local" is the speech model on this computer, "browser" is the browser's own speech service (opt-in; its audio
+// goes to the browser maker's service, which src/browser.mjs names). speech is true when the picked engine is ready to
+// turn the microphone into text. With the browser service only the host's microphone is heard: the guest's tab sound
+// is never sent to it, because the guest agreed to being turned into text on this computer.
+const state = { guest: null, mic: false, tab: false, speech: false, listening: false, engine: "local" };
 
 // Step 1 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
 const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"]').dataset.v;
@@ -194,6 +199,7 @@ addEventListener("pagehide", () => agent.disconnect());
 // listened to: a tab that was already shared stops, and Listen will not ask for it again.
 choices($("guestSeg"), (answer) => {
   state.guest = answer;
+  showBrowserChoice();
   if (answer !== "yes") { tabWanted = false; if (state.tab || tabPhase === "busy") tabOff(); }
   done("sGuest", true);
   showTab();
@@ -516,7 +522,7 @@ function openTap(stream, source, meter) {
   tap.onaudioprocess = (e) => {
     const samples = e.inputBuffer.getChannelData(0);
     meter.set(meterFill(loudness(samples)));
-    if (state.listening && speech) {
+    if (state.listening && state.engine === "local" && speech) {
       const copy = samples.slice();
       speech.postMessage({ type: "audio", source, samples: copy, rate: context.sampleRate }, [copy.buffer]);
     }
@@ -541,6 +547,7 @@ function micOff() {
   closeTap(mic);
   mic = null;
   speech?.postMessage({ type: "stop", source: "host" });
+  web.stop();
   state.mic = false;
   // Without the host's microphone nothing is listened to: the sign stops and the guest tab goes with it. Listen asks
   // for both again (the browser asks the host to pick the tab again each time).
@@ -616,7 +623,7 @@ let shareRun = 0;
 // Set when the tab was shared and listening ended (Stop, or the tab itself ended): Listen then asks for the tab again.
 let tabWanted = false;
 
-const tabUi = () => tabButton({ feature: browser.features.tabSound, guest: state.guest, phase: tabPhase, problem: tabFailure, stream: streamName() });
+const tabUi = () => tabButton({ feature: browser.features.tabSound, guest: state.guest, phase: tabPhase, problem: tabFailure, stream: streamName(), engine: state.engine });
 
 function showTab() {
   const ui = tabUi();
@@ -711,6 +718,7 @@ showTab();
 
 // ---- Speech to text: the model runs in a worker of this site and is downloaded once ----
 let speech = null;
+let localReady = false; // the model on this computer has loaded
 const speechBtn = $("speechBtn");
 const speechTxt = $("speechTxt");
 const speechIdle = speechTxt.textContent;
@@ -719,45 +727,57 @@ const SPEECH_TIP = speechBtn.dataset.tip;
 /** What was heard, in this page's memory only and gone when the tab closes: the final lines and each source's newest draft. */
 const heard = { lines: [], drafts: {}, pauses: {} };
 
+/** A piece of text from either engine (the model's worker or the browser's service): the same lines either way, each
+ * labelled with the source it was heard on ("host" or "guest"; the browser's service hears the host's microphone only). */
+function hear(data) {
+  if (data.final) {
+    heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end });
+    cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end });
+    if (heard.drafts[data.source]?.piece === data.piece) delete heard.drafts[data.source];
+  } else {
+    heard.drafts[data.source] = { piece: data.piece, text: data.text };
+    cues.talking(data.source);
+  }
+}
+
 function onSpeech({ data }) {
   if (data.type === "progress") {
     speechTxt.textContent = `Loading ${Math.floor((data.loaded / data.total) * 100)}%`;
   } else if (data.type === "ready") {
+    localReady = true;
     state.speech = true;
     speechBtn.dataset.state = "ok";
     speechTxt.textContent = "Speech ready";
     speechBtn.dataset.tip = `Kept in this browser (${speechIdle.split("· ")[1]}): next time the model loads without downloading.`;
-    done("sSpeech", true);
+    done("sSpeech", state.speech);
     refresh();
   } else if (data.type === "error") {
     // The model failed to load, or failed on the producer screen: the microphone stops and the setup comes back, so
     // the sign never shows listening in vain and the failed button (with its reason) offers to load it again.
-    if (!$("live").hidden) {
+    if (state.engine === "local" && !$("live").hidden) {
       micOff();
       showScreen(false);
     }
     speech?.terminate();
     speech = null;
-    state.speech = false;
+    localReady = false;
+    state.speech = state.engine === "browser";
     speechBtn.dataset.state = "error";
     speechTxt.textContent = "Speech model failed · try again";
     speechBtn.dataset.tip = `${data.reason[0].toUpperCase()}${data.reason.slice(1)}.`;
-    done("sSpeech", false);
+    done("sSpeech", state.speech);
     refresh();
   } else if (data.type === "text") {
-    // Each line is labelled with the source it was heard on: "host" (the microphone) or "guest" (the shared tab).
-    if (data.final) {
-      heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end });
-      cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end });
-      if (heard.drafts[data.source]?.piece === data.piece) delete heard.drafts[data.source];
-    } else {
-      heard.drafts[data.source] = { piece: data.piece, text: data.text };
-      cues.talking(data.source);
-    }
+    hear(data);
   } else if (data.type === "pause") {
-    heard.pauses[data.source] = data.at;
-    if (cues.pause(data.source)) cueWent();
+    paused(data.source, data.at);
   }
+}
+
+/** A pause of one source (from the model's worker or the browser's service): the agent's cue may go, and the light shows it. */
+function paused(source, at) {
+  heard.pauses[source] = at;
+  if (cues.pause(source)) cueWent();
 }
 
 switchOff(speechBtn, browser.features.wasm.on ? "" : browser.features.wasm.reason);
@@ -771,6 +791,80 @@ speechBtn.addEventListener("click", () => {
   speechTxt.textContent = "Loading 0%";
   speech.postMessage({ type: "load" });
 });
+
+// The engine choice: the model on this computer (the default) or the browser's own speech service, which is opt-in
+// and warned on its own label. A browser without the service shows the choice switched off with its reason. The text
+// of the browser's service feeds the same lines as the model's (hear), and nothing is kept past this page.
+const engineSeg = $("engineSeg");
+const browserChoice = $("browserChoice");
+const speechOf = browser.features.webSpeech;
+const service = browserService(speechOf.company);
+let browserFailure = ""; // why the service last failed, shown on its choice until it is picked again
+
+const web = createBrowserSpeech({
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  onText: (piece) => hear({ ...piece, source: "host" }),
+  // About 1.5 s after the last words, as the model's worker reports one: the agent's cues go at pauses.
+  onPause: (at) => paused("host", at),
+  onFail: (reason) => {
+    // The service failed on the producer screen: the microphone stops and the setup comes back with the reason on the
+    // choice, back on the model on this computer, so the sign never shows listening while nothing becomes text.
+    browserFailure = `${reason[0].toUpperCase()}${reason.slice(1)}.`;
+    if (!$("live").hidden) {
+      micOff();
+      showScreen(false);
+    }
+    pickEngine("local");
+    // The Stop button that had focus is gone with the producer screen: focus goes to the failed choice and its reason
+    // opens, so a keyboard or screen-reader host hears why the setup came back.
+    // The scroll to the choice comes first and is let settle (a scroll closes a tooltip), then focus and the reason.
+    browserChoice.scrollIntoView({ block: "nearest" });
+    requestAnimationFrame(() => {
+      browserChoice.focus({ preventScroll: true });
+      tooltip.show(browserChoice);
+    });
+  },
+});
+
+/** Show the engine picked: the choice row, the model's button (only for the model), the step's done mark. */
+function pickEngine(engine) {
+  if (engine === "browser" && !speechOf.on) engine = "local";
+  if (engine === "browser") browserFailure = "";
+  state.engine = engine;
+  if (engine === "local") web.stop();
+  // The service hears only the host's microphone, so a shared guest tab is let go and the tab button says why.
+  if (engine === "browser") { tabWanted = false; if (state.tab || tabPhase !== "idle") tabOff(); }
+  showTab();
+  for (const b of engineSeg.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === engine));
+  state.speech = engine === "browser" || localReady;
+  speechBtn.hidden = engine === "browser";
+  done("sSpeech", state.speech);
+  showBrowserChoice();
+  refresh();
+}
+
+/** The browser service's choice: its warning line while it can be used (also after a failure, since pressing it is the opt-in), its reason when it cannot. */
+function showBrowserChoice() {
+  const open = browserChoice.getAttribute("aria-describedby") === "tip";
+  browserChoice.classList.toggle("seg__long", speechOf.on);
+  if (!speechOf.on) {
+    browserChoice.replaceChildren(offMark(), ` ${service.label}`);
+    switchOff(browserChoice, speechOf.reason);
+  } else {
+    // The warning stays in one piece, so a narrow phone breaks the label at the dot and never inside "goes to Google".
+    const warning = Object.assign(document.createElement("span"), { className: "nowrap", textContent: service.warning });
+    // One flowing piece inside the button (its own children would be separate items of the choice's flex row).
+    const words = document.createElement("span");
+    words.append(`${service.label}${browserFailure ? " failed" : ""} · `, warning);
+    browserChoice.replaceChildren(words);
+    browserChoice.dataset.tip = browserFailure || (state.guest === "yes" || state.guest === "no" ? service.guestTip : service.tip);
+    if (browserFailure) browserChoice.dataset.state = "error"; else browserChoice.removeAttribute("data-state");
+  }
+  if (open) tooltip.show(browserChoice);
+}
+
+choices(engineSeg, pickEngine);
+showBrowserChoice();
 
 // ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
 const goBtn = $("goBtn");
@@ -800,12 +894,13 @@ goBtn.addEventListener("click", () => {
 // ---- The listening sign: shows while the page listens; Stop ends the microphone at once; Listen starts it again ----
 const stopBtn = $("stopBtn");
 function showSign() {
-  const sign = listeningSign({ ...state, noTab: !browser.features.tabSound.on ? "browser" : streamName() === "obs" ? "obs" : "", tabBusy: tabPhase === "busy" });
+  const sign = listeningSign({ ...state, company: speechOf.company, noTab: !browser.features.tabSound.on ? "browser" : streamName() === "obs" ? "obs" : "", tabBusy: tabPhase === "busy" });
   $("listen").dataset.on = String(sign.on);
   $("listenDot").className = sign.on ? "dot dot--live" : "dot";
   $("listenOn").hidden = !sign.on;
   $("listenOff").hidden = sign.on;
   $("listenSrc").textContent = sign.source;
+  $("listenEngine").textContent = sign.engine ? ` · ${sign.engine}` : "";
   $("listenTxt").dataset.tip = sign.tip;
   const chip = $("guestChip");
   chip.hidden = !sign.chip;
@@ -821,9 +916,10 @@ function showSign() {
   stopBtn.removeAttribute("data-state");
 }
 
-/** Listening needs the microphone and the speech model both; without either the sign stays "Not listening". The tab joins whenever it is shared. */
+/** Listening needs the microphone and the picked engine (the model on this computer, or the browser's service); without either the sign stays "Not listening". With the model the tab joins whenever it is shared. */
 function startListening() {
-  state.listening = Boolean(mic && speech && state.speech);
+  state.listening = Boolean(mic && state.speech && (state.engine === "browser" || speech));
+  if (state.listening && state.engine === "browser") web.start(mic.stream.getAudioTracks()[0]);
   showSign();
 }
 

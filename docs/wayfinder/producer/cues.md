@@ -4,7 +4,7 @@ Written 2026-11-09. A cue is the page asking the host's connected agent for the 
 
 ## When a cue goes
 
-- **At a pause.** The speech worker notices about 1.5 s of silence after speech. A cue goes then, but only when at least 30 s of new speech was heard since the last cue, and at most once a minute.
+- **At a pause.** The speech worker notices about 1.5 s of silence after speech. With the browser's own speech service the pause counts 1.5 s from its last text instead, so it comes late by the service's own delay; that delay is not measured, and the speed target below was proven with the model on this computer only. The 30 s of new speech is counted from each line's start to its end; a line the service sends with no draft before it counts the time it takes to say it (about 2.5 words a second, at most the time since the previous words). A cue goes then, but only when at least 30 s of new speech was heard since the last cue, and at most once a minute.
 - **Suggest now.** A cue goes at once, with whatever was heard, at least 10 s after the last cue. It gives back how long to wait when pressed too soon, and says so when no agent is connected (the question card shows both on the button).
 - **Slow down.** Doubles both spacings: a pause cue at most every 2 minutes, Suggest now at least 20 s apart. The 30 s of new speech stays the same.
 - With the studio tab shared, the host and the guest are heard apart: a pause of one is no pause while the other is still talking (a side counts as talking for 12 s after its last text, until its own pause).

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
+import vm from "node:vm";
 import { join, resolve } from "node:path";
 import { build, LIVE_HOST, PREVIEW_HOST, SPEECH_WORKER } from "../scripts/build.mjs";
 import { SPEECH_BYTES } from "../scripts/speech-files.mjs";
@@ -45,6 +46,14 @@ test("the page is one self-contained file and asks for no outside file", () => {
   assert.deepEqual([...html.matchAll(/https?:\/\/[^'"\s)]+/g)].map((m) => m[0]), ["http://www.w3.org/2000/svg"]);
   assert.doesNotMatch(html, /<(img|iframe|object|embed|video|audio|source)\b/i);
   assert.ok(!html.includes("/*@") && !html.includes("<!--@"), "every build marker is replaced");
+});
+
+test("the inlined script is one valid program that holds the browser's speech service, and names no outside host for it", () => {
+  assert.doesNotThrow(() => new vm.Script(script), "no name is declared twice across the inlined files");
+  assert.match(script, /function createBrowserSpeech\b/, "the browser's speech service is in the page");
+  // The service is the browser's own: the page names no address for it and its policy gains none (connect-src stays this site).
+  assert.doesNotMatch(script, /google\.com|googleapis|gstatic/i);
+  assert.deepEqual(directives(header("Content-Security-Policy")).get("connect-src"), ["'self'"]);
 });
 
 test("the page keeps nothing, logs nothing and talks only to its own agent relay", () => {
