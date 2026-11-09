@@ -383,6 +383,35 @@ async function twoVoices(browser, base, out) {
   assert.equal(await page.evaluate(() => window.__watch.streams.length), mics + 1, "races: a second press while waiting opened no second microphone");
   await stop.click();
   assert.ok(await page.evaluate(() => [...window.__watch.streams, ...window.__watch.shares].every((s) => s.getTracks().every((t) => t.readyState === "ended"))), "races: Stop ends every microphone and tab");
+  // 4. Listen fails at once (microphone blocked) while its picker is open; a second Listen waits for the same picker: the tab
+  // the first press asked for is kept for the second, not cleaned up behind it.
+  await page.evaluate(() => { window.__watch.hold = true; window.__watch.fail = "NotAllowedError"; });
+  await stop.click();
+  await page.waitForFunction(() => document.querySelector("#stopBtn").dataset.state === "error");
+  await page.evaluate(() => { window.__watch.fail = null; window.__watch.micHold = true; });
+  await stop.click();
+  await page.waitForFunction(() => document.querySelector("#stopBtn").dataset.state === "busy");
+  await page.evaluate(() => { window.__watch.hold = false; window.__watch.release(); });
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
+  await page.evaluate(() => { window.__watch.micHold = false; window.__watch.micRelease(); });
+  await page.waitForFunction(() => document.querySelector("#listen").dataset.on === "true" && document.querySelector("#listenSrc").textContent === "host mic + guest tab");
+  await stop.click();
+  // 5. A Listen that failed, then the model fails, then the host sets it all up again: Stop reads Stop, with no old failure.
+  await page.evaluate(() => { window.__watch.fail = "NotAllowedError"; });
+  await stop.click();
+  await page.waitForFunction(() => document.querySelector("#stopBtn").dataset.state === "error");
+  await page.evaluate(() => window.__watch.workers.at(-1).dispatchEvent(new MessageEvent("message", { data: { type: "error", reason: "the check broke the model" } })));
+  assert.equal(await page.locator("#setup").isVisible(), true, "races: the setup comes back after a model failure");
+  await page.evaluate(() => { window.__watch.fail = null; });
+  await page.locator("#micBtn").click();
+  await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+  await page.locator("#tabBtn").click();
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
+  await page.locator("#speechBtn").click();
+  await page.waitForFunction(() => document.querySelector("#speechTxt").textContent === "Speech ready", null, { timeout: 60000 });
+  await page.locator("#goBtn").click();
+  assert.deepEqual([await text(page, "stopBtn"), await stop.getAttribute("data-state"), await stop.getAttribute("data-tip")], ["Stop", null, null], "races: after a failed Listen and a model failure, Stop reads Stop with no old failure");
+  await stop.click();
   checks.push("races: Stop while the tab picker is open lets the late tab go; a share that fails during Listen leaves listening on with the way back in the sign's tooltip; the Listen button stays busy until the microphone answers");
   assert.deepEqual(problems, [], "races: no console error, warning or policy violation");
   await context.close();
@@ -449,6 +478,31 @@ async function tabFailures(browser, base, out) {
     assert.equal(await btn.getAttribute("data-tip"), reason, `${answer}: with its reason`);
     assert.equal(await page.locator("#tabMeter").isHidden(), true, `${answer}: and its meter goes`);
   }
+
+  // OBS has no studio tab: picking it stops a shared tab at once and switches the button off with its reason; the open
+  // button does not wait for it.
+  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await btn.click();
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
+  await page.getByRole("button", { name: "OBS", exact: true }).click();
+  assert.ok(await ended(), "OBS: the shared tab stops at once");
+  assert.equal(await btn.getAttribute("aria-disabled"), "true", "OBS: the tab button is switched off");
+  assert.equal(await btn.getAttribute("data-tip"), "No tab sound with OBS: it has no studio tab to share. Only your microphone is listened to.", "OBS: with its reason");
+  assert.equal(await page.locator("#sSound").evaluate((el) => el.hasAttribute("data-done")), false, "OBS: the Sound step waits for the microphone only (not on yet)");
+  await page.getByRole("button", { name: "Restream Studio", exact: true }).click();
+  assert.equal(await btn.getAttribute("aria-disabled"), null, "back on Restream Studio the tab button is ready again");
+
+  // A picker closed after the host changed the answer to No and back to Yes: no old failure is left on the button.
+  await page.evaluate(() => { window.__watch.share = "cancel"; window.__watch.hold = true; });
+  await btn.click();
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "busy");
+  await page.getByRole("button", { name: "No · my mic only", exact: true }).click();
+  await page.evaluate(() => { window.__watch.hold = false; window.__watch.release(); });
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  assert.equal(await btn.getAttribute("data-state"), null, "No then Yes around a closed picker: no failure is left on the button");
+  assert.equal(await label(), "Share the studio tab with sound", "and it reads as ready");
+  await page.evaluate(() => { window.__watch.share = "tab"; });
 
   // The same while the browser's picker is still open: the answer wins, and what the browser hands over is let go.
   await page.getByRole("button", { name: "Yes", exact: true }).click();

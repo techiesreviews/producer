@@ -13,18 +13,27 @@ export const GUEST = {
 /**
  * The listening sign in the top bar. It names what is heard: "host mic", and "guest tab" beside it only while the
  * guest's tab sound is shared (never for a guest who said no or a solo show). The guest chip shows the host's answer
- * (none on a solo show). `canShare` is whether this browser can share a tab's sound at all.
+ * (none on a solo show). `noTab` says why no tab can be shared at all ("browser" or "obs", else ""), and `tabBusy` that
+ * the browser's picker is still open.
  */
-export function listeningSign({ listening, guest, tab, canShare = true }) {
+export function listeningSign({ listening, guest, tab, noTab = "", tabBusy = false }) {
   const answer = GUEST[guest] || GUEST.solo;
   const hearsGuest = Boolean(tab) && guest === "yes";
   return {
     on: listening,
     source: hearsGuest ? "host mic + guest tab" : "host mic",
-    tip: !listening ? "Not listening. The microphone is off." : guest === "yes" && !hearsGuest ? (canShare ? "Host mic only: the guest tab is not shared. Press Stop, then Listen to pick it again." : "Host mic only: this browser cannot share a tab's sound.") : answer.signTip,
+    tip: !listening ? "Not listening. The microphone is off." : guest === "yes" && !hearsGuest ? hostOnly(noTab, tabBusy) : answer.signTip,
     chip: answer.chip ? { text: answer.chip, ok: answer.ok, tip: answer.chipTip } : null,
     button: listening ? "Stop" : "Listen",
   };
+}
+
+/** Why only the host's mic is heard for a guest who said yes. */
+function hostOnly(noTab, tabBusy) {
+  if (noTab === "browser") return "Host mic only: this browser cannot share a tab's sound.";
+  if (noTab === "obs") return "Host mic only: OBS has no studio tab to share.";
+  if (tabBusy) return "Host mic for now: waiting for the tab to be picked.";
+  return "Host mic only: the guest tab is not shared. Press Stop, then Listen to pick it again.";
 }
 
 /** Why a tab share failed, in the words for the button and its tooltip. `name` is the error's name. */
@@ -41,12 +50,14 @@ const STUDIO = { restream: "Restream Studio", wave: "Wave.video" };
 /**
  * The tab-sound button in the Sound step, from plain facts: `feature` (this browser's tab-sound feature, with its
  * reason when off), the host's `guest` answer, the share's `phase` ("idle", "busy" while the browser asks, "on",
- * "error" with its `problem`) and the `stream` picked in step 1. `off` means switched off: the reason is the tip.
+ * "error" with its `problem`) and the `stream` picked in step 1 (OBS has no studio tab). `off` means switched off: the
+ * reason is the tip.
  * The echo advice (headphones for the host) lives in the tips, not on the screen.
  */
 export function tabButton({ feature, guest, phase, problem, stream }) {
   const off = (tip) => ({ off: true, state: null, text: TAB_LABEL, tip });
   if (!feature.on) return off(feature.reason);
+  if (stream === "obs") return off("No tab sound with OBS: it has no studio tab to share. Only your microphone is listened to.");
   if (guest === "no") return off("Your guest said no: only your microphone is listened to.");
   if (guest === "solo") return off("Solo show: no guest to hear.");
   if (phase === "busy") return { off: false, state: "busy", text: "Pick the tab…", tip: null };
