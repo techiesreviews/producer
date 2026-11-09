@@ -36,6 +36,11 @@ test("a line that starts with minutes is a part, even when its name ends with a 
   assert.deepEqual(readPlan("5 Intro\nWhy now?").questions, ["Why now?"], "so does any other line ending with ?");
 });
 
+test("a numbered line is a question; a part needs a space after its minutes", () => {
+  assert.deepEqual(readPlan("5 Intro\n10. Intro").questions, ["Intro"], "10. Intro is a numbered question, as the README says");
+  assert.deepEqual(readPlan("10Intro"), { ok: false, line: 1, text: "10Intro" });
+});
+
 test("the example under the paste box is a plan the page reads", () => {
   const plan = readPlan(PLAN_EXAMPLE.join("\n"));
   assert.equal(plan.ok, true);
