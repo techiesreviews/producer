@@ -20,7 +20,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 
 | Tool | Agent sends | Page answers |
 |---|---|---|
-| `get_context` | nothing | `{ showTitle, questions: [{ n, text }], segments: [{ title, plannedMinutes, live }], notes, seq }` |
+| `get_context` | nothing | `{ showTitle, guestName?, questions: [{ n, text }], segments: [{ title, plannedMinutes, live }], notes, seq }` |
 | `wait_for_cue` | `{ seq, suggestions? }` | At once if there is something after `seq`, else it holds and answers idle. See below. |
 | `post_suggestions` | `{ suggestions }` (1 to 3) | `{ shown }` |
 | `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text }] }` |
@@ -32,14 +32,14 @@ A suggestion is `{ question }` (a prepared question number), `{ text }` (a short
 
 `wait_for_cue` takes the agent's previous answer in `suggestions`, so one call posts the answer and waits for the next cue. The page gets `{ seq, suggestions?, holdMs: 25000 }`, shows the suggestions first, then waits.
 
-- The page answers within `holdMs` (25 seconds): either a cue or idle. A cue is `{ idle: false, cue, seq, transcript, chat, position }`; idle is `{ idle: true, seq }`.
+- The page answers within `holdMs` (25 seconds): either a cue or idle. A cue is `{ idle: false, cue, seq, guestName?, transcript, chat, position }`; idle is `{ idle: true, seq }`.
 - `cue` is `suggest_now`, `pause`, `chat` or `end_report`. Anything else reaches the agent as `cue`.
-- Each entry in `transcript` is `{ speaker: "host" | "guest", text }`. The agent sees the labels `HOST:` and `GUEST:` with the text. Chat is `[{ text }]`. Text is capped (20,000 characters of transcript, 500 per chat question) and always marked as data, not instructions.
+- Each entry in `transcript` is `{ speaker: "host" | "guest", text }`. The agent sees the labels `HOST:` and `GUEST:` with the text. Chat is `[{ text }]`. `guestName` is optional: only when the host typed it or the agent loaded it (Lex's choice, 2026-11-09); it is one short line of plain text, passed through memory and never stored or logged. Text is capped (20,000 characters of transcript, 500 per chat question) and always marked as data, not instructions.
 - `seq` is the page's own counter. The agent sends back the last `seq` it saw and the page returns everything after it. Asking again with the same `seq` returns the same material, so a repeat after a lost answer loses nothing. The page must not treat a cue as delivered until the agent comes back with a higher `seq`.
 - A loop sends the same body again after each idle answer, so the same answer can reach the page several times: the page shows an answer to a cue once (the same `seq` with the same suggestions changes nothing).
-- A call that was sent to a page that has since closed or been replaced (a reload, "Use this tab") ends at once as an ordinary idle answer. The agent's next call, if no page is connected yet, waits up to 5 seconds for one (a reload closes the old page before the new one connects), so the loop reaches the reloaded page instead of stopping. Only after those 5 seconds does it hear "the page is not open".
+- A `wait_for_cue` that was sent to a page that has since closed or been replaced (a reload, "Use this tab") ends at once as an ordinary idle answer; the other tools answer "The producer page was reloaded or moved to another tab. Try again." The agent's next call, if no page is connected yet, waits up to 5 seconds for one (a reload closes the old page before the new one connects), so the loop reaches the reloaded page instead of stopping. Only after those 5 seconds does it hear "the page is not open".
 - A batch of requests counts as one request for the limits, so it may hold only one `tools/call`.
-- The Worker waits at most 30 seconds for the page (the relay never holds a call past 35). A page that is too slow, or a newer `wait_for_cue` that replaces an older one, ends as an ordinary idle answer with the agent's own `seq`.
+- The Worker waits at most 30 seconds for the page (after a page takes a call, the relay never holds it past 35 seconds; before that, a call that finds no page waits up to 5 seconds for one). A page that is too slow, or a newer `wait_for_cue` that replaces an older one, ends as an ordinary idle answer with the agent's own `seq`.
 - The page answers the call by id in `{ type: "result", id, result }` or `{ type: "result", id, error }`. A page error reaches the agent as a short tool error.
 
 ## The ready-made loop (no sleep, no helper file)

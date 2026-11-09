@@ -91,23 +91,27 @@ test("a host who reloads the page while the loop waits: the loop reaches the new
   const { token, born } = newToken(now.t);
   const kit = relayWith(now);
   kit.relay.graceMs = 5_000;
-  const old = await kit.tab(born);
-  fakePage(kit.relay, old, { hold: 10_000 });
+  let oldPage;
+  const old = await kit.tab(born, (ws) => { oldPage = fakePage(kit.relay, ws, { hold: 10_000 }); });
+  let freshPage;
   const s = await serve(now, kit.relay);
   try {
-    setTimeout(async () => {
+    // Close the old page only once it holds the loop's wait, so the path "the wait ends on the old page, the loop asks again" is the one tested.
+    (async () => {
+      while (oldPage.waits.length < 1) await new Promise((r) => setTimeout(r, 10));
       await kit.relay.webSocketClose(old, 1001); // the browser closes the old page first
-      setTimeout(async () => {
-        const fresh = await kit.tab(born);
-        fakePage(kit.relay, fresh, { hold: 10_000 }).cue({ cue: "pause", transcript: [{ speaker: "guest", text: "after the reload" }] });
-      }, 200);
-    }, 100);
+      await new Promise((r) => setTimeout(r, 200));
+      await kit.tab(born, (ws) => { freshPage = fakePage(kit.relay, ws, { hold: 10_000 }); });
+      freshPage.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "after the reload" }] });
+    })();
     const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 0 } } });
     const r = await run({ TOKEN: token, BODY, URL: s.url });
     assert.equal(r.code, 0, r.stderr);
     const reply = JSON.parse(r.stdout);
     assert.equal(reply.result.isError, undefined, "not \"the page is not open\"");
     assert.equal(reply.result.structuredContent.cue, "pause");
+    assert.equal(oldPage.waits.length, 1, "the old page had the first wait");
+    assert.ok(freshPage.waits.length >= 1, "the new page got the next one");
   } finally {
     await s.close();
   }

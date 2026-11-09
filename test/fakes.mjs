@@ -39,8 +39,12 @@ export function relayWith(now) {
   const relay = new Relay(ctx, {});
   relay.now = () => now.t;
   relay.graceMs = 0; // tests that need the grace for a reloading page set it
-  const tab = async (born = T0) => {
+  // `attach(ws)` runs when the relay's side of the socket is made, before the relay sends anything on it (a real page
+  // has its message handler in place by the time the first message arrives).
+  const tab = async (born = T0, attach) => {
+    pairs.onCreate = attach;
     const res = await relay.fetch(new Request("https://relay/tab", { headers: { Upgrade: "websocket", "X-Token-Born": String(born) } }));
+    pairs.onCreate = undefined;
     assert.equal(res.status, 101);
     assert.equal(res.headers.get("Sec-WebSocket-Protocol"), PROTOCOL);
     return lastServer();
@@ -69,7 +73,7 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
     const fresh = page.items.filter((i) => i.seq > after);
     if (!fresh.length) return null;
     const last = fresh.at(-1);
-    return { idle: false, cue: last.cue, seq: last.seq, transcript: fresh.flatMap((i) => i.transcript ?? []), chat: fresh.flatMap((i) => i.chat ?? []), position: { segment: 2, title: "Main talk", minutesLeft: 11 } };
+    return { idle: false, cue: last.cue, seq: last.seq, ...(page.guestName ? { guestName: page.guestName } : {}), transcript: fresh.flatMap((i) => i.transcript ?? []), chat: fresh.flatMap((i) => i.chat ?? []), position: { segment: 2, title: "Main talk", minutesLeft: 11 } };
   };
   const answerWaits = () => {
     for (const w of [...page.held]) {
@@ -80,7 +84,7 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
   page.cue = (item) => { page.items.push({ ...item, seq: ++page.seq }); answerWaits(); };
   const handle = (msg) => {
     page.calls.push({ tool: msg.tool, args: msg.args });
-    if (msg.tool === "get_context") return reply(msg.id, { result: { showTitle: "Live talk", questions: QUESTIONS, segments: [{ title: "Intro", plannedMinutes: 5 }, { title: "Main talk", plannedMinutes: 30, live: true }], notes: "Ask about the early days.", seq: page.seq } });
+    if (msg.tool === "get_context") return reply(msg.id, { result: { showTitle: "Live talk", questions: QUESTIONS, segments: [{ title: "Intro", plannedMinutes: 5 }, { title: "Main talk", plannedMinutes: 30, live: true }], notes: "Ask about the early days.", ...(page.guestName ? { guestName: page.guestName } : {}), seq: page.seq } });
     if (msg.tool === "get_new_transcript") return reply(msg.id, { result: { seq: page.seq, transcript: page.items.flatMap((i) => i.seq > (msg.args.seq ?? 0) ? i.transcript ?? [] : []) } });
     if (msg.tool === "post_suggestions") { show(page.seq, msg.args.suggestions); return reply(msg.id, { result: { shown: Math.min(msg.args.suggestions.length, page.maxShown ?? 3) } }); }
     if (msg.tool === "post_report") return reply(msg.id, { result: { saved: true } });

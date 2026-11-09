@@ -16,7 +16,7 @@ export class FakeSocket {
   close(code = 1000, reason = "") { if (this.closed) return; this.closed = true; this.code = code; this.reason = reason; }
 }
 export const pairs = [];
-globalThis.WebSocketPair ??= class { constructor() { this[0] = new FakeSocket(); this[1] = new FakeSocket(); pairs.push(this); } };
+globalThis.WebSocketPair ??= class { constructor() { this[0] = new FakeSocket(); this[1] = new FakeSocket(); pairs.push(this); pairs.onCreate?.(this[1]); } };
 globalThis.WebSocketRequestResponsePair ??= class { constructor(request, response) { Object.assign(this, { request, response }); } };
 // Node's Response refuses status 101; the Workers runtime allows it with a socket.
 if (!globalThis.Response.workersStub) {
