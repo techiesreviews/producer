@@ -436,7 +436,7 @@ function renderCard() {
   if (wait > 0 && !$("live").hidden) asking.timer = setTimeout(renderCard, wait + 10);
 }
 
-/** A cue went (a pause, or Suggest now): the light breathes until the agent's answer is in. */
+/** A cue went (a pause, or Suggest now): the light breathes until the agent's turn on it ends (answered, passed, or a minute). */
 function cueWent() {
   asking.since = Date.now();
   renderCard();
