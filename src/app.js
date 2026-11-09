@@ -201,16 +201,16 @@ const show = { plan: null, run: null, parts: "" };
 for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
 
 function readPasted() {
+  if (planIn.readOnly) return; // fixed once the show clock runs (lockPlan)
   const plan = readPlan(planIn.value);
   const said = planButton(plan);
   label(planBtn, said.state, said.tip, said.text);
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   show.plan = plan.ok ? plan : null;
-  // A new run order only when the parts change, and never once the clock runs: a change in setup (back there after a
-  // failed speech model) must not lose the show's timing, so the run order then stays as it started.
+  // A new run order only when the parts change.
   const parts = plan.ok ? JSON.stringify(plan.parts) : "";
-  if (parts !== show.parts && !show.run?.view(Date.now()).started) {
+  if (parts !== show.parts) {
     show.parts = parts;
     show.run = plan.ok ? createRunOrder(plan.parts) : null;
     buildRuns(plan.ok ? plan.parts : []);
@@ -283,13 +283,14 @@ function renderRun() {
   $("clockTime").textContent = clockText(view.clock);
   const delta = $("clockDelta");
   delta.hidden = !view.started;
+  let tip = "Show time. It starts when you press Start.";
   if (view.started) {
     const ahead = view.delta < 0;
     const words = view.delta === 0 ? "on plan" : `${ahead ? "ahead of" : "behind"} plan by ${clockText(Math.abs(view.delta))}`;
     delta.replaceChildren(clockText(view.delta, true), make("span", "sr", ` ${words}`));
     setTone(delta, view.delta > 0 ? "late" : ahead ? "early" : "");
+    tip = `Show time, ${words}.`;
   }
-  const tip = view.started ? `Show time, ${delta.lastChild.textContent.trim()}.` : "Show time. It starts when you press Start.";
   if (clock.dataset.tip !== tip) clock.dataset.tip = tip;
 }
 
@@ -298,10 +299,18 @@ runBtn.addEventListener("click", () => {
   const now = Date.now();
   if (!show.run || now - lastPress < 1000) return;
   lastPress = now;
-  if (show.run.view(now).started) show.run.next(now); else show.run.start(now);
+  if (show.run.view(now).started) show.run.next(now); else lockPlan(now);
   ticker ??= setInterval(renderRun, 250);
   renderRun();
 });
+// Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
+// so step 3's button always describes the run order on the producer screen.
+function lockPlan(now) {
+  show.run.start(now);
+  planIn.readOnly = true;
+  label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
+}
+
 runsMore.addEventListener("click", () => {
   const open = !runs.hasAttribute("data-open");
   runs.toggleAttribute("data-open", open);
