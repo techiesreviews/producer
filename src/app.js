@@ -365,7 +365,7 @@ const skipBtn = $("skipBtn");
 const suggestBtn = $("suggestBtn");
 const slowBtn = $("slowBtn");
 const thinkDot = $("thinkDot");
-const asking = { since: 0, timer: 0, alts: "" }; // since: when the cue whose answer is awaited went
+const asking = { since: 0, timer: 0, alts: "" }; // since: when the newest cue went
 
 /** A control switched off with its reason (the round "i" in front), or on again. */
 function offable(button, reason, ...content) {
@@ -376,7 +376,8 @@ function offable(button, reason, ...content) {
 function renderCard() {
   const now = Date.now();
   const link = agent.view().state;
-  const busy = link === "on" && isThinking(asking.since, now);
+  // Thinking while the newest cue waits for the agent's turn (an answer to an older cue does not end it), at most a minute.
+  const busy = link === "on" && agent.asking() && isThinking(asking.since, now);
   if (!busy) asking.since = 0;
   const { main, alts, counts } = questions.view();
 
@@ -425,7 +426,9 @@ function renderCard() {
     thinkDot.dataset.tip = light.tip;
     if (thinkDot.getAttribute("aria-describedby") === "tip") tooltip.show(thinkDot);
   }
-  $("turnChip").textContent = turnsText(turns);
+  const turnChip = $("turnChip");
+  turnChip.textContent = turnsText(turns);
+  turnChip.dataset.tip = `Agent turns this show. At most one ${slow ? "in 2 minutes" : "a minute"} on its own.`;
 
   // The next change on its own: the light going back after a minute, or the next second of the wait.
   clearTimeout(asking.timer);
@@ -440,10 +443,10 @@ function cueWent() {
 }
 
 agent.onSuggestions((answer) => {
-  asking.since = 0;
   questions.suggest(answer);
   renderCard();
 });
+agent.onSettled(renderCard);
 
 const pressable = (button) => button.getAttribute("aria-disabled") !== "true" && button.dataset.state !== "busy";
 askedBtn.addEventListener("click", () => { if (pressable(askedBtn)) { questions.asked(); renderCard(); } });

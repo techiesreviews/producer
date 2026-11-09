@@ -366,6 +366,34 @@ test("an older answer never replaces a newer one, and the Test's answer is not a
   link.disconnect();
 });
 
+test("asking: from a show cue until the agent's turn on it ends; an answer to an older cue leaves a newer one asking", async () => {
+  const ended = [];
+  const { link, call, connect, flush } = setup();
+  link.onSettled(() => ended.push(link.asking()));
+  await connect();
+  await call("get_context");
+  assert.equal(link.asking(), false, "nothing asked yet");
+  link.send(CUE); // seq 1
+  assert.equal(link.asking(), true, "a cue went");
+  await call("wait_for_cue", { seq: 0 }); // the agent takes cue 1
+  link.send(CUE); // seq 2 waits for the agent's next call
+  await call("wait_for_cue", { seq: 1, suggestions: [{ text: "For one?" }] }); // answers 1, takes 2 at once
+  assert.equal(link.asking(), true, "the answer to cue 1 does not end the turn on cue 2");
+  assert.deepEqual(ended, []);
+  call("wait_for_cue", { seq: 2 }); // back past cue 2 with no answer
+  await flush();
+  assert.equal(link.asking(), false, "the agent gave no answer to cue 2: the turn is over");
+  assert.deepEqual(ended, [false]);
+  link.send(CUE); // seq 3, to the wait held
+  call("wait_for_cue", { seq: 3, suggestions: [{ text: "For three?" }] });
+  await flush();
+  assert.deepEqual([link.asking(), ended], [false, [false, false]], "answered");
+  link.test();
+  assert.equal(link.asking(), false, "a Test cue is not a show question");
+  link.disconnect();
+  assert.equal(link.asking(), false);
+});
+
 test("a failed Test stays failed when the agent later answers a show cue", async () => {
   const { link, call, connect, flush, timers } = setup();
   await connect();
