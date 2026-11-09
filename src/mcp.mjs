@@ -254,13 +254,20 @@ function shapeTranscript(page) {
 
 const UNAUTHORIZED = Symbol("unauthorized");
 
+/** A page's error as short text: a string as it is, an object by its message (else as JSON), never "[object Object]". */
+function errorText(error) {
+  if (typeof error === "string") return error.slice(0, 2000);
+  if (typeof error?.message === "string") return error.message.slice(0, 2000);
+  try { return JSON.stringify(error).slice(0, 2000); } catch { return "The producer page reported an error."; }
+}
+
 /** A tool through the relay to the page. Throws UNAUTHORIZED when the token was revoked or expired meanwhile. */
 async function callPage(relay, tool, args, { timeout = CALL_TIMEOUT_MS, slot } = {}) {
   const r = await relay.op({ op: "call", tool, args, timeout, ...(slot ? { slot } : {}) });
   if (r.status === "unauthorized") throw UNAUTHORIZED;
   if (r.status === "no-tab") return { error: NOT_OPEN };
   if (r.status === "timeout" || r.status === "superseded") return { status: r.status };
-  if (r.error) return { error: String(r.error).slice(0, 2000) };
+  if (r.error) return { error: errorText(r.error) };
   return { result: r.result && typeof r.result === "object" ? r.result : {} };
 }
 
@@ -288,7 +295,8 @@ async function callTool(name, args, { relay }) {
     const r = await callPage(relay, name, { suggestions: g.suggestions });
     if (r.error) return toolError(r.error);
     if (r.status) return toolError("The producer page did not answer in time. Try again.");
-    return { content: [text(`Shown on the host's screen (${g.suggestions.length}).`)], structuredContent: { ok: true, shown: g.suggestions.length } };
+    const shown = isInt(r.result.shown) ? Math.min(r.result.shown, g.suggestions.length) : g.suggestions.length;
+    return { content: [text(`Shown on the host's screen (${shown}).`)], structuredContent: { ok: true, shown } };
   }
   if (name === "get_new_transcript") {
     const s = seqArg(args);
@@ -450,6 +458,8 @@ export async function handleMcp(request, { limiter, guard = instanceGuard, relay
     if (Array.isArray(body)) {
       if (!body.length) return json(rpcError(null, -32600, "Invalid request"), 400);
       if (body.length > 20) return json(rpcError(null, -32600, "Batch too large"), 400);
+      // A batch is one request for the limits, so it may hold only one call to the page.
+      if (body.filter((m) => m?.method === "tools/call").length > 1) return json(rpcError(null, -32600, "Send one tools/call per request."), 400);
       const replies = (await Promise.all(body.map((m) => handleMessage(m, { relay })))).filter(Boolean);
       return replies.length ? json(replies) : new Response(null, { status: 202 });
     }

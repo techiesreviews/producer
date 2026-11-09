@@ -111,6 +111,33 @@ test("relay: a newer wait replaces an older one, which ends as superseded (an ag
   assert.deepEqual((await second).result, { idle: false, seq: 4 }, "the dead call's late answer changed nothing");
 });
 
+test("relay: a wait on a page that was replaced or dropped ends at once, so the agent's next wait reaches the new page", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const now = { t: T0 };
+  const { relay, tab } = relayWith(now);
+  const first = await tab();
+  let outcome;
+  relay.op({ op: "call", tool: "wait_for_cue", args: { seq: 2 }, slot: "wait", born: T0, timeout: 30_000 }).then((r) => { outcome = r; });
+  await settle();
+  const second = await tab(); // "Use this tab", or a reload: the old page is closed with 4001
+  await settle();
+  assert.deepEqual(outcome, { status: "superseded" }, "ended at once, not after 30 s");
+  const next = relay.op({ op: "call", tool: "wait_for_cue", args: { seq: 2 }, slot: "wait", born: T0, timeout: 30_000 });
+  await settle();
+  assert.equal(second.sent.at(-1).type, "call", "the new page gets the next wait");
+  assert.equal(first.sent.filter((m) => m.type === "call").length, 1);
+  await relay.webSocketMessage(second, JSON.stringify({ type: "result", id: second.sent.at(-1).id, result: { idle: true, seq: 2 } }));
+  assert.equal((await next).status, "ok");
+  // The page drops (the tab closes): the wait ends at once and the next call hears no-tab.
+  let dropped;
+  relay.op({ op: "call", tool: "wait_for_cue", args: {}, slot: "wait", born: T0, timeout: 30_000 }).then((r) => { dropped = r; });
+  await settle();
+  await relay.webSocketClose(second, 1001);
+  await settle();
+  assert.deepEqual(dropped, { status: "superseded" });
+  assert.deepEqual(await relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: T0 }), { status: "no-tab" });
+});
+
 test("relay: with a page that holds 25 s, idle comes back after about 25 s and a repeated seq is harmless", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const now = { t: T0 };
