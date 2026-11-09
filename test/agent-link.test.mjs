@@ -11,20 +11,21 @@ const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.test";
 
 
-// Each setup's agent calls from its own address, so the Worker's request limit (per address, in real time) never
-// carries over from one test to the next.
+// Each setup's page and agent call from their own address, so the Worker's request limits (per address, in real
+// time) never carry over from one test to the next.
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
 function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
   const now = { t: Date.now() };
+  const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
   const env = { ASSETS: { fetch: async () => new Response("page") }, RELAY: { idFromName: (n) => n, get: () => ({ op: (m) => kit.relay.op(m) }) } };
   const net = pageSockets(kit, (t) => checkToken(t, now.t));
   const timers = fakeTimers(now);
   const seen = [];
   const link = createAgentLink({
-    net: { token: tokenReply ?? (tokensOnPageClock ? () => Promise.resolve(Response.json(newToken(now.t))) : () => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST" }), env)), socket: net.socket },
+    net: { token: tokenReply ?? (tokensOnPageClock ? () => Promise.resolve(Response.json(newToken(now.t))) : () => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": ip } }), env)), socket: net.socket },
     onChange: (v) => seen.push(v),
     show,
     now: () => now.t,
@@ -32,7 +33,6 @@ function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
   });
   let token;
   let issued = 0;
-  const ip = `203.0.113.${(agents++ % 250) + 1}`;
   // Let the calls in flight reach the page: a call to /mcp hashes its token on Node's thread pool on the way, so this
   // waits in real time (at most 300 ms: a refused call never arrives).
   const flush = async () => {
@@ -464,5 +464,33 @@ test("Test pressed again after a failed Test: the old Test cue is replaced, and 
   call("wait_for_cue", { seq: test.seq, suggestions: [{ text: "Retested?" }] });
   await flush();
   assert.deepEqual([link.view().test.state, link.view().test.seconds], ["ok", 3], "timed from when the new Test's cue was handed over");
+  link.disconnect();
+});
+
+test("an agent whose seq is ahead of this page (kept from another tab) still gets the next cue", async () => {
+  const { link, call, connect, flush } = setup();
+  await connect();
+  const wait = call("wait_for_cue", { seq: 9 });
+  await flush();
+  assert.equal(link.send(CUE), true);
+  const cue = (await wait).body.result.structuredContent;
+  assert.deepEqual([cue.idle, cue.seq], [false, 1]);
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "Later." }] });
+  assert.equal((await call("wait_for_cue", { seq: 1 })).body.result.structuredContent.seq, 2);
+  link.disconnect();
+});
+
+test("the catch-up read never mixes the Test's talk in, and get_context's seq skips no cue the agent has not seen", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send(CUE);
+  link.test();
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "After the Test." }] });
+  const read = (await call("get_new_transcript", { seq: 0 })).body.result.structuredContent.transcript;
+  assert.deepEqual(read.map((l) => l.text), ["How did it start?", "In a garage.", "After the Test."]);
+  const ctx = (await call("get_context")).body.result.structuredContent;
+  assert.equal(ctx.seq, 0, "wait from before the oldest cue not yet confirmed");
+  assert.equal((await call("wait_for_cue", { seq: ctx.seq })).body.result.structuredContent.seq, 1);
   link.disconnect();
 });

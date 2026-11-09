@@ -80,6 +80,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     const end = fresh.findIndex((c) => c.test !== fresh[0].test);
     const group = end < 0 ? fresh : fresh.slice(0, end);
     const last = group.at(-1);
+    if (!last) return reply(id, { result: { idle: true, seq: after } });
     if (last.seq === cue?.seq) cue.deliveredAt ??= now();
     handed = Math.max(handed, last.seq);
     const result = { idle: false, cue: last.cue, seq: last.seq, transcript: group.flatMap((c) => c.transcript), chat: [] };
@@ -131,8 +132,10 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
   }
 
   function onWait(id, args) {
-    const after = Number.isSafeInteger(args.seq) && args.seq >= 0 ? args.seq : 0;
-    take(after, args.suggestions);
+    const asked = Number.isSafeInteger(args.seq) && args.seq >= 0 ? args.seq : 0;
+    take(asked, args.suggestions);
+    // A seq ahead of this page (the agent kept it from another tab of the same connection) counts from the page's own.
+    const after = Math.min(asked, seq);
     drop(); // a newer wait replaces the one held (the relay has already ended it)
     cues = cues.filter((c) => c.seq > after); // the agent has seen these
     if (cues.length) return deliver(id, after);
@@ -147,10 +150,12 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     watch();
     if (tool === "wait_for_cue") return onWait(id, a);
     if (tool === "post_suggestions") return reply(id, { result: { shown: take(handed, a.suggestions) } });
-    if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq } });
+    // The seq to wait from: just before the oldest cue the agent has not confirmed, so none is skipped.
+    if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } });
     if (tool === "get_new_transcript") {
+      // The show's own lines only: the Test's made-up talk never joins them.
       const after = Number(a.seq) || 0;
-      return reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after).flatMap((c) => c.transcript) } });
+      return reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after && !c.test).flatMap((c) => c.transcript) } });
     }
     reply(id, { error: tool === "post_report" ? "There is no show to report on yet." : `Unknown tool: ${tool}` });
   }
