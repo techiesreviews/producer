@@ -103,6 +103,16 @@ test("Asked on a new suggestion moves on without counting a prepared question", 
   assert.equal(q.view().main.n, 1, "back to the prepared question");
 });
 
+test("a new question the host asked or skipped never comes back", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.suggest({ seq: 1, suggestions: [{ text: "Van?" }] });
+  q.skip();
+  q.suggest({ seq: 2, suggestions: [{ text: "van?" }, { question: 2 }] });
+  assert.deepEqual(texts(q.view()), ["Who paid first?", "How did it start?", "What went wrong?"], "the skipped new question is left out");
+  assert.equal(q.suggest({ seq: 3, suggestions: [{ text: "Van?" }] }), false, "only it: the card stays");
+});
+
 test("an alternative swaps with the question on the card", () => {
   const q = createQuestions();
   q.setPlan(PLAN);

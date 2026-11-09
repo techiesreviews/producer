@@ -195,7 +195,7 @@ export async function run({ browser, base, out }) {
     assert.ok(onScreenMs < 300, `${name}: answer in to question on screen in ${onScreenMs.toFixed(1)} ms, under 300 ms`);
     assert.deepEqual(await card(), { q: "What went wrong first?", why: "She hinted at a hard first year.", src: "Q3 · your list", alts: [["What surprised you most about who pays?", "New"], ["How did it start?", "Q1 · your list"]] }, `${name}: the agent's answer on the card`);
     assert.deepEqual(await light(), { cls: "dot dot--ok", label: "Agent ready", tip: "Agent ready." }, `${name}: the light is green again`);
-    assert.match(await text("#suggestBtn"), /^Suggest now · (9|10) s$/, `${name}: the 10 s spacing on the button`);
+    assert.match(await text("#suggestBtn"), /^i Suggest now · (9|10) s$/, `${name}: the 10 s spacing on the button`);
     assert.deepEqual([await suggest.getAttribute("aria-disabled"), await suggest.getAttribute("data-tip")], ["true", "One every 10 s."], `${name}: switched off with its reason`);
     await pressOff(suggest);
     await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, "One every 10 s.");
@@ -227,7 +227,7 @@ export async function run({ browser, base, out }) {
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000, suggestions: [{ text: "Who was your first hire, and why them?" }] }); });
     await page.waitForFunction(() => document.querySelector("#qMain").textContent === "Who was your first hire, and why them?");
     assert.deepEqual([await page.locator("#qWhy").isVisible(), await text("#qSrc")], [false, "New"], `${name}: no why when the agent gave none`);
-    assert.match(await text("#suggestBtn"), /^Suggest now · (19|20) s$/, `${name}: 20 s with Slow down`);
+    assert.match(await text("#suggestBtn"), /^i Suggest now · (19|20) s$/, `${name}: 20 s with Slow down`);
     assert.equal(await suggest.getAttribute("data-tip"), "One every 20 s with Slow down.", `${name}: and says so`);
     assert.equal(await text("#turnChip"), "2 turns", `${name}: two turns`);
     ok(`${name}: Slow down doubles the spacing; a suggestion with no why shows none`);
@@ -251,7 +251,7 @@ export async function run({ browser, base, out }) {
     assert.equal((await page.evaluate(() => window.__wait)).result.seq, 3, `${name}: the cue reached the agent's wait`);
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
     await page.waitForFunction(() => document.querySelector("#thinkDot").className === "dot dot--ok");
-    assert.match(await text("#suggestBtn"), /^Suggest now · (19|20) s$/, `${name}: Suggest now counts down again`);
+    assert.match(await text("#suggestBtn"), /^i Suggest now · (19|20) s$/, `${name}: Suggest now counts down again`);
     assert.deepEqual(await card(), kept, `${name}: no answer leaves the card as it is`);
     ok(`${name}: an agent that gives no answer: the card stays; the light and Suggest now are back at once`);
 
@@ -321,13 +321,24 @@ export async function run({ browser, base, out }) {
     await context.close();
   }
 
-  // Another tab takes the relay mid-show: the card keeps its question; Suggest now and the light say "other tab".
+  // A pause cue lights the thinking light; then another tab takes the relay mid-show: the card keeps its question,
+  // Suggest now and the light say "other tab".
   {
     const context = await browser.newContext(VIEWS[0]);
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
     await openScreen(page, (l) => l.click(), { agent: true });
+    // A pause after 31 s of speech sends a cue on its own: the light breathes and Suggest now says Thinking….
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }); });
+    const cue = await page.evaluate(async () => {
+      window.__speech.emit({ type: "text", source: "host", piece: 1, final: true, text: "So how did it all start for you?", start: 0, end: 31 });
+      window.__speech.emit({ type: "pause", source: "host", at: 31 });
+      return (await window.__wait).result;
+    });
+    const thinking = await page.evaluate(() => [document.querySelector("#thinkDot").className, document.querySelector("#suggestBtn").textContent]);
+    assert.deepEqual([cue.cue, ...thinking], ["pause", "dot dot--think", "Thinking…"], "a pause cue lights the thinking light too");
+    ok("a pause cue: the light breathes, Thinking… on Suggest now");
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4001));
     await page.waitForFunction(() => document.querySelector("#suggestBtn").getAttribute("aria-disabled") === "true");
     const said = await page.evaluate(() => ({ q: document.querySelector("#qMain").textContent, button: document.querySelector("#suggestBtn").textContent, tip: document.querySelector("#suggestBtn").dataset.tip, light: document.querySelector("#thinkDot").getAttribute("aria-label") }));

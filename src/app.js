@@ -418,7 +418,7 @@ function renderCard() {
   // Suggest now and the light: no agent, thinking, the seconds until the next press counts, or ready.
   const { slow, cues: turns, suggestInMs } = cues.view();
   const button = suggestButton({ agent: link, thinking: busy, waitMs: suggestInMs, slow });
-  label(suggestBtn, button.state, button.off || null, ...(link !== "on" ? [offMark(), " "] : []), button.text);
+  label(suggestBtn, button.state, button.off || null, ...(button.off && !busy ? [offMark(), " "] : []), button.text);
   switchOff(suggestBtn, button.off);
   suggestBtn.toggleAttribute("aria-busy", busy);
   const light = thinkLight({ agent: link, thinking: busy });
