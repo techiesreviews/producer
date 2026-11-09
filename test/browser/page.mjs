@@ -137,36 +137,61 @@ export async function run({ browser, base, out }) {
     await page.waitForSelector("#tip[data-on]");
     assert.equal(await tip.textContent(), expected, `${name}: tooltip text on focus`);
     ok(`${name}: tooltip on keyboard focus`);
-    // More controls with a tip: one at each edge. After one is shown the next stays inside the window (its size is
-    // measured fresh), and a switched-off control shows its reason when pressed without doing what it says.
-    // (Built with the DOM, not markup: the page's policy forbids inline styles and handlers.)
-    await page.evaluate(() => {
-      const add = (id, text, tip, css, extra = {}) => {
-        const b = Object.assign(document.createElement("button"), { id, textContent: text, ...extra });
-        b.dataset.tip = tip;
-        b.style.cssText = `position:fixed;${css}`;
-        document.body.append(b);
-        return b;
-      };
-      add("edge-r", "R", "A long reason that wraps onto a few lines when it is shown at the right edge of the window.", "right:0;bottom:0");
-      add("edge-l", "L", "Left edge, so the tooltip must not hang off the left side.", "left:0;top:200px");
-      const off = add("off", "Off", "Not available yet.", "left:40%;top:300px");
-      off.setAttribute("aria-disabled", "true");
-      off.onclick = () => { window.pressed = true; };
-    });
-    for (const id of ["edge-r", "edge-l", "off"]) {
-      await page.locator(`#${id}`).evaluate((el) => el.scrollIntoView());
-      if (options.hasTouch) await page.locator(`#${id}`).tap({ force: true }); else await page.locator(`#${id}`).hover({ force: true });
+    // Reading the tooltip: with a mouse it stays open while the pointer crosses onto it, and goes when the pointer leaves both.
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => document.activeElement?.blur());
+    if (!options.hasTouch) {
+      await chip.hover();
       await page.waitForSelector("#tip[data-on]");
+      const t = await tip.boundingBox();
+      await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2, { steps: 8 });
+      await page.waitForTimeout(400);
+      assert.notEqual(await tip.getAttribute("data-on"), null, `${name}: the tooltip stays while the pointer is on it`);
+      await page.mouse.move(5, 600, { steps: 4 });
+      await page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on"));
+      ok(`${name}: the tooltip can be hovered, and leaves with the pointer`);
+    }
+
+    // More controls with a tip, made with the DOM (the page's policy forbids inline styles and handlers): one at each
+    // edge, a switched-off one, and a short tip at the right edge followed by a long one near it. Each tooltip is
+    // measured fresh, stays inside the window and is as wide as its text wants (a stale position once squeezed it).
+    const LONG = "A long reason that wraps onto a few lines when it is shown close to the right edge of the window.";
+    const controls = [
+      ["edge-r", "R", LONG, "right:0;bottom:0"],
+      ["edge-l", "L", "Left edge, so the tooltip must not hang off the left side.", "left:0;top:200px"],
+      ["off", "Off", "Not available yet.", "left:40%;top:300px"],
+      ["edge-s", "S", "Hi", "right:0;top:400px"],
+      ["edge-w", "W", LONG, "right:40px;top:450px"],
+    ];
+    await page.evaluate((list) => {
+      for (const [id, label, text, css] of list) {
+        const b = Object.assign(document.createElement("button"), { id, textContent: label });
+        b.dataset.tip = text;
+        b.style.cssText = `position:fixed;${css}`;
+        if (id === "off") { b.setAttribute("aria-disabled", "true"); b.onclick = () => { window.pressed = true; }; }
+        document.body.append(b);
+      }
+    }, controls);
+    const showOwn = async (id, text) => {
+      const control = page.locator(`#${id}`);
+      if (options.hasTouch) await control.tap({ force: true }); else await control.hover({ force: true });
+      await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, text);
       await page.waitForTimeout(150);
+    };
+    for (const [id, , text] of controls) {
+      await showOwn(id, text);
       assert.ok(await tipInside(), `${name}: the tooltip of #${id} is inside the window`);
-      await page.keyboard.press("Escape");
+      if (id === "edge-w") {
+        const width = (await tip.boundingBox()).width;
+        const wanted = Math.min(280, options.viewport.width - 24);
+        assert.ok(width >= wanted - 30, `${name}: the tooltip of #${id} is ${Math.round(width)}px wide, not squeezed (about ${wanted})`);
+      }
+      if (id !== "edge-s") await page.keyboard.press("Escape");
     }
     await page.locator("#off").click({ force: true });
-    await page.waitForSelector("#tip[data-on]");
-    assert.equal(await tip.textContent(), "Not available yet.", `${name}: a switched-off control shows its reason when pressed`);
-    assert.equal(await page.evaluate(() => window.pressed ?? false), false, `${name}: and does not run its action`);
-    ok(`${name}: tooltip placement at both edges, and the reason of a switched-off control`);
+    await page.waitForFunction(() => document.querySelector("#tip[data-on]")?.textContent === "Not available yet.");
+    assert.equal(await page.evaluate(() => window.pressed ?? false), false, `${name}: a switched-off control shows its reason when pressed, and does not run its action`);
+    ok(`${name}: tooltip placement at both edges and after a short one, and the reason of a switched-off control`);
     await context.close();
   }
 
