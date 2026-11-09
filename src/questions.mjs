@@ -12,7 +12,8 @@ const ALTS = 2;
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; view() gives
- * { main, alts, first, counts: { asked, skipped, left } } (first: the number of the first prepared question still open). A question is { n?, text, why?, from: "list" | "agent" }.
+ * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
+ * open. A question is { n?, text, why?, from: "list" | "agent" }.
  */
 export function createQuestions() {
   let plan = [];
