@@ -4,7 +4,7 @@ import { fakePage, PROTOCOL, relayWith, settle, T0 } from "./fakes.mjs";
 import { FakeSocket } from "./runtime.mjs";
 import { MAX_AGE_MS } from "../src/token.mjs";
 
-const { ALARM_SLACK_MS, MAX_CALL_MS } = await import("../src/relay.mjs");
+const { ALARM_SLACK_MS, MAX_CALL_MS, TAB_GRACE_MS } = await import("../src/relay.mjs");
 const TRANSCRIPT = "a private sentence nobody may store";
 
 test("relay: the protocol name is the producer's own", () => {
@@ -136,6 +136,53 @@ test("relay: a wait on a page that was replaced or dropped ends at once, so the 
   await settle();
   assert.deepEqual(dropped, { status: "superseded" });
   assert.deepEqual(await relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: T0 }), { status: "no-tab" });
+});
+
+test("relay: a page that reloads (it drops first, the new one connects a moment later) still gets the agent's next wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const now = { t: T0 };
+  const { relay, tab } = relayWith(now);
+  relay.graceMs = TAB_GRACE_MS;
+  assert.equal(TAB_GRACE_MS, 5_000);
+  const old = await tab();
+  let ended;
+  relay.op({ op: "call", tool: "wait_for_cue", args: { seq: 3 }, slot: "wait", born: T0, timeout: 30_000 }).then((r) => { ended = r; });
+  await settle();
+  await relay.webSocketClose(old, 1001); // the reload closes the old page first
+  await settle();
+  assert.deepEqual(ended, { status: "superseded" });
+  // The agent asks again at once; no page is there yet, so the call waits for one.
+  let next;
+  relay.op({ op: "call", tool: "wait_for_cue", args: { seq: 3 }, slot: "wait", born: T0, timeout: 30_000 }).then((r) => { next = r; });
+  await settle();
+  t.mock.timers.tick(2_000);
+  await settle();
+  assert.equal(next, undefined, "still waiting for the page");
+  const fresh = await tab();
+  await settle();
+  const call = fresh.sent.at(-1);
+  assert.deepEqual([call.type, call.tool, call.args], ["call", "wait_for_cue", { seq: 3 }], "delivered to the new page");
+  await relay.webSocketMessage(fresh, JSON.stringify({ type: "result", id: call.id, result: { idle: true, seq: 3 } }));
+  await settle();
+  assert.equal(next.status, "ok");
+  // A page that never comes back: no-tab only after the grace, and a revoke in the meantime is a 401.
+  await relay.webSocketClose(fresh, 1001);
+  let gone;
+  relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: T0, timeout: 30_000 }).then((r) => { gone = r; });
+  await settle();
+  t.mock.timers.tick(4_999);
+  await settle();
+  assert.equal(gone, undefined);
+  t.mock.timers.tick(1);
+  await settle();
+  assert.deepEqual(gone, { status: "no-tab" });
+  let revoked;
+  relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: T0, timeout: 30_000 }).then((r) => { revoked = r; });
+  await settle();
+  const other = await tab();
+  await relay.webSocketMessage(other, JSON.stringify({ type: "revoke" }));
+  await settle();
+  assert.deepEqual(revoked, { status: "unauthorized" }, "a revoke while it waits for a page is a 401, not no-tab");
 });
 
 test("relay: with a page that holds 25 s, idle comes back after about 25 s and a repeated seq is harmless", async (t) => {

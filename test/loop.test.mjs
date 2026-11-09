@@ -86,6 +86,33 @@ test("a loop that carries an answer repeats it on each idle round; the page show
   }
 });
 
+test("a host who reloads the page while the loop waits: the loop reaches the new page and does not stop", async () => {
+  const now = { t: Date.now() };
+  const { token, born } = newToken(now.t);
+  const kit = relayWith(now);
+  kit.relay.graceMs = 5_000;
+  const old = await kit.tab(born);
+  fakePage(kit.relay, old, { hold: 10_000 });
+  const s = await serve(now, kit.relay);
+  try {
+    setTimeout(async () => {
+      await kit.relay.webSocketClose(old, 1001); // the browser closes the old page first
+      setTimeout(async () => {
+        const fresh = await kit.tab(born);
+        fakePage(kit.relay, fresh, { hold: 10_000 }).cue({ cue: "pause", transcript: [{ speaker: "guest", text: "after the reload" }] });
+      }, 200);
+    }, 100);
+    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 0 } } });
+    const r = await run({ TOKEN: token, BODY, URL: s.url });
+    assert.equal(r.code, 0, r.stderr);
+    const reply = JSON.parse(r.stdout);
+    assert.equal(reply.result.isError, undefined, "not \"the page is not open\"");
+    assert.equal(reply.result.structuredContent.cue, "pause");
+  } finally {
+    await s.close();
+  }
+});
+
 test("the loop ends at once when no page is open or the token is refused (it must not spin)", async () => {
   const now = { t: Date.now() };
   const { token } = newToken(now.t);

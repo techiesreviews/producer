@@ -267,6 +267,19 @@ test("post_suggestions reports what the page says it showed", async () => {
   assert.match(r.content[0].text, /\(1\)/);
 });
 
+test("a call that ends because the page was replaced says so, not 'did not answer in time'", async () => {
+  const s = await setup({ withTab: false });
+  const ws = await s.tab(s.born);
+  const asked = s.call("post_suggestions", { suggestions: [{ question: 1 }] });
+  await settle();
+  await s.tab(s.born); // "Use this tab" in another window
+  const r = await asked;
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /reloaded or moved to another tab/);
+  assert.doesNotMatch(r.content[0].text, /in time/);
+  assert.equal(ws.closed, true);
+});
+
 test("get_new_transcript: a catch-up read by seq, with labels", async () => {
   const s = await setup();
   s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "first" }] });

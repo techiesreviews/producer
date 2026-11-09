@@ -10,6 +10,8 @@ import { MAX_AGE_MS } from "./token.mjs";
 export const PROTOCOL = "producer";
 export const ALARM_SLACK_MS = 60_000;
 export const MAX_CALL_MS = 35_000;
+/** A call that finds no page (it was open a moment ago: a reload closes the old page before the new one connects) waits this long for one. */
+export const TAB_GRACE_MS = 5_000;
 const dueOf = (meta) => meta.expiresAt + ALARM_SLACK_MS;
 
 export class Relay extends DurableObject {
@@ -17,6 +19,8 @@ export class Relay extends DurableObject {
     super(ctx, env);
     this.pending = new Map();
     this.slots = new Map(); // slot name -> id of the call that holds it
+    this.graceMs = TAB_GRACE_MS;
+    this.tabWaiters = new Set(); // calls waiting a moment for a page to connect
     this.earlyAgent = null; // an agent that said hello before any tab: kept in memory until one connects
     // Keepalive pings from the page are answered without waking the object.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'));
@@ -37,6 +41,16 @@ export class Relay extends DurableObject {
   }
   tab() {
     return this.ctx.getWebSockets("tab").at(-1) ?? null;
+  }
+  // The newest page, or the next one to connect within `ms` (null when none comes).
+  tabWithin(ms) {
+    const ws = this.tab();
+    if (ws || !(ms > 0)) return Promise.resolve(ws);
+    return new Promise((resolve) => {
+      const waiter = (found) => { clearTimeout(timer); this.tabWaiters.delete(waiter); resolve(found); };
+      const timer = setTimeout(() => waiter(null), ms);
+      this.tabWaiters.add(waiter);
+    });
   }
   send(ws, message) {
     try { ws.send(JSON.stringify(message)); return true; } catch { return false; }
@@ -66,6 +80,7 @@ export class Relay extends DurableObject {
         try { old.close(4001, "Open in another tab"); } catch { /* already closed */ }
       }
       this.ctx.acceptWebSocket(server, ["tab"]);
+      for (const waiter of [...this.tabWaiters]) waiter(server);
       this.send(server, { type: "ready", createdAt: meta.createdAt });
       if (meta.agent) this.send(server, { type: "agent", ...meta.agent });
     }
@@ -86,6 +101,7 @@ export class Relay extends DurableObject {
       const meta = (await this.meta()) ?? { createdAt: now, expiresAt: now + MAX_AGE_MS };
       await this.save({ ...meta, revoked: true, agent: null });
       for (const p of this.pending.values()) p.done({ status: "unauthorized" });
+      for (const waiter of [...this.tabWaiters]) waiter(null);
       for (const s of this.ctx.getWebSockets()) { try { s.close(4003, "revoked"); } catch { /* closed */ } }
     }
   }
@@ -106,6 +122,7 @@ export class Relay extends DurableObject {
     const meta = await this.meta();
     if (meta && this.now() < dueOf(meta)) return this.ctx.storage.setAlarm(dueOf(meta));
     for (const p of this.pending.values()) p.done({ status: "unauthorized" });
+    for (const waiter of [...this.tabWaiters]) waiter(null);
     for (const s of this.ctx.getWebSockets()) { try { s.close(4003, "expired"); } catch { /* closed */ } }
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
@@ -135,8 +152,11 @@ export class Relay extends DurableObject {
       return { status: "ok" };
     }
     if (message.op === "call") {
-      const ws = this.tab();
-      if (!ws) return { status: "no-tab" };
+      const ws = await this.tabWithin(this.graceMs);
+      if (!ws) {
+        // After the grace, say whether the token was revoked or ended meanwhile, else that no page is open.
+        return { status: this.valid(await this.meta()) ? "no-tab" : "unauthorized" };
+      }
       const id = crypto.randomUUID();
       const timeout = Math.min(Math.max(Number(message.timeout) || 10_000, 1_000), MAX_CALL_MS);
       // A call may name a slot ("wait"): a newer call in the same slot ends the older one, so an agent that

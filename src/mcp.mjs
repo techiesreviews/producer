@@ -12,6 +12,8 @@ const SERVER = { name: "techies-producer", title: "Producer", version: "1.0.0" }
 export const WAIT_HOLD_MS = 25_000;
 export const WAIT_CALL_MS = 30_000;
 export const CALL_TIMEOUT_MS = 10_000;
+export const PAGE_MOVED = "The producer page was reloaded or moved to another tab. Try again.";
+const TOO_SLOW = "The producer page did not answer in time. Try again.";
 export const NOT_OPEN = "The producer page is not open. Ask the host to open the producer in the browser where they pressed Connect my agent, and keep that tab open.";
 
 // Caps on what the page may send the agent (text is untrusted: it is speech and chat).
@@ -275,7 +277,7 @@ async function callTool(name, args, { relay }) {
   if (name === "get_context") {
     const r = await callPage(relay, name, {});
     if (r.error) return toolError(r.error);
-    if (r.status) return toolError("The producer page did not answer in time. Try again.");
+    if (r.status) return toolError(r.status === "superseded" ? PAGE_MOVED : TOO_SLOW);
     return shapeContext(r.result);
   }
   if (name === "wait_for_cue") {
@@ -294,7 +296,7 @@ async function callTool(name, args, { relay }) {
     if (g.error) return toolError(g.error);
     const r = await callPage(relay, name, { suggestions: g.suggestions });
     if (r.error) return toolError(r.error);
-    if (r.status) return toolError("The producer page did not answer in time. Try again.");
+    if (r.status) return toolError(r.status === "superseded" ? PAGE_MOVED : TOO_SLOW);
     const shown = isInt(r.result.shown) ? Math.min(r.result.shown, g.suggestions.length) : g.suggestions.length;
     return { content: [text(`Shown on the host's screen (${shown}).`)], structuredContent: { ok: true, shown } };
   }
@@ -303,7 +305,7 @@ async function callTool(name, args, { relay }) {
     if (s.error) return toolError(s.error);
     const r = await callPage(relay, name, { seq: s.seq });
     if (r.error) return toolError(r.error);
-    if (r.status) return toolError("The producer page did not answer in time. Try again.");
+    if (r.status) return toolError(r.status === "superseded" ? PAGE_MOVED : TOO_SLOW);
     return shapeTranscript(r.result);
   }
   // post_report
@@ -311,7 +313,7 @@ async function callTool(name, args, { relay }) {
   if (g.error) return toolError(g.error);
   const r = await callPage(relay, name, g.report);
   if (r.error) return toolError(r.error);
-  if (r.status) return toolError("The producer page did not answer in time. Try again.");
+  if (r.status) return toolError(r.status === "superseded" ? PAGE_MOVED : TOO_SLOW);
   return { content: [text("The report is on the host's screen. You are done: stop now.")], structuredContent: { ok: true } };
 }
 
