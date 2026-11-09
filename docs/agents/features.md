@@ -77,6 +77,15 @@ Each entry:
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/agent-ways.mjs`, `src/agent-message.mjs`, `src/agent-link.mjs`, `src/ui/tooltip.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`
+- Steps: none yet (no kit shots command)
+
+### F-setup-07 Step 3 "Show, questions & plan": paste the plan by hand
+- Try: Press Paste it myself; paste a plan (Show:, Guest:, parts like "10 Intro", numbered questions); then paste a line the page cannot read; press the button again.
+- Good: The box opens under the button with a short example under it; the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast, no explainer text. The plan is never stored.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`
+- Phone: yes
+- Spec: `test/browser/runorder.mjs`
+- Steps: none yet (no kit shots command)
 
 ## Live
 
@@ -86,4 +95,12 @@ Each entry:
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
 - Phone: yes
 - Spec: `test/browser/speech.mjs`
+- Steps: none yet (no kit shots command)
+
+### F-live-02 The run order and the show clock
+- Try: With a plan pasted, open the producer screen; press Start; let a part run over; press Next part a few times; on a phone press All.
+- Good: As the mock-up: a Run order panel (right column wide, full width on a phone) and a clock in the top bar. Before Start the clock reads 0:00 and Start is orange. After Start the current part is tinted with its time left and a bar ("0:20 over" in orange when over); done parts show their real time against the plan (+1:40 orange, −0:20 green); the clock shows how far ahead (green, minus) or behind (orange, plus) the plan the show is. A double click on Start does not skip a part. After the last part Next part goes and the clock goes on. A phone shows now and next, with All for the rest.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`
+- Phone: yes
+- Spec: `test/browser/runorder.mjs`
 - Steps: none yet (no kit shots command)
