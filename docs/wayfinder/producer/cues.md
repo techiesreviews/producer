@@ -35,6 +35,7 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 - Asked and Skip move to the first alternative and mark a prepared question as asked or skipped, in the page's memory (for the end report to come). An alternative pressed swaps with the question on the card.
 - While the newest cue waits for the agent's turn, Suggest now reads "Thinking…" and the small light in the card's corner breathes orange. The turn ends with the answer to that cue (an answer to an older cue leaves the light on), when the agent comes back past it with no answer, or after a minute. After a cue, Suggest now shows the seconds until it takes the next press. With no agent (or its loop gone quiet) it reads "Suggest now · no agent", switched off, and the light is grey; the card keeps its question.
 - The turn chip counts the cues that went to the agent this show.
+- Speed: from the agent's answer arriving to the new question on screen takes 1 to 2 ms (the questions suite, `kit specs questions`, 2026-11-09, checked under 0.3 s), so the real-run seconds above stand for the card too. Not run yet: a real Claude Code rehearsal timed to the card itself (Lex's checkpoint for this card).
 
 ## The speed target
 
