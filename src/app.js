@@ -133,7 +133,8 @@ async function micOn() {
   try {
     context = new AudioContext();
     // A browser may start the sound paused; asking it to resume (not waiting on it) keeps the meter and the speech fed.
-    context.resume();
+    // Not awaited, and a refusal is left alone on purpose: the sound then stays paused, which the still meter shows.
+    context.resume().catch(() => {});
     const source = context.createMediaStreamSource(stream);
     tap = context.createScriptProcessor(4096, 1, 1);
     source.connect(tap);
@@ -235,7 +236,7 @@ function onSpeech({ data }) {
     state.speech = true;
     speechBtn.dataset.state = "ok";
     speechTxt.textContent = "Speech ready";
-    speechBtn.dataset.tip = `Kept in this browser (${speechIdle.split("· ")[1]}): next time it loads without downloading.`;
+    speechBtn.dataset.tip = `Kept in this browser (${speechIdle.split("· ")[1]}): next time the model loads without downloading.`;
     done("sSpeech", true);
     refresh();
   } else if (data.type === "error") {

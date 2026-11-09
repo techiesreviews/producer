@@ -78,6 +78,15 @@ test("a long stretch of talk is cut at the length cap and goes on in a new piece
   assert.deepEqual(finals.map((f) => f.piece), [finals[0].piece, finals[0].piece + 1, finals[0].piece + 2]);
 });
 
+test("piece numbers go on from firstPiece, so a new segmenter after Stop never repeats one", () => {
+  const first = createSegmenter();
+  const a = [...feed(first, voice(1.5)), ...first.flush()].filter((e) => e.type === "final");
+  const second = createSegmenter({ firstPiece: first.nextPiece });
+  const b = [...feed(second, voice(1.5)), ...second.flush()].filter((e) => e.type === "final");
+  assert.deepEqual([a.map((e) => e.piece), b.map((e) => e.piece)], [[1], [2]]);
+  assert.equal(second.nextPiece, 3);
+});
+
 test("a click shorter than a word is dropped; Stop (flush) ends an open piece", () => {
   const seg = createSegmenter();
   assert.deepEqual(feed(seg, cat(silence(1), voice(0.1), silence(1))).filter((e) => e.type === "final"), []);

@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
-import { MODEL, PART_BYTES, SPEECH_BYTES, SPEECH_FILES, speechManifest, untar, writeParts } from "../scripts/speech-files.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { copySpeechFiles, MODEL, PART_BYTES, SPEECH_BYTES, SPEECH_FILES, speechFilesReady, speechManifest, untar, writeParts } from "../scripts/speech-files.mjs";
 
 const CLOUDFLARE_ASSET_LIMIT = 25 * 1024 * 1024;
 
@@ -61,6 +63,18 @@ test("the tarball reader finds a file by its path", () => {
   const files = untar(gzipSync(Buffer.concat([block("package/a.txt", "hello"), block("package/dist/b.js", "x".repeat(600)), Buffer.alloc(1024)])));
   assert.equal(files.get("package/a.txt").toString(), "hello");
   assert.equal(files.get("package/dist/b.js").length, 600);
+});
+
+test("the build refuses a cached file whose bytes differ from the pinned ones, even at the right size", () => {
+  const dir = resolve(import.meta.dirname, "../.scratch/test-tampered-cache");
+  rmSync(dir, { recursive: true, force: true });
+  for (const f of SPEECH_FILES) {
+    mkdirSync(dirname(join(dir, f.path)), { recursive: true });
+    writeFileSync(join(dir, f.path), Buffer.alloc(f.size));
+  }
+  assert.equal(speechFilesReady(dir), true, "a size check alone would pass it");
+  assert.throws(() => copySpeechFiles(dir, resolve(import.meta.dirname, "../.scratch/test-tampered-out")), /differs from the pinned one/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("a file over the part size is served in parts that join back into it", () => {

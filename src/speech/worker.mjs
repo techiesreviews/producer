@@ -19,6 +19,8 @@ const here = (path) => new URL(path, self.location.href).href;
 let asr = null;
 let loading = null;
 let segmenter = null;
+// Piece numbers go on across Stop and Listen, so a late piece from before a Stop never shares a number with a new one.
+let nextPiece = 1;
 let resample = null;
 let resampleRate = 0;
 const finals = [];
@@ -32,18 +34,23 @@ async function sha256(buffer) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Every file of the manifest in the cache, downloading only what is missing; progress counts bytes. */
+/** The model and the engine's WebAssembly go in the cache; the engine's scripts are imported like any script. */
+const cached = (file) => !/\.m?js$/.test(file.path);
+
+/** Every cached file of the manifest in the cache, downloading only what is missing; progress counts bytes. */
 async function fillCache(manifest) {
   const cache = await caches.open(CACHE_PREFIX + manifest.version);
   // An older model version is removed, so the browser keeps one copy only.
   for (const name of await caches.keys()) if (name.startsWith(CACHE_PREFIX) && name !== CACHE_PREFIX + manifest.version) await caches.delete(name);
+  const files = manifest.files.filter(cached);
+  const total = files.reduce((n, f) => n + f.size, 0);
   let loaded = 0;
   let shown = -1;
   const report = () => {
-    const step = Math.floor((loaded / manifest.bytes) * 100);
-    if (step !== shown) { shown = step; post({ type: "progress", loaded, total: manifest.bytes }); }
+    const step = Math.floor((loaded / total) * 100);
+    if (step !== shown) { shown = step; post({ type: "progress", loaded, total }); }
   };
-  for (const file of manifest.files) {
+  for (const file of files) {
     if (!file.parts.length) throw new Error("the speech model is missing on this site");
     const url = here(file.path);
     if (await cache.match(url)) { loaded += file.size; report(); continue; }
@@ -70,7 +77,9 @@ async function fillCache(manifest) {
 }
 
 async function load() {
-  const manifest = await (await fetch(here("manifest.json"), { cache: "no-store" })).json();
+  const response = await fetch(here("manifest.json"), { cache: "no-store" });
+  if (!response.ok) throw new Error(`could not download the speech model (${response.status})`);
+  const manifest = await response.json();
   const cache = await fillCache(manifest);
   // The processor-only engine: given to the model library before it loads, so the library uses it.
   const ort = await import("./vendor/ort.wasm.min.mjs");
@@ -140,11 +149,15 @@ self.onmessage = ({ data }) => {
     );
   } else if (data.type === "audio") {
     if (!asr) return;
-    if (!segmenter) segmenter = createSegmenter();
+    if (!segmenter) segmenter = createSegmenter({ firstPiece: nextPiece });
     if (data.rate !== resampleRate) { resample = createResampler(data.rate); resampleRate = data.rate; }
     take(segmenter.push(resample(data.samples)));
   } else if (data.type === "stop") {
-    if (segmenter) take(segmenter.flush());
+    if (segmenter) {
+      take(segmenter.flush());
+      nextPiece = segmenter.nextPiece;
+    }
+    draft = null;
     segmenter = null;
     resampleRate = 0;
   }

@@ -312,6 +312,9 @@ export async function run({ playwright, base, dist, out }) {
     assert.ok(await allEnded(), "and every track is ended");
     ok("listen: a microphone that ends by itself stops the sign");
 
+    // Still nothing left the page, over every listening stretch above (after Stop, a failed Listen and an ended microphone).
+    assert.deepEqual(requests.slice(beforeListening).map((r) => r.url), [], "no request over any listening stretch");
+
     // The speech model failing on the producer screen: the microphone stops and the setup comes back, with the failed
     // speech button and its reason, so the sign never shows listening while nothing turns into text.
     await page.locator("#stopBtn").click();
@@ -338,7 +341,8 @@ export async function run({ playwright, base, dist, out }) {
       return { names, files: files.sort(), local: localStorage.length, session: sessionStorage.length, cookie: document.cookie, databases: (await indexedDB.databases()).length };
     });
     assert.deepEqual(kept.names, [`producer-speech-${manifest.version}`], "one cache, named for this model version");
-    assert.deepEqual(kept.files, manifest.files.map((f) => `/speech/${f.path}`).sort(), "holding the model files only");
+    const modelFiles = manifest.files.filter((f) => !/\.m?js$/.test(f.path)).map((f) => `/speech/${f.path}`).sort();
+    assert.deepEqual(kept.files, modelFiles, "holding the model files and the engine's WebAssembly only (its scripts load as scripts)");
     assert.deepEqual([kept.local, kept.session, kept.cookie, kept.databases], [0, 0, "", 0], "and nothing else is stored");
     assert.deepEqual(problems, [], "no console error, warning or policy violation");
     ok("storage: only the model files, in one cache; nothing else");

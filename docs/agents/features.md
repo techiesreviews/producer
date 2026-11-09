@@ -65,7 +65,7 @@ Each entry:
 
 ### F-setup-05 Load the speech model
 - Try: Press "Load speech model · 82 MB"; reload the page and press it again.
-- Good: The button counts up "Loading N%" and then says "Speech ready" in green; the second time it loads without downloading. A failure says so on the button, with the reason in its tooltip.
+- Good: The button counts up "Loading N%" and then says "Speech ready" in green; the second time the model loads without downloading. A failure says so on the button, with the reason in its tooltip.
 - Files: `src/page.html`, `src/app.js`, `src/speech/*.mjs`, `scripts/speech-files.mjs`, `scripts/build.mjs`
 - Phone: yes
 - Spec: `test/browser/speech.mjs`
