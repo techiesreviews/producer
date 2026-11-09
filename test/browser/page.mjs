@@ -255,6 +255,15 @@ async function checkTabSound(page, name, out, { touch, reason }) {
   }
   if (!reason) { await answer("No · my mic only"); await shoot("guest-no"); }
   await answer("Yes");
+  // OBS has no studio tab: the button is off with its own reason (a browser's own reason still comes first), and the
+  // Open button does not wait for it. Back on Restream Studio it is ready again.
+  const OBS_REASON = "No tab sound with OBS: it has no studio tab to share. Only your microphone is listened to.";
+  const pick = async (label) => { const b = page.getByRole("button", { name: label, exact: true }); if (touch) await b.tap(); else await b.click(); await page.evaluate(() => document.activeElement?.blur()); };
+  await pick("OBS");
+  assert.equal(await btn.getAttribute("aria-disabled"), "true", `${name}: OBS: the tab button is switched off`);
+  assert.equal(await btn.getAttribute("data-tip"), reason ?? OBS_REASON, `${name}: OBS: ${reason ? "the browser's own reason stays" : "with its reason"}`);
+  await pick("Restream Studio");
+  assert.equal(await btn.getAttribute("aria-disabled"), reason ? "true" : null, `${name}: back on Restream Studio: ${reason ? "still off in this browser" : "ready again"}`);
   assert.equal(await btn.getAttribute("aria-disabled"), reason ? "true" : null, `${name}: Yes: ${reason ? "still off in this browser" : "the tab button is ready again"}`);
   // Leave nothing open for the next check: the pointer moves off and the tooltip the last answer opened is closed.
   if (!touch) await page.mouse.move(5, 600);

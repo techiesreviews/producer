@@ -32,7 +32,12 @@ const state = { guest: null, mic: false, tab: false, speech: false, listening: f
 
 // Step 1 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
 const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"]').dataset.v;
-choices(document.getElementById("streamSeg"), () => showTab());
+choices(document.getElementById("streamSeg"), () => {
+  // OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again.
+  if (tabUi().off) { tabWanted = false; if (state.tab || tabPhase === "busy") tabOff(); }
+  showTab();
+  refresh();
+});
 
 // Step 2, the AI agent. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
 // the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
@@ -188,7 +193,7 @@ addEventListener("pagehide", () => agent.disconnect());
 // listened to: a tab that was already shared stops, and Listen will not ask for it again.
 choices($("guestSeg"), (answer) => {
   state.guest = answer;
-  if (answer !== "yes") { tabWanted = false; if (state.tab) tabOff(); }
+  if (answer !== "yes") { tabWanted = false; if (state.tab || tabPhase === "busy") tabOff(); }
   done("sGuest", true);
   showTab();
   refresh();
@@ -565,7 +570,7 @@ const speechTxt = $("speechTxt");
 const speechIdle = speechTxt.textContent;
 const SPEECH_TIP = speechBtn.dataset.tip;
 
-/** What was heard, in this page's memory only and gone when the tab closes: the final lines and the newest draft. */
+/** What was heard, in this page's memory only and gone when the tab closes: the final lines and each source's newest draft. */
 const heard = { lines: [], drafts: {}, pauses: {} };
 
 function onSpeech({ data }) {
@@ -636,6 +641,9 @@ function showScreen(live) {
 
 goBtn.addEventListener("click", () => {
   if (goBtn.getAttribute("aria-disabled") === "true") return;
+  // A Listen that failed earlier must not leave its words on Stop now that the page listens afresh.
+  stopBtn.removeAttribute("data-state");
+  stopBtn.removeAttribute("data-tip");
   showScreen(true);
   startListening();
 });
@@ -643,7 +651,7 @@ goBtn.addEventListener("click", () => {
 // ---- The listening sign: shows while the page listens; Stop ends the microphone at once; Listen starts it again ----
 const stopBtn = $("stopBtn");
 function showSign() {
-  const sign = listeningSign({ ...state, canShare: browser.features.tabSound.on });
+  const sign = listeningSign({ ...state, noTab: !browser.features.tabSound.on ? "browser" : streamName() === "obs" ? "obs" : "", tabBusy: tabPhase === "busy" });
   $("listen").dataset.on = String(sign.on);
   $("listenDot").className = sign.on ? "dot dot--live" : "dot";
   $("listenOn").hidden = !sign.on;
@@ -670,9 +678,11 @@ function startListening() {
   showSign();
 }
 
+let listenPress = 0;
 stopBtn.addEventListener("click", async () => {
   if (stopBtn.dataset.state === "busy") return;
   if (state.listening) { micOff(); return; }
+  const press = ++listenPress;
   stopBtn.dataset.state = "busy";
   stopBtn.removeAttribute("data-tip");
   // The browser lets the tab picker open only straight from a click, so it starts here, beside the microphone; the
@@ -694,6 +704,7 @@ stopBtn.addEventListener("click", async () => {
     stopBtn.textContent = `${problem.text} · Listen`;
     stopBtn.dataset.tip = problem.tip;
     // No microphone, nothing is listened to: a tab picked meanwhile is let go again.
-    sharing?.then(() => { if (!state.listening) { tabOff(); tabWanted = true; } });
+    // Only this press's own tab: a later press may be waiting for the same picker.
+    sharing?.then(() => { if (press === listenPress && !state.listening) { tabOff(); tabWanted = true; } });
   }
 });

@@ -11,8 +11,12 @@ test("the sign names what is heard: the host's mic, plus the guest's tab when it
   });
   const noTab = listeningSign({ listening: true, guest: "yes", tab: false });
   assert.deepEqual([noTab.source, noTab.tip], ["host mic", "Host mic only: the guest tab is not shared. Press Stop, then Listen to pick it again."], "a yes without the tab says so, with the way back");
-  const cannot = listeningSign({ listening: true, guest: "yes", tab: false, canShare: false });
+  const cannot = listeningSign({ listening: true, guest: "yes", tab: false, noTab: "browser" });
   assert.deepEqual([cannot.source, cannot.tip], ["host mic", "Host mic only: this browser cannot share a tab's sound."], "in a browser that cannot, there is no way back to promise");
+  const obs = listeningSign({ listening: true, guest: "yes", tab: false, noTab: "obs" });
+  assert.deepEqual([obs.source, obs.tip], ["host mic", "Host mic only: OBS has no studio tab to share."], "with OBS there is no tab either");
+  const waiting = listeningSign({ listening: true, guest: "yes", tab: false, tabBusy: true });
+  assert.equal(waiting.tip, "Host mic for now: waiting for the tab to be picked.", "while the picker is open the sign says it waits");
   const no = listeningSign({ listening: true, guest: "no", tab: false });
   assert.deepEqual([no.source, no.chip.text, no.chip.ok, no.tip], ["host mic", "Guest: no", false, "Host mic only: your guest said no."]);
   assert.equal(GUEST.no.chipTip, "Your guest said no. Only your microphone is listened to.");
@@ -47,12 +51,21 @@ test("the tab button: switched off with the plain reason, the browser's first, t
   assert.equal(tabButton({ feature: chrome, guest: "no", phase: "on", stream: "wave" }).off, true, "a share that is still on is off-limits once the guest said no");
 });
 
+test("the tab button: OBS has no studio tab, so it is switched off for a guest who said yes, and the open button does not wait for it", () => {
+  const b = tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "obs" });
+  assert.deepEqual([b.off, b.tip], [true, "No tab sound with OBS: it has no studio tab to share. Only your microphone is listened to."]);
+  assert.equal(tabButton({ feature: chrome, guest: "yes", phase: "on", stream: "obs" }).off, true, "a share still running when OBS is picked is off-limits");
+  assert.equal(tabButton({ feature: firefox, guest: "yes", phase: "idle", stream: "obs" }).tip, REASONS.tabFirefox, "the browser's own reason comes first");
+  assert.equal(tabButton({ feature: chrome, guest: "yes", phase: "idle", stream: "other" }).off, false, "any other studio can be shared");
+  // The app passes tabReady once the tab is shared or switched off: for OBS that is at once.
+  assert.equal(openBlocked({ guest: "yes", mic: true, tabReady: b.off, speech: true }), "");
+});
+
 test("the tab button: waiting for the pick, then shared under the studio's name, then a failure on the button itself", () => {
   assert.deepEqual(tabButton({ feature: chrome, guest: "yes", phase: "busy", stream: "restream" }), { off: false, state: "busy", text: "Pick the tab…", tip: null });
   const on = (stream) => tabButton({ feature: chrome, guest: "yes", phase: "on", stream });
   assert.deepEqual([on("restream").state, on("restream").text], ["ok", "Restream Studio tab"]);
   assert.equal(on("wave").text, "Wave.video tab");
-  assert.equal(on("obs").text, "Studio tab");
   assert.equal(on("other").text, "Studio tab");
   assert.match(on("restream").tip, /Press to stop sharing\.$/);
   assert.match(on("restream").tip, /Headphones/);
