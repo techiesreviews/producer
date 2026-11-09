@@ -42,6 +42,17 @@ function standIns() {
     tone.start();
     return out.stream;
   };
+  // The studio tab's picker (card 05): a browser tab with a quiet tone, so the Sound step can be done where a browser can.
+  navigator.mediaDevices.getDisplayMedia = async () => {
+    const context = new AudioContext();
+    const tone = context.createOscillator();
+    const out = context.createMediaStreamDestination();
+    tone.connect(out);
+    tone.start();
+    const video = document.createElement("canvas").captureStream(1).getVideoTracks()[0];
+    video.getSettings = () => ({ displaySurface: "browser" });
+    return new MediaStream([video, ...out.stream.getAudioTracks()]);
+  };
   const RealWorker = window.Worker;
   window.Worker = function Worker(url, options) {
     if (!String(url).includes("/speech/")) return new RealWorker(url, options);
@@ -50,6 +61,14 @@ function standIns() {
     fake.terminate = () => {};
     return fake;
   };
+}
+
+// The studio tab's sound, where this browser can give it (a phone's browser cannot: its button is off with a reason and
+// the Sound step waits for nothing). `press` clicks or taps.
+async function shareTab(page, press) {
+  if ((await page.locator("#tabBtn").getAttribute("aria-disabled")) === "true") return;
+  await press(page.locator("#tabBtn"));
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
 }
 
 // Contrast of an element's text on what it is painted over (its own background over the panel's), as the browser paints it.
@@ -159,6 +178,7 @@ export async function run({ browser, base, out }) {
     await press(page.locator("#guestSeg button").first());
     await press(page.locator("#micBtn"));
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await shareTab(page, press);
     await press(page.locator("#speechBtn"));
     await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
     await press(page.locator("#goBtn"));
@@ -311,6 +331,7 @@ export async function run({ browser, base, out }) {
     await page.locator("#guestSeg button").first().click();
     await page.locator("#micBtn").click();
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await shareTab(page, (el) => el.click());
     await page.locator("#speechBtn").click();
     await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
     await page.locator("#goBtn").click();
@@ -333,6 +354,7 @@ export async function run({ browser, base, out }) {
   await page.locator("#guestSeg button").first().tap();
   await page.locator("#micBtn").tap();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+  await shareTab(page, (el) => el.tap());
   await page.locator("#speechBtn").tap();
   await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
   await page.locator("#goBtn").tap();

@@ -127,7 +127,7 @@ test("the repeat guard stops a looping phrase and keeps ordinary repeats", () =>
   assert.equal(guardRepeats("One two three."), "One two three.");
 });
 
-const workerSource = ["worker", "segmenter", "resample", "repeat"].map((f) => readFileSync(resolve(import.meta.dirname, `../src/speech/${f}.mjs`), "utf8").replace(/^\s*\/\/.*$/gm, "")).join("\n");
+const workerSource = ["worker", "lanes", "segmenter", "resample", "repeat"].map((f) => readFileSync(resolve(import.meta.dirname, `../src/speech/${f}.mjs`), "utf8").replace(/^\s*\/\/.*$/gm, "")).join("\n");
 
 test("the speech worker stays on this site and keeps only the model", () => {
   assert.doesNotMatch(workerSource, /https?:\/\//, "names no outside address");

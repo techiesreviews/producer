@@ -24,7 +24,7 @@ export const STYLES = ["src/theme.css", "src/app.css"];
 export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/runorder.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-link.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
-export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];
+export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];
 
 /** The live address, and the preview's (Worker producer-preview). */
 export const LIVE_HOST = "producer.techies.tools";
