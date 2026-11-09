@@ -21,6 +21,9 @@ export async function resolvesPublicly(host) {
   try { return (await resolver.resolve4(host)).length > 0; } catch { return false; }
 }
 
+/** What the check's stand-in page answers a get_context call with. */
+const MARKER = "QA link check";
+
 /**
  * The page's own socket: the token travels as a subprotocol, never in the address, and the Origin is the page's.
  * Node's built-in WebSocket takes `{ protocols, headers }` as its second argument (test/qa-tunnel-check.test.mjs
@@ -109,13 +112,24 @@ export async function runChecks(base, {
         socket.onclose = () => { clearTimeout(timer); resolve({ problem: "the relay socket closed at once" }); };
       });
       if (first.problem) return { ok: false, detail: first.problem };
+      // A real round trip, the way an agent's tool call reaches the page: the agent's /mcp call goes through the relay
+      // to this socket (standing in for the page), which answers; the answer must come back in the agent's reply.
+      socket.onmessage = (event) => {
+        let message;
+        try { message = JSON.parse(event.data); } catch { return; }
+        if (message?.type === "call" && message.tool === "get_context") {
+          socket.send(JSON.stringify({ type: "result", id: message.id, result: { showTitle: MARKER, seq: 0, questions: [], segments: [] } }));
+        }
+      };
       const call = await ask("/mcp", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_context", arguments: {} } }),
       });
       if (call.status !== 200) return { ok: false, detail: `/mcp refused the new token (${call.status})` };
-      return { ok: true, detail: "token, page socket and /mcp call work" };
+      const reply = await call.json().catch(() => null);
+      if (reply?.result?.structuredContent?.showTitle !== MARKER) return { ok: false, detail: "an agent call did not come back through the relay from the page's socket" };
+      return { ok: true, detail: "an agent call went through the relay to the page's socket and back" };
     } finally {
       try { socket.close(); } catch { /* already closed */ }
     }

@@ -25,7 +25,16 @@ function fakeWorld(fault = {}) {
     if (pathname === "/mcp") {
       const authed = String(headers.authorization || "").startsWith("Bearer pr1-");
       if (!authed) return Response.json({ error: "no" }, { status: fault.mcpOpen ? 200 : 401 });
-      return Response.json({ jsonrpc: "2.0", id: 1, result: { tools: [{ name: "wait_for_cue" }] } }, { status: fault.mcpAuthStatus ?? 200 });
+      if (fault.mcpAuthStatus) return Response.json({}, { status: fault.mcpAuthStatus });
+      const body = JSON.parse(init.body);
+      if (body.method !== "tools/call" || body.params?.name !== "get_context") return Response.json({ jsonrpc: "2.0", id: 1, error: { code: -32601 } });
+      // The relay: hand the call to the page's socket, wait for its answer, put it in the agent's reply.
+      const socket = sockets.at(-1);
+      if (fault.callNeverReturns || !socket) return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [], structuredContent: {} } });
+      const sent = socket.sent.length;
+      socket.onmessage?.({ data: JSON.stringify({ type: "call", id: "call-1", tool: "get_context", args: {} }) });
+      const answer = socket.sent.slice(sent).find((m) => m.type === "result" && m.id === "call-1");
+      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [], structuredContent: answer?.result ?? {} } });
     }
     return new Response("nope", { status: 404 });
   };
@@ -35,12 +44,14 @@ function fakeWorld(fault = {}) {
       this.protocols = init.protocols;
       this.origin = init.headers?.origin;
       this.closed = false;
+      this.sent = [];
       sockets.push(this);
       queueMicrotask(() => {
         if (fault.relayDown || this.origin !== (fault.originIs ?? BASE)) return this.onerror?.({});
         if (!fault.relaySilent) this.onmessage?.({ data: fault.relayRaw ?? JSON.stringify({ type: fault.relayFirst ?? "ready", createdAt: 1 }) });
       });
     }
+    send(data) { this.sent.push(JSON.parse(data)); }
     close() { this.closed = true; }
   }
   return { fetch, WebSocket: FakeWebSocket, calls, sockets };
@@ -58,6 +69,7 @@ test("check: a healthy link passes all four steps and closes the relay socket", 
   const result = await run(world);
   assert.equal(result.ok, true);
   assert.deepEqual(result.steps.map((s) => [s.name, s.ok]), [["page", true], ["not indexed", true], ["mcp refuses no token", true], ["relay", true]]);
+  assert.match(result.steps.at(-1).detail, /went through the relay to the page's socket and back/);
   assert.equal(world.sockets.length, 1);
   assert.equal(world.sockets[0].url, "wss://example-words.trycloudflare.com/api/relay");
   assert.deepEqual(world.sockets[0].protocols, ["producer", `t.pr1-abcdefgh-${"A".repeat(43)}`], "the token travels as a subprotocol, not in the address");
@@ -130,7 +142,7 @@ test("check: /mcp that answers without a token fails", async () => {
   assert.equal(result.steps.find((s) => s.name === "mcp refuses no token").ok, false);
 });
 
-test("check: the relay must say ready, and an agent call with the token must be accepted", async () => {
+test("check: the relay must say ready, and an agent call must go through it to the page's socket and back", async () => {
   assert.equal((await run(fakeWorld({ relaySilent: true }))).steps.at(-1).ok, false, "no ready message");
   assert.equal((await run(fakeWorld({ relayDown: true }))).steps.at(-1).ok, false, "socket error");
   assert.equal((await run(fakeWorld({ relayFirst: "nope" }))).steps.at(-1).ok, false, "wrong first message");
@@ -140,6 +152,9 @@ test("check: the relay must say ready, and an agent call with the token must be 
     assert.match(odd.detail, /^the relay said something unreadable, expected "ready"$/, "a plain message, not a crash");
   }
   assert.match((await run(fakeWorld({ relayFirst: "nope" }))).steps.at(-1).detail, /the relay said "nope"/);
+  const lost = (await run(fakeWorld({ callNeverReturns: true }))).steps.at(-1);
+  assert.equal(lost.ok, false, "the call does not come back through the relay");
+  assert.match(lost.detail, /did not come back through the relay/);
   const refused = await run(fakeWorld({ mcpAuthStatus: 401 }));
   assert.equal(refused.steps.at(-1).ok, false, "the token is not accepted by /mcp");
 });
