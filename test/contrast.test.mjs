@@ -25,7 +25,8 @@ for (const [, name, value] of css.matchAll(/^\s*--([\w-]+):\s*(.+?);\s*$/gm)) {
   else if (/^oklch\(/.test(value)) tokens[name] = { light: value, dark: value };
 }
 
-// [text, background]: what the page puts text on.
+// [text, background]: what the page puts text on. --faint is only for switched-off controls, which WCAG leaves out
+// of the contrast rule (inactive controls).
 const PAIRS = [["text", "bg"], ["text", "surface"], ["text", "raised"], ["muted", "bg"], ["muted", "surface"], ["muted", "raised"], ["on-ink", "ink"], ["on-accent", "accent"]];
 
 test("every text colour meets 4.5:1 on its background, in light and dark", () => {
@@ -51,5 +52,17 @@ test("the keyboard focus ring meets 3:1 on every surface it can sit on, in light
       const r = ratio(oklchToRgb(tokens[ring][mode]), oklchToRgb(tokens[bg][mode]));
       assert.ok(r >= 3, `${mode}: the ring (--${ring}) on --${bg} is ${r.toFixed(2)}:1`);
     }
+  }
+});
+
+// Mixes two colours in linear light, as an approximation of color-mix(in oklch, a p%, transparent) over a surface.
+const over = (fg, bg, p) => fg.map((c, i) => c * p + bg[i] * (1 - p));
+
+test("the done step's green number reads on its own green tint over the panel, in light and dark", () => {
+  for (const mode of ["light", "dark"]) {
+    const agent = oklchToRgb(tokens.agent[mode]);
+    const tint = over(agent, oklchToRgb(tokens.surface[mode]), 0.18);
+    const r = ratio(agent, tint);
+    assert.ok(r >= 3, `${mode}: --agent on its 18% tint is ${r.toFixed(2)}:1 (a bold one-digit number: 3:1)`);
   }
 });

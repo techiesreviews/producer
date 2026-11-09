@@ -33,7 +33,7 @@ Each entry:
 
 ### F-setup-01 First-run setup: browser chip and step 1 "I stream with"
 - Try: Open the page; read the browser chip beside "Set up"; pick Restream Studio, Wave.video, OBS or Other by mouse, tap and keyboard.
-- Good: As the mock-up: one panel of numbered steps, step 1 green as done, one choice filled at a time; wide puts the label beside the choices, a phone puts them under it; no explainer text. A switched-off choice is greyed with a round "i" and shows its reason on hover, focus or a press.
+- Good: As the mock-up: one panel of numbered steps, step 1 green as done, one choice filled at a time; wide puts the label beside the choices, a phone puts them under it; no explainer text.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/browser.mjs`, `src/ui/tooltip.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`

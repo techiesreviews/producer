@@ -51,6 +51,8 @@ test("Edge on a computer: named Edge, not Chrome; the same features", () => {
   const b = detectBrowser(env({ ua: UA.edge }));
   assert.equal(b.label, "Edge 157 · desktop");
   assert.deepEqual(onOff(b), { secure: true, microphone: true, tabSound: true, wasm: true, webSpeech: true });
+  assert.equal(b.features.tabSound.tip, "Tab sound only arrives if you share a browser tab and tick 'Also share tab audio'.");
+  reasonsAreSet(b);
 });
 
 test("Firefox: no tab sound and no speech service of its own; the microphone and the model still work", () => {
@@ -79,19 +81,20 @@ test("Safari on a Mac: no tab sound, with Safari's own reason", () => {
 test("phones and tablets: no tab sound, with the phone reason", () => {
   const phone = "Phone and tablet browsers generally cannot share a tab with sound. Use Chrome or Edge on a computer.";
   const cases = [
-    [env({ ua: UA.androidPhone, display: false, mobile: true }), "Chrome 157 · phone"],
-    [env({ ua: UA.androidTablet, display: false, mobile: false }), "Chrome 157 · tablet"],
-    [env({ ua: UA.iphone }), "Safari 18 · phone"],
-    [env({ ua: UA.iphoneChrome }), "Chrome 157 · phone"],
+    [env({ ua: UA.androidPhone, display: false, mobile: true }), "Chrome 157 · phone", true],
+    [env({ ua: UA.androidTablet, display: false, mobile: false }), "Chrome 157 · tablet", true],
+    [env({ ua: UA.iphone }), "Safari 18 · phone", true],
+    [env({ ua: UA.iphoneChrome }), "Chrome 157 · phone", true],
     // iPadOS asks for the desktop site: a Mac that has a touch screen is an iPad.
-    [env({ ua: UA.safari, touch: 5 }), "Safari 26 · tablet"],
+    [env({ ua: UA.safari, touch: 5 }), "Safari 26 · tablet", true],
+    // Firefox on Android: no speech service of its own either.
+    [env({ ua: "Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0", display: false, speech: "none" }), "Firefox 140 · phone", false],
   ];
-  for (const [e, label] of cases) {
+  for (const [e, label, webSpeech] of cases) {
     const b = detectBrowser(e);
     assert.equal(b.label, label);
-    assert.equal(b.features.tabSound.on, false, `${label}: no tab sound`);
+    assert.deepEqual(onOff(b), { secure: true, microphone: true, tabSound: false, wasm: true, webSpeech }, label);
     assert.equal(b.features.tabSound.reason, phone, `${label}: the phone reason`);
-    assert.equal(b.features.microphone.on, true, `${label}: the microphone works`);
     reasonsAreSet(b);
   }
 });

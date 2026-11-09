@@ -115,7 +115,13 @@ async function checkSwitchedOff(page, name, out, { touch }) {
   const r = await off.boundingBox();
   const width = Math.min(page.viewportSize().width, 640);
   await page.screenshot({ path: shot, clip: { x: Math.max(0, Math.min(r.x + r.width / 2 - width / 2, page.viewportSize().width - width)), y: Math.max(0, r.y - 60), width, height: 200 } });
-  if (!touch) await off.click({ force: true }); // Playwright counts aria-disabled as not clickable: force the press.
+  if (!touch) {
+    // The hover opened the reason; close it first, so the press itself must show it again. Playwright counts
+    // aria-disabled as not clickable: force the press.
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on"));
+    await off.click({ force: true });
+  }
   await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, OFF_REASON);
   assert.deepEqual(await pressed(), ["Restream Studio"], `${name}: ${touch ? "a tap" : "a click"} shows the reason and picks nothing`);
   await page.keyboard.press("Escape");
