@@ -18,7 +18,7 @@ file wins.
   - `kit specs [suite]`, the browser checks, for any change to the page, the Worker or the build;
     `kit pr` runs the suites a change reaches (`--affected`). Each file in `test/browser/` is one suite:
     `page.mjs` is the whole page at desktop 1366x900 and phone 390x844, light and dark, served through the
-    real Worker with the page's own headers. What it checks lives in its file, not here. Screenshots land in
+    real Worker with the page's own headers, then the setup screen in Playwright's Firefox (light and dark). What it checks lives in its file, not here. Screenshots land in
     the evidence folder (`.scratch/producer/specs-<time>/`). Playwright stays outside the repo: set
     `KIT_PLAYWRIGHT_MODULE` (the path of its `index.mjs`), else `~/Projects/native-site-editor-dev/node_modules` is used.
   - `kit size`: bytes of the built page, its headers and the Worker source. Report only.

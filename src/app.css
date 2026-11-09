@@ -15,12 +15,52 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* On a touch screen the chip's tap area grows past its looks. */
 @media (pointer: coarse) { .private::after { content: ""; position: absolute; inset: -0.7rem -0.5rem; } }
 
-/* The screen under the bar: empty until a screen is built. */
+/* The screen under the bar. */
 .screen { flex: 1; }
+
+/* First-run setup: numbered steps in one panel. A step appears only once its feature exists. */
+.setup {
+  display: grid; justify-items: center; align-content: start;
+  padding: 1.5rem max(1rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+.setup__col { inline-size: min(720px, 100%); display: grid; gap: 0.75rem; }
+.setup h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.steps { container: steps / inline-size; display: grid; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--surface); }
+.step { display: grid; grid-template-columns: 1.6rem 9rem 1fr; align-items: center; gap: 0.6rem 0.75rem; padding: 0.85rem 1rem; border-block-end: 1px solid var(--line); }
+.step:last-child { border-block-end: 0; }
+.step__n { inline-size: 1.6rem; block-size: 1.6rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--raised); color: var(--muted); }
+.step[data-done] .step__n { background: color-mix(in oklch, var(--agent) 18%, transparent); color: var(--agent); }
+.step__label { font-weight: 650; }
+.step__ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+/* Compact: the controls move under the label. */
+@container steps (max-width: 36rem) {
+  .step { grid-template-columns: 1.6rem 1fr; }
+  .step__ctl { grid-column: 1 / -1; }
+}
+
+/* A row of choices, one pressed (filled) at a time. */
+.seg { display: inline-flex; flex-wrap: wrap; padding: 2px; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+.seg button {
+  display: inline-flex; align-items: center; gap: 0.35rem; border: 0; background: transparent;
+  padding: 0.3rem 0.6rem; border-radius: var(--radius-small); font-weight: 600; font-size: 0.8rem; color: var(--muted); white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.seg button:active:not([aria-pressed="true"]) { background: var(--pressed); }
+@media (hover: hover) { .seg button:hover:not([aria-pressed="true"]) { background: var(--hover); color: var(--text); } }
+/* A finger needs a taller target than a mouse; the pressed colour replaces the browser's tap flash. */
+@media (pointer: coarse) { .seg button { min-block-size: 2.75rem; -webkit-tap-highlight-color: transparent; } }
+
+/* The one switched-off pattern: the control stays visible and reachable by keyboard, greyed with a round "i";
+   hover, focus or a press shows its reason (data-tip, src/ui/tooltip.mjs) and never runs it. It wins over any
+   control's own colours, so it is marked important. */
+[aria-disabled="true"] { cursor: help; color: var(--faint) !important; border-color: var(--line) !important; background: transparent !important; }
+[aria-disabled="true"] svg { opacity: 0.55; }
+.off-mark { display: inline-grid; place-items: center; inline-size: 1rem; block-size: 1rem; border-radius: 50%; border: 1px solid currentColor; font: 700 0.62rem/1 system-ui, sans-serif; }
 
 /* On a narrow window the bar keeps the name and the icon; the words move to the tooltip. */
 @media (max-width: 680px) {
   .brand small { display: none; }
+  .setup { padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right)); }
   .chip .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
 }
 
