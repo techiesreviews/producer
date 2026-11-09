@@ -46,13 +46,15 @@ export function createLanes() {
 /**
  * The pieces waiting for the model, whatever their source: every final comes out in the order it came; a draft is only
  * an offer, so each source keeps just its newest one, and the oldest waiting draft comes out when no final waits.
+ * A pause waits in the same line as the finals, so it comes out after the text heard before it.
  */
 export function createJobs() {
   const finals = [];
   const drafts = new Map();
   return {
     add(event) {
-      if (event.type === "final") {
+      if (event.type === "pause") finals.push(event);
+      else if (event.type === "final") {
         if (drafts.get(event.source)?.piece === event.piece) drafts.delete(event.source);
         finals.push(event);
       } else {

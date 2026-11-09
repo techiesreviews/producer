@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createRunOrder, PLAN_EXAMPLE, planButton, readPlan, showLine, clockText } from "../src/runorder.mjs";
+import { createRunOrder, PLAN_EXAMPLE, planButton, readPlan, runPosition, showLine, clockText } from "../src/runorder.mjs";
 
 const MIN = 60_000;
 
@@ -107,8 +107,10 @@ test("Start runs the clock and the first part counts down; over time shows how f
   assert.deepEqual([view.started, view.clock, view.delta, view.button], [true, 70, 0, "Next part"]);
   assert.deepEqual(view.rows.map((r) => r.state), ["now", "next", "later"]);
   assert.deepEqual([view.rows[0].text, view.rows[0].tone, view.rows[0].fill.toFixed(3)], ["1:50 left", "", (70 / 180).toFixed(3)]);
+  assert.equal(view.rows[0].left, 110, "the seconds left in the part (a cue's run position counts its minutes from them)");
   view = run.view(t0 + 200_000);
   assert.deepEqual([view.rows[0].text, view.rows[0].tone, view.rows[0].fill], ["0:20 over", "late", 1]);
+  assert.equal(view.rows[0].left, -20, "negative once the part runs over");
   assert.equal(view.delta, 20, "running over the current part puts the show behind at once");
   run.start(t0 + 300_000);
   assert.equal(run.view(t0 + 300_000).clock, 300, "a second Start does not restart the clock");
@@ -155,4 +157,17 @@ test("Next part before Start starts the clock (the host forgot Start)", () => {
 test("the plan lives in page memory only: the run order code stores and sends nothing", () => {
   const source = readFileSync(resolve(import.meta.dirname, "../src/runorder.mjs"), "utf8");
   assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|caches|cookie|postMessage|console)\b/);
+});
+
+test("the run position for a cue: the part on now, its minutes left rounded up, 0 once over, none before Start or after the plan", () => {
+  const run = createRunOrder(PARTS);
+  const t0 = 1_000_000;
+  assert.equal(runPosition(run.view(t0)), undefined, "before Start");
+  run.start(t0);
+  assert.deepEqual(runPosition(run.view(t0 + 70_000)), { segment: 1, title: PARTS[0].name, minutesLeft: 2 }, "1:50 left reads 2 minutes");
+  assert.deepEqual(runPosition(run.view(t0 + 200_000)), { segment: 1, title: PARTS[0].name, minutesLeft: 0 }, "over time reads 0");
+  run.next(t0 + 200_000);
+  assert.equal(runPosition(run.view(t0 + 200_000)).segment, 2);
+  for (let i = 1; i < PARTS.length; i++) run.next(t0 + 300_000 + i);
+  assert.equal(runPosition(run.view(t0 + 400_000)), undefined, "after the last part");
 });

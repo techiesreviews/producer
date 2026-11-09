@@ -1,6 +1,6 @@
 # The agent relay (card 06)
 
-Written 2026-11-09. This is what exists on the Worker: the line between the host's own AI agent and the open producer page. The page's side of it is step 2 "AI agent" (card 08, below); the live screen (cards 03 and 10) is not built yet.
+Written 2026-11-09. This is what exists on the Worker: the line between the host's own AI agent and the open producer page. The page's side of it is step 2 "AI agent" (card 08, below); the cues the page sends during the show are in [the cues](cues.md) (card 10).
 
 ## In plain words
 

@@ -12,7 +12,7 @@ const SITE = "https://producer.test";
 
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
   const now = { t: Date.now() };
   const kit = relayWith(now);
   const env = { ASSETS: { fetch: async () => new Response("page") }, RELAY: { idFromName: (n) => n, get: () => ({ op: (m) => kit.relay.op(m) }) } };
@@ -22,6 +22,7 @@ function setup({ tokenReply, tokensOnPageClock = false } = {}) {
   const link = createAgentLink({
     net: { token: tokenReply ?? (tokensOnPageClock ? () => Promise.resolve(Response.json(newToken(now.t))) : () => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST" }), env)), socket: net.socket },
     onChange: (v) => seen.push(v),
+    show,
     now: () => now.t,
     timers,
   });
@@ -266,5 +267,175 @@ test("a token past its eight hours whose timer is late (a laptop waking up): the
   assert.equal(link.view().state, "waiting");
   await timers.tick(1);
   assert.equal(link.view().state, "waiting", "the old token's timer does not drop the new connection");
+  link.disconnect();
+});
+
+// ---- Cues from the cue rules (card 10): the page hands a cue to the agent's wait, keeps the agent's latest answer
+// for the question card, and shows each answer once. ----
+
+const CUE = { cue: "pause", transcript: [{ speaker: "host", text: "How did it start?" }, { speaker: "guest", text: "In a garage." }], position: { segment: 2, title: "Her story", minutesLeft: 7 }, guestName: "Sam" };
+
+test("a cue goes only to a connected agent; it reaches the wait held, with labels, the run position and the guest's name", async () => {
+  const { link, call, connect, flush } = setup();
+  assert.equal(link.send(CUE), false, "no agent: the cue is not taken");
+  await connect();
+  assert.equal(link.send(CUE), false, "waiting for the agent: not taken either");
+  const wait = call("wait_for_cue", { seq: 0 });
+  await flush();
+  assert.equal(link.send(CUE), true);
+  const cue = (await wait).body.result;
+  assert.deepEqual(cue.structuredContent, { idle: false, cue: "pause", seq: 1, transcript: CUE.transcript, chat: [], guestName: "Sam", position: CUE.position });
+  assert.match(cue.content[0].text, /Guest name: Sam[\s\S]*HOST: How did it start\?\nGUEST: In a garage\.[\s\S]*Run position: segment 2, Her story, 7 min left/);
+  link.disconnect();
+});
+
+test("cues sent while the agent is busy wait for its next call, joined, with the newest reason; a lost answer gets the same again", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "One." }] });
+  link.send({ cue: "suggest_now", transcript: [{ speaker: "guest", text: "Two." }], position: { segment: 3, title: "Pricing", minutesLeft: 12 } });
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.cue, first.seq, first.transcript.map((l) => l.text), first.position.title], ["suggest_now", 2, ["One.", "Two."], "Pricing"]);
+  const again = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual(again, first, "asking again with the same seq returns the same material");
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "Three." }] });
+  const next = (await call("wait_for_cue", { seq: 2 })).body.result.structuredContent;
+  assert.deepEqual([next.seq, next.transcript.map((l) => l.text)], [3, ["Three."]], "only what is new after the agent's seq");
+  assert.deepEqual((await call("get_new_transcript", { seq: 2 })).body.result.structuredContent.transcript.map((l) => l.text), ["Three."]);
+  link.disconnect();
+});
+
+test("the agent's answer is kept as the latest suggestion with the seconds since the cue went, and shown once", async () => {
+  const got = [];
+  const { link, call, connect, flush, now } = setup();
+  link.onSuggestions((s) => got.push(s));
+  await connect();
+  const wait = call("wait_for_cue", { seq: 0 });
+  await flush();
+  link.send(CUE);
+  await wait;
+  now.t += 2_340;
+  const answer = { seq: 1, suggestions: [{ question: 2, why: "follows the garage" }, { text: "Who paid first?" }] };
+  call("wait_for_cue", answer);
+  await flush();
+  const latest = { seq: 1, cue: "pause", suggestions: answer.suggestions, ms: 2_340 };
+  assert.deepEqual(got, [latest]);
+  assert.deepEqual(link.suggestion(), latest, "kept in memory for the question card");
+  // The curl loop resends the same body on every idle round: nothing new is shown.
+  now.t += 25_000;
+  call("wait_for_cue", answer);
+  await flush();
+  assert.equal(got.length, 1, "shown once");
+  link.disconnect();
+  assert.equal(link.suggestion(), null, "gone with the connection");
+});
+
+test("an older answer never replaces a newer one, and the Test's answer is not a suggestion", async () => {
+  const got = [];
+  const { link, call, connect, flush } = setup();
+  link.onSuggestions((s) => got.push(s));
+  await connect();
+  await call("get_context");
+  link.test();
+  await call("wait_for_cue", { seq: 0 });
+  const held = call("wait_for_cue", { seq: 1, suggestions: [{ text: "A sample answer?" }] });
+  await flush();
+  assert.equal(link.view().test.state, "ok");
+  assert.deepEqual(got, [], "the Test's answer stays on the Test button");
+  link.send(CUE); // seq 2, to the wait held
+  assert.equal((await held).body.result.structuredContent.seq, 2);
+  link.send(CUE); // seq 3, not handed over yet
+  // The agent answers cue 2 with post_suggestions after cue 3 went: it counts for cue 2, not cue 3.
+  call("post_suggestions", { suggestions: [{ text: "For two?" }] });
+  await flush();
+  assert.deepEqual([link.suggestion().seq, link.suggestion().suggestions[0].text], [2, "For two?"]);
+  const three = await call("wait_for_cue", { seq: 2 });
+  assert.equal(three.body.result.structuredContent.seq, 3);
+  call("wait_for_cue", { seq: 3, suggestions: [{ text: "For three?" }] });
+  await flush();
+  call("wait_for_cue", { seq: 2, suggestions: [{ text: "Stale?" }] });
+  await flush();
+  assert.deepEqual(got.map((s) => [s.seq, s.suggestions[0].text]), [[2, "For two?"], [3, "For three?"]], "the stale answer to cue 2 is not kept");
+  assert.equal(link.suggestion().seq, 3);
+  link.disconnect();
+});
+
+test("a failed Test stays failed when the agent later answers a show cue", async () => {
+  const { link, call, connect, flush, timers } = setup();
+  await connect();
+  await call("get_context");
+  link.test();
+  await timers.tick(AGENT_TEST_MS);
+  assert.equal(link.view().test.state, "fail");
+  await call("wait_for_cue", { seq: 0 }); // the agent comes back and gets the Test's cue
+  link.send(CUE);
+  const show = await call("wait_for_cue", { seq: 1 });
+  call("wait_for_cue", { seq: show.body.result.structuredContent.seq, suggestions: [{ text: "About the garage?" }] });
+  await flush();
+  assert.equal(link.view().test.state, "fail", "a show answer is not the Test's");
+  assert.equal(link.suggestion().suggestions[0].text, "About the garage?");
+  link.disconnect();
+});
+
+test("the Test's made-up talk never joins the show's: a Test cue goes alone", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send(CUE);
+  link.test();
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "After the Test." }] });
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.seq, first.transcript.map((l) => l.text)], [1, ["How did it start?", "In a garage."]], "the show cue first, alone");
+  const test = (await call("wait_for_cue", { seq: 1 })).body.result.structuredContent;
+  assert.deepEqual([test.seq, test.transcript], [2, AGENT_SAMPLE], "then the Test's cue, alone");
+  const after = (await call("wait_for_cue", { seq: 2 })).body.result.structuredContent;
+  assert.deepEqual([after.seq, after.transcript.map((l) => l.text)], [3, ["After the Test."]]);
+  link.disconnect();
+});
+
+test("text the agent has not confirmed is capped at 20,000 characters, the oldest cue going first", async () => {
+  const { link, call, connect, net } = setup();
+  await connect();
+  await call("get_context");
+  // What the page itself sends (the Worker caps again on the way, so it is read on the page's socket).
+  const sock = net.sockets[0];
+  const send = sock.send.bind(sock);
+  let sent;
+  sock.send = (text) => { const m = JSON.parse(text); if (m.type === "result") sent = m.result; send(text); };
+  for (let i = 0; i < 5; i++) link.send({ cue: "pause", transcript: [{ speaker: "guest", text: `${i}${"x".repeat(5_999)}` }] });
+  await call("wait_for_cue", { seq: 0 });
+  assert.deepEqual(sent.transcript.map((l) => l.text[0]), ["2", "3", "4"], "three cues of 6,000 fit");
+  link.disconnect();
+});
+
+test("get_context gives the agent the show the host pasted: name, guest, questions and the run order with the live part", async () => {
+  const show = { showTitle: "Techies Live", guestName: "Sam", questions: [{ n: 1, text: "How did it start?" }], segments: [{ title: "Intro", plannedMinutes: 3 }, { title: "Her story", plannedMinutes: 10, live: true }] };
+  const { link, call, connect } = setup({ show: () => show });
+  await connect();
+  const ctx = (await call("get_context")).body.result;
+  assert.deepEqual(ctx.structuredContent, { ...show, seq: 0 });
+  assert.match(ctx.content[0].text, /Prepared questions:\n1\. How did it start\?[\s\S]*2\. Her story \(10 min\) \(live now\)/);
+  link.disconnect();
+});
+
+test("the cap lets a cue already handed over go when too much piles up unconfirmed, and keeps a waiting Test cue", async () => {
+  const { link, call, connect, net, flush } = setup();
+  await connect();
+  await call("get_context");
+  const sock = net.sockets[0];
+  const send = sock.send.bind(sock);
+  let sent;
+  sock.send = (text) => { const m = JSON.parse(text); if (m.type === "result") sent = m.result; send(text); };
+  const wait = call("wait_for_cue", { seq: 0 });
+  await flush();
+  link.send({ cue: "pause", transcript: [{ speaker: "guest", text: "Handed over." }] });
+  assert.equal((await wait).body.result.structuredContent.seq, 1);
+  link.test(); // seq 2, waiting
+  for (let i = 0; i < 4; i++) link.send({ cue: "pause", transcript: [{ speaker: "guest", text: `${i}${"x".repeat(5_999)}` }] });
+  await call("wait_for_cue", { seq: 0 });
+  assert.deepEqual([sent.seq, sent.transcript], [2, AGENT_SAMPLE], "asking again from 0: cue 1 is gone, the Test's cue is kept and goes alone");
+  await call("wait_for_cue", { seq: 2 });
+  assert.deepEqual([sent.seq, sent.transcript.map((l) => l.text[0])], [6, ["1", "2", "3"]], "then the newest show cues that fit");
   link.disconnect();
 });
