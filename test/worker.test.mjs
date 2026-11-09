@@ -165,8 +165,8 @@ test("an end-to-end call: agent, Worker, relay object and fake page, with only t
   const ws = lastServer();
   assert.deepEqual(ws.sent[0], { type: "ready", createdAt: born });
   const asked = worker.fetch(new Request(`${SITE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_context", arguments: {} } }) }), e);
-  await settle();
-  await settle();
+  // The Worker hashes the token (real asynchronous work) before it reaches the relay: wait until the page has the call.
+  for (let i = 0; i < 200 && ws.sent.at(-1).type !== "call"; i++) await settle();
   const call = ws.sent.at(-1);
   assert.deepEqual([call.type, call.tool], ["call", "get_context"]);
   await kit.relay.webSocketMessage(ws, JSON.stringify({ type: "result", id: call.id, result: { showTitle: "Live talk", questions: [{ n: 1, text: "Why?" }], seq: 0 } }));

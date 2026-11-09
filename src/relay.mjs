@@ -3,7 +3,7 @@
 // { createdAt, expiresAt, revoked, agent: { name, version } }, never the talk: tool calls and their results pass
 // through memory. An alarm just after expiresAt erases the note. Nothing is logged.
 // The relay is only a pipe: the page answers every call (it holds the transcript, the questions and the run order,
-// and keeps its own cursor, "seq"). A call waits for the page up to the time the Worker asks, never past MAX_CALL_MS.
+// and keeps its own cursor, "seq"). A call waits for the page up to the time the Worker asks, never past MAX_CALL_MS (plus up to TAB_GRACE_MS waiting for a page to connect).
 import { DurableObject } from "cloudflare:workers";
 import { MAX_AGE_MS } from "./token.mjs";
 
