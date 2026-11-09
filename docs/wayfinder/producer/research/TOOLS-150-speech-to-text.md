@@ -56,7 +56,7 @@ Reading it: on a CPU, Moonshine keeps up live and Whisper does not (below 1x mea
 
 Please do this on the computer you stream from, in Chrome. If you can, repeat steps 4 to 8 in Edge too.
 
-1. **Get the page open.** The page must come from a web address, not by double-clicking it (the browser blocks the model engines from a file). In a terminal: `cd /home/ubulex/Projects/producer/docs/wayfinder/producer/research/TOOLS-150-speech-test` then `python3 -m http.server 8765`. Open `http://localhost:8765/` in Chrome. (Or ask the fleet to serve that folder and give you the link.)
+1. **Get the page open.** The page must come from a web address, not by double-clicking it (the browser blocks the model engines from a file). In a terminal: `cd ~/Projects/producer/docs/wayfinder/producer/research/TOOLS-150-speech-test` then `python3 -m http.server 8765`. Open `http://localhost:8765/` in Chrome. (Or ask the fleet to serve that folder and give you the link.)
 2. **The recording.** About 5 minutes of two people really talking (a past stream or call), saved as an audio or video file (mp3, wav, m4a, mp4 all fine). Use the same file for every run. Dutch: do the Dutch runs with a Dutch recording.
 3. **The correct words.** Paste the true text of that recording into box 2, with numbers written as spoken ("five"). If 5 minutes is too much typing, set "Only play the first ... seconds" to 120 and correct only those words. Without this text you get speed numbers but no accuracy or delay numbers.
 4. In box 1 click **Choose file** and pick the recording. Leave "Hear it through the speakers" off. Language: English (Dutch later).
@@ -113,5 +113,5 @@ What to compare: "first text after speech starts", the middle and slowest-1-in-1
 - sherpa-onnx: [WASM docs](https://k2-fsa.github.io/sherpa/onnx/wasm/index.html), [ASR model releases](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)
 - [Parakeet tdt 0.6b v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), [Voxtral Mini 4B Realtime](https://huggingface.co/mistralai/Voxtral-Mini-4B-Realtime-2602)
 - Paid: [Deepgram pricing](https://deepgram.com/pricing), [Deepgram languages](https://developers.deepgram.com/docs/models-languages-overview), [Nova-3 announcement](https://deepgram.com/learn/introducing-nova-3-speech-to-text-api), [AssemblyAI pricing](https://www.assemblyai.com/pricing)
-- Prompter: `/home/ubulex/Projects/techies-prompter` (`src/speech.mjs`, `src/follow.mjs`, README "Follow my voice")
+- Prompter: `~/Projects/techies-prompter` (`src/speech.mjs`, `src/follow.mjs`, README "Follow my voice")
 - Test page: `docs/wayfinder/producer/research/TOOLS-150-speech-test/index.html` (transformers.js 4.3.2 and vosk-browser 0.0.8, both pinned, from cdn.jsdelivr.net; Vosk model from ccoreilly.github.io)

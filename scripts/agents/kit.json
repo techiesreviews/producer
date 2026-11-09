@@ -1,6 +1,5 @@
 {
   "project": "producer",
-  "mainRoot": "/home/ubulex/Projects/producer",
   "branches": {
     "land": "dev",
     "release": "main"
