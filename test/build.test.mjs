@@ -42,7 +42,7 @@ test("the policy pins the page's own script and style by hash and allows nothing
   assert.deepEqual(csp.get("default-src"), ["'none'"]);
   assert.deepEqual(csp.get("script-src"), [hash(script)]);
   assert.deepEqual(csp.get("style-src"), [hash(style)]);
-  assert.deepEqual(csp.get("connect-src"), ["'none'"], "no call leaves the page until the relay card widens this");
+  assert.deepEqual(csp.get("connect-src"), ["'self'"], "the page may call only its own site (the relay and the token), nothing outside");
   assert.deepEqual(csp.get("img-src"), ["data:"]);
   for (const name of ["base-uri", "form-action", "frame-ancestors"]) assert.deepEqual(csp.get(name), ["'none'"], name);
   assert.doesNotMatch(header("Content-Security-Policy"), /\*|unsafe-|https?:/);

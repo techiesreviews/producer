@@ -55,8 +55,8 @@ export function build(dir = join(root, "dist"), { host = LIVE_HOST } = {}) {
     `script-src ${sha256(script)}`,
     `style-src ${sha256(style)}`,
     "img-src data:",
-    // No call leaves the page yet. The relay card widens this, and only this line.
-    "connect-src 'none'",
+    // Only this site: its relay (/api/relay, a WebSocket) and its token (/api/agent-token). Nothing outside.
+    "connect-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
