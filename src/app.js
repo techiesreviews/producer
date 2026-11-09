@@ -207,12 +207,13 @@ function readPasted() {
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   show.plan = plan.ok ? plan : null;
-  // A new run order only when the parts change: fixing a question keeps a running clock.
+  // A new run order only when the parts change, and never once the clock runs: a change in setup (back there after a
+  // failed speech model) must not lose the show's timing, so the run order then stays as it started.
   const parts = plan.ok ? JSON.stringify(plan.parts) : "";
-  if (parts !== show.parts) {
+  if (parts !== show.parts && !show.run?.view(Date.now()).started) {
     show.parts = parts;
     show.run = plan.ok ? createRunOrder(plan.parts) : null;
-    buildRuns();
+    buildRuns(plan.ok ? plan.parts : []);
   }
   $("showLine").textContent = showLine(show.plan);
   done("sPlan", Boolean(show.plan));
@@ -237,8 +238,8 @@ let lastPress = 0;
 const make = (tag, className, text = "") => Object.assign(document.createElement(tag), { className, textContent: text });
 const setTone = (el, tone) => { if (tone) el.dataset.tone = tone; else el.removeAttribute("data-tone"); };
 
-function buildRuns() {
-  runList.replaceChildren(...(show.plan?.parts || []).map((part) => {
+function buildRuns(parts) {
+  runList.replaceChildren(...parts.map((part) => {
     const bar = make("span", "run__bar");
     bar.append(document.createElement("i"));
     const row = make("li", "run");
@@ -287,10 +288,9 @@ function renderRun() {
     const words = view.delta === 0 ? "on plan" : `${ahead ? "ahead of" : "behind"} plan by ${clockText(Math.abs(view.delta))}`;
     delta.replaceChildren(clockText(view.delta, true), make("span", "sr", ` ${words}`));
     setTone(delta, view.delta > 0 ? "late" : ahead ? "early" : "");
-    clock.dataset.tip = `Show time, ${words}.`;
-  } else {
-    clock.dataset.tip = "Show time. It starts when you press Start.";
   }
+  const tip = view.started ? `Show time, ${delta.lastChild.textContent.trim()}.` : "Show time. It starts when you press Start.";
+  if (clock.dataset.tip !== tip) clock.dataset.tip = tip;
 }
 
 runBtn.addEventListener("click", () => {

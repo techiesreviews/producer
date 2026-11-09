@@ -207,14 +207,33 @@ export async function run({ browser, base, out }) {
       await press(page.locator("#runsMore"));
       assert.deepEqual([(await visibleNames()).length, await text("runsMore")], [2, "All"], `${name}: Less goes back`);
     }
-    await page.clock.runFor(7 * 60_000);
+    // Fixing the plan in setup while the clock runs (a reworded question, even a changed part) keeps the run order.
+    const before = await text("clockTime");
+    await page.evaluate((plan) => { const box = document.querySelector("#planIn"); box.value = plan; box.dispatchEvent(new Event("input")); }, PLAN.replace("Question number 3?", "A reworded question?").replace("4 Wrap-up", "5 Wrap-up"));
+    await page.clock.runFor(10_000);
+    assert.notEqual(await text("clockTime"), before, `${name}: the clock goes on after the plan is edited`);
+    assert.deepEqual(await states(), ["done", "now", "next", "later", "later"], `${name}: the run order stays as it started`);
+    assert.equal((await times())[4], "4:00", `${name}: a part changed once the clock runs does not replace the timing`);
+    await page.clock.runFor(7 * 60_000 - 10_000);
     await press(runBtn); // Her story: 7:00 of 8:00, a minute early
     assert.deepEqual([(await times())[1], await text("clockDelta")], ["−1:00", "−0:40 ahead of plan by 0:40"], `${name}: ahead of plan by 0:40 overall`);
     assert.equal(await page.locator("#clockDelta").getAttribute("data-tone"), "early", `${name}: in green`);
     ok(`${name}: Next part keeps each part's real time; ahead and behind add up`);
 
+    // Two presses on Next part 200 ms apart move on one part only; a press a second later moves on again.
+    await page.clock.runFor(2_000);
+    await press(runBtn);
+    await page.clock.runFor(200);
+    await press(runBtn);
+    assert.deepEqual(await states(), ["done", "done", "done", "now", "next"], `${name}: a quick second press on Next part is ignored`);
+    await page.clock.runFor(1_000);
+    await press(runBtn);
+    assert.deepEqual(await states(), ["done", "done", "done", "done", "now"], `${name}: a press a second later moves on`);
+
     // To the end: the last Next part ends the plan, the button goes (focus to the heading), every part shows.
-    for (let i = 0; i < 3; i++) { await page.clock.runFor(2_000); await runBtn.focus(); await page.keyboard.press("Enter"); }
+    await page.clock.runFor(2_000);
+    await runBtn.focus();
+    await page.keyboard.press("Enter");
     assert.deepEqual(await states(), ["done", "done", "done", "done", "done"], `${name}: every part done`);
     assert.equal(await runBtn.isVisible(), false, `${name}: no Next part after the last part`);
     assert.ok(await page.evaluate(() => document.activeElement?.id === "runsTitle"), `${name}: the keyboard lands on the heading`);
