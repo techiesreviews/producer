@@ -51,7 +51,9 @@ async function setup() {
   const cues = createCues({ send: (item) => link.send(item), autoEveryMs: 0, manualEveryMs: 0 });
   const { token } = await link.connect();
   const close = () => new Promise((r) => { link.disconnect(); server.closeAllConnections(); server.close(r); });
-  return { url, token, link, cues, kept, close };
+  // The agent's next wait is held by the page: a call waits in the relay for the page's answer.
+  const held = () => kit.relay.pending.size > 0;
+  return { url, token, link, cues, kept, close, held };
 }
 
 /** A point of 31 s of speech, then the worker's pause: the cue goes. */
@@ -112,7 +114,7 @@ test("one tool call per turn (Connect with MCP): the page adds under 0.3 s to ea
     }
   })();
   try {
-    const agent = { thinking, ready: async (i) => { while (held.length < i) await sleep(1); await sleep(20); } };
+    const agent = { thinking, ready: async (i) => { while (held.length < i || !s.held()) await sleep(1); } };
     const rows = await runCues({ cues: s.cues, kept: s.kept, agent });
     report(t, "MCP way", rows);
     assert.deepEqual(s.kept.map((k) => k.suggestions[0].text), Array.from({ length: CUES }, (_, i) => `Question for cue ${i + 1}?`), "each answer kept once, in order");
@@ -150,8 +152,8 @@ test("the curl loop from the connect message, run in bash (Copy connect message)
     }
   })();
   try {
-    // The loop's next run is held once its curl reached the page: wait for the round, then a moment for bash and curl.
-    const agent = { thinking, ready: async (i) => { while (rounds < i) await sleep(1); await sleep(150); } };
+    // The loop's next run is held once its curl reached the page.
+    const agent = { thinking, ready: async (i) => { while (rounds < i || !s.held()) await sleep(1); } };
     const rows = await runCues({ cues: s.cues, kept: s.kept, agent });
     report(t, "curl loop", rows);
     assert.equal(s.kept.length, CUES, "each answer kept once");

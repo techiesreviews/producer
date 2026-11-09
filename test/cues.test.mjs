@@ -196,3 +196,12 @@ test("with two sources, a pause of one is no pause while the other is still talk
   wait(12_000);
   assert.equal(cues.pause("guest"), true, "a source with no text for 12 s (its pause was missed) no longer counts as talking");
 });
+
+test("with no plan and no clock running, a cue carries no run position and no guest's name", () => {
+  for (const context of [() => ({}), () => null]) {
+    const { sent, cues, say } = setup({ context });
+    say("guest", "A long point.", 31);
+    cues.pause();
+    assert.deepEqual(Object.keys(sent[0]), ["cue", "transcript"]);
+  }
+});

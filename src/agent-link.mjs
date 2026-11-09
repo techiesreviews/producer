@@ -80,7 +80,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     const end = fresh.findIndex((c) => c.test !== fresh[0].test);
     const group = end < 0 ? fresh : fresh.slice(0, end);
     const last = group.at(-1);
-    if (last.test) cue.deliveredAt ??= now();
+    if (last.seq === cue?.seq) cue.deliveredAt ??= now();
     handed = Math.max(handed, last.seq);
     const result = { idle: false, cue: last.cue, seq: last.seq, transcript: group.flatMap((c) => c.transcript), chat: [] };
     if (last.position) result.position = last.position;
@@ -261,6 +261,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
       timers.clearTimeout(testTimer);
       testTimer = timers.setTimeout(() => { if (link.test.state === "busy") { link.test = { state: "fail" }; changed(); } }, AGENT_TEST_MS);
       changed();
+      cues = cues.filter((c) => !c.test); // an earlier Test's cue still waiting is replaced by this one
       queue({ cue: "suggest_now", transcript: AGENT_SAMPLE }, true);
     },
 
