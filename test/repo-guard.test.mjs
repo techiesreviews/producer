@@ -21,7 +21,7 @@ const TOKEN_PATTERNS = [
   ["Slack token", /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/],
   ["Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
   ["bearer token", /\bBearer\s+[A-Za-z0-9._~+/=-]{30,}/],
-  ["secret assignment", /\b(secret|token|password|api[_-]?key)\b\s*[:=]\s*["'][A-Za-z0-9._~+/=-]{20,}["']/i],
+  ["secret assignment", /(?<![A-Za-z])(secret|token|password|api[_-]?key)["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{20,}/i],
 ];
 
 test("README and LICENSE exist and are not empty", () => {
@@ -67,12 +67,15 @@ const SAMPLES = {
   "Google API key": ["AIza" + "Sy" + "a".repeat(33), "AIza" + "short"],
   "bearer token": ["Authorization: Bearer " + "a1B2c3D4".repeat(4), "Authorization: Bearer <token>"],
   "secret assignment": ['api_key = "' + "x".repeat(24) + '"', 'token = "short"'],
+  "secret assignment, name after an underscore": ["RESTREAM_CLIENT_" + 'SECRET = "' + "x".repeat(24) + '"', "RESTREAM_CLIENT_SECRET"],
+  "secret assignment, quoted name": ['"client_' + 'secret": "' + "x".repeat(24) + '"', '"client_secret": "short"'],
 };
 
 test("the guard itself catches each token shape and lets a near miss through", () => {
-  assert.deepEqual(Object.keys(SAMPLES), TOKEN_PATTERNS.map(([label]) => label));
-  for (const [label, re] of TOKEN_PATTERNS) {
-    const [hit, miss] = SAMPLES[label];
+  const secretRe = TOKEN_PATTERNS.find(([label]) => label === "secret assignment")[1];
+  assert.deepEqual(Object.keys(SAMPLES).filter((l) => !l.startsWith("secret assignment,")), TOKEN_PATTERNS.map(([label]) => label));
+  for (const [label, [hit, miss]] of Object.entries(SAMPLES)) {
+    const re = label.startsWith("secret assignment,") ? secretRe : TOKEN_PATTERNS.find(([l]) => l === label)[1];
     assert.match(hit, re, `${label}: should match`);
     assert.doesNotMatch(miss, re, `${label}: near miss should not match`);
   }
