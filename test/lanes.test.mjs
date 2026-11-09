@@ -146,3 +146,14 @@ test("waiting pieces: a draft never jumps a final, and Stop drops only the draft
   jobs.dropDrafts();
   assert.deepEqual([jobs.next().piece, jobs.next()], [3, null], "every draft dropped, the final kept");
 });
+
+test("waiting pieces: a pause waits behind the finals before it, so the text before a pause is read first", () => {
+  const jobs = createJobs();
+  jobs.add(piece("guest", 3));
+  jobs.add({ type: "pause", source: "guest", at: 12.4 });
+  jobs.add(piece("host", 1, "draft"));
+  jobs.add(piece("host", 1));
+  const order = [];
+  for (let job = jobs.next(); job; job = jobs.next()) order.push(`${job.source}${job.type}`);
+  assert.deepEqual(order, ["guestfinal", "guestpause", "hostfinal"]);
+});

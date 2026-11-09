@@ -3,7 +3,9 @@
 // through it, and the page answers every call. State: "off", "waiting" (message copied, no call yet, or the agent's
 // loop went quiet), "on" (the agent's loop is alive) and "elsewhere" (a newer tab took the relay). Test is the
 // warm-up: one sample cue, timed until the agent's answer comes back.
-// Nothing is kept: the token lives in this page's memory only, and a reload starts over.
+// This is the agent's own part of the page: the cue rules (src/cues.mjs) hand it a cue with send(), it gives the agent
+// the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()).
+// Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
 // The inlined page script keeps this file's code as it is (the build only drops `export`).
 
@@ -21,7 +23,16 @@ export const AGENT_SAMPLE = [
   { speaker: "guest", text: "Honestly as a joke. The rent went up again, I found an old camper for sale, and two weeks later I was editing videos at a campsite with terrible wifi." },
 ];
 
-export function createAgentLink({ net, onChange = () => {}, now = () => Date.now(), timers = globalThis }) {
+/** Answers remembered for their cue's time and reason; older ones are let go. */
+const SENT_KEPT = 50;
+/** Text the agent has not confirmed yet, at most (the Worker passes on no more either); the oldest goes first. */
+const UNCONFIRMED_CHARS = 20_000;
+
+/**
+ * show() gives what get_context hands the agent: { showTitle?, guestName?, questions: [{ n, text }],
+ * segments: [{ title, plannedMinutes, live? }] }, or nothing before a plan is loaded.
+ */
+export function createAgentLink({ net, onChange = () => {}, show = () => null, now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
@@ -34,7 +45,12 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
   let testTimer = 0;
   let seq = 0; // the page's own counter: each cue gets the next one
   let cue = null; // the Test's cue: { seq, deliveredAt }
-  let held = null; // the agent's wait the page is holding: { id, timer }
+  let held = null; // the agent's wait the page is holding: { id, timer, after }
+  let cues = []; // cues the agent has not confirmed yet (it comes back with a higher seq): { seq, cue, transcript, test, ... }
+  let handed = 0; // the newest cue handed to the agent: what a post_suggestions answer answers
+  const sent = new Map(); // seq -> { cue, sentAt, test }: what an answer to that seq answers
+  let latest = null; // the agent's latest answer: { seq, cue, suggestions, ms }
+  let suggested = () => {};
   const answered = new Set();
 
   // passed: a Test was answered on this connection (step 2 is done while the agent is connected).
@@ -57,18 +73,53 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     quietTimer = timers.setTimeout(() => { if (held) watch(); else if (link.state === "on") set("waiting"); }, AGENT_QUIET_MS);
   }
 
-  function deliver(id) {
-    cue.deliveredAt ??= now();
-    reply(id, { result: { idle: false, cue: "suggest_now", seq: cue.seq, transcript: AGENT_SAMPLE, chat: [] } });
+  // What is new after the agent's seq in one cue: the lines joined, the newest reason, position and guest name. The
+  // Test's made-up talk never joins the show's: a Test cue goes alone, and show cues go up to the next Test cue.
+  function deliver(id, after) {
+    const fresh = cues.filter((c) => c.seq > after);
+    const end = fresh.findIndex((c) => c.test !== fresh[0].test);
+    const group = end < 0 ? fresh : fresh.slice(0, end);
+    const last = group.at(-1);
+    if (last.test) cue.deliveredAt ??= now();
+    handed = Math.max(handed, last.seq);
+    const result = { idle: false, cue: last.cue, seq: last.seq, transcript: group.flatMap((c) => c.transcript), chat: [] };
+    if (last.position) result.position = last.position;
+    if (last.guestName) result.guestName = last.guestName;
+    reply(id, { result });
   }
 
-  // An answer is taken once: the loop sends the same body again after each idle round.
+  function queue(item, test = false) {
+    seq += 1;
+    cues.push({ ...item, seq, test });
+    let chars = cues.reduce((n, c) => n + c.transcript.reduce((m, l) => m + l.text.length, 0), 0);
+    // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it.
+    for (let i = 0; chars > UNCONFIRMED_CHARS && i < cues.length - 1;) {
+      if (cues[i].test) { i += 1; continue; }
+      chars -= cues.splice(i, 1)[0].transcript.reduce((m, l) => m + l.text.length, 0);
+    }
+    sent.set(seq, { cue: item.cue, sentAt: now(), test });
+    if (sent.size > SENT_KEPT) sent.delete(sent.keys().next().value);
+    if (held) {
+      const { id, after } = held;
+      drop();
+      deliver(id, after);
+    }
+  }
+
+  // An answer is taken once: the loop sends the same body again after each idle round. It answers the cue `after`.
   function take(after, suggestions) {
     if (!Array.isArray(suggestions) || !suggestions.length) return 0;
     const key = `${after}|${JSON.stringify(suggestions)}`;
     if (answered.has(key)) return suggestions.length;
     answered.add(key);
-    if (cue && after >= cue.seq && link.test.state !== "ok") {
+    const of = sent.get(after);
+    // The Test's answer stays on the Test button; an older answer never replaces a newer one.
+    if (of && !of.test && after > (latest?.seq ?? 0)) {
+      latest = { seq: after, cue: of.cue, suggestions, ms: now() - of.sentAt };
+      suggested(latest);
+    }
+    // The Test is done by the answer to its cue, or, while it still runs, by any later answer.
+    if (cue && link.test.state !== "ok" && (after === cue.seq || (link.test.state === "busy" && after > cue.seq))) {
       timers.clearTimeout(testTimer);
       const first = suggestions[0];
       const sample = typeof first.text === "string" ? first.text : `Question ${first.question}`;
@@ -83,10 +134,11 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     const after = Number.isSafeInteger(args.seq) && args.seq >= 0 ? args.seq : 0;
     take(after, args.suggestions);
     drop(); // a newer wait replaces the one held (the relay has already ended it)
-    if (cue && cue.seq > after) return deliver(id);
+    cues = cues.filter((c) => c.seq > after); // the agent has seen these
+    if (cues.length) return deliver(id, after);
     const hold = Math.min(Math.max(Number(args.holdMs) || AGENT_HOLD_MS, 1_000), AGENT_HOLD_MS);
     const timer = timers.setTimeout(() => { held = null; reply(id, { result: { idle: true, seq: after } }); }, hold);
-    held = { id, timer };
+    held = { id, timer, after };
   }
 
   function onCall({ id, tool, args }) {
@@ -94,9 +146,12 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     set("on");
     watch();
     if (tool === "wait_for_cue") return onWait(id, a);
-    if (tool === "post_suggestions") return reply(id, { result: { shown: take(seq, a.suggestions) } });
-    if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], seq } });
-    if (tool === "get_new_transcript") return reply(id, { result: { seq, transcript: cue && (Number(a.seq) || 0) < cue.seq ? AGENT_SAMPLE : [] } });
+    if (tool === "post_suggestions") return reply(id, { result: { shown: take(handed, a.suggestions) } });
+    if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq } });
+    if (tool === "get_new_transcript") {
+      const after = Number(a.seq) || 0;
+      return reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after).flatMap((c) => c.transcript) } });
+    }
     reply(id, { error: tool === "post_report" ? "There is no show to report on yet." : `Unknown tool: ${tool}` });
   }
 
@@ -136,6 +191,10 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     try { sock?.close(1000, "bye"); } catch { /* closed */ }
     Object.assign(link, { state: "off", token: null, at: 0, test: { state: "idle" }, passed: false });
     cue = null;
+    cues = [];
+    handed = 0;
+    sent.clear();
+    latest = null;
     answered.clear();
     changed();
   }
@@ -197,17 +256,30 @@ export function createAgentLink({ net, onChange = () => {}, now = () => Date.now
     /** Test: one sample cue to the agent; done when its answer comes back, with the seconds since it was handed over. */
     test() {
       if (link.state !== "on" || link.test.state === "busy") return;
-      seq += 1;
-      cue = { seq, deliveredAt: null };
+      cue = { seq: seq + 1, deliveredAt: null };
       link.test = { state: "busy" };
       timers.clearTimeout(testTimer);
       testTimer = timers.setTimeout(() => { if (link.test.state === "busy") { link.test = { state: "fail" }; changed(); } }, AGENT_TEST_MS);
       changed();
-      if (held) {
-        const { id } = held;
-        drop();
-        deliver(id);
-      }
+      queue({ cue: "suggest_now", transcript: AGENT_SAMPLE }, true);
     },
+
+    /**
+     * A cue from the cue rules: { cue, transcript, position?, guestName? }. Taken only while the agent's loop is
+     * alive (true); it goes to the wait held, or to the agent's next call.
+     */
+    send(item) {
+      if (link.state !== "on") return false;
+      queue(item);
+      return true;
+    },
+
+    /** Called once with each new answer from the agent: { seq, cue, suggestions, ms } (ms since its cue went). */
+    onSuggestions(fn) {
+      suggested = fn;
+    },
+
+    /** The agent's latest answer, kept in memory for the question card (null before one, and after Disconnect). */
+    suggestion: () => latest,
   };
 }

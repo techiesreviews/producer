@@ -1,5 +1,5 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/ui/tooltip.mjs,
-// src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
+// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/cues.mjs,
+// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -134,6 +134,7 @@ const agent = createAgentLink({
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
   onChange: renderAgent,
+  show: agentShow,
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();
@@ -320,6 +321,33 @@ function lockPlan(now) {
   show.run.start(now);
   planIn.readOnly = true;
   label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
+}
+
+// ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
+// now at least 10 s apart; Slow down doubles both (card 11 puts the button and the switch on screen). Each cue carries
+// what was heard since the last one, the run position and the guest's name. The agent's latest answer stays in its
+// link's memory (agent.suggestion()) for the question card. Nothing is stored. ----
+const cues = createCues({ send: (item) => agent.send(item), context: cueContext });
+
+/** Where the show is when a cue goes: the current part of the run order, and the guest the plan names. */
+function cueContext() {
+  const context = {};
+  if (show.plan?.guest) context.guestName = show.plan.guest;
+  const position = show.run && runPosition(show.run.view(Date.now()));
+  if (position) context.position = position;
+  return context;
+}
+
+/** What get_context gives the agent: the plan the host pasted, with the part that is on now. */
+function agentShow() {
+  if (!show.plan) return null;
+  const rows = show.run?.view(Date.now()).rows ?? [];
+  return {
+    showTitle: show.plan.show,
+    guestName: show.plan.guest,
+    questions: show.plan.questions.map((text, i) => ({ n: i + 1, text })),
+    segments: show.plan.parts.map((part, i) => ({ title: part.name, plannedMinutes: part.minutes, ...(rows[i]?.state === "now" ? { live: true } : {}) })),
+  };
 }
 
 runsMore.addEventListener("click", () => {
@@ -602,12 +630,15 @@ function onSpeech({ data }) {
     // Each line is labelled with the source it was heard on: "host" (the microphone) or "guest" (the shared tab).
     if (data.final) {
       heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end });
+      cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end });
       if (heard.drafts[data.source]?.piece === data.piece) delete heard.drafts[data.source];
     } else {
       heard.drafts[data.source] = { piece: data.piece, text: data.text };
+      cues.talking(data.source);
     }
   } else if (data.type === "pause") {
     heard.pauses[data.source] = data.at;
+    cues.pause(data.source);
   }
 }
 

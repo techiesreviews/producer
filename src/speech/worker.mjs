@@ -110,7 +110,11 @@ async function transcribe(job) {
   return guardRepeats(result.text);
 }
 
-/** One piece at a time: every final in order; a draft only when no final waits (see createJobs). */
+/**
+ * One piece at a time: every final in order; a draft only when no final waits (see createJobs). A pause waits in
+ * line behind the finals before it, so the page has the last words of a point before it hears the pause (a cue to
+ * the agent goes at a pause, with the text heard so far).
+ */
 async function pump() {
   if (busy || !asr) return;
   busy = true;
@@ -118,6 +122,7 @@ async function pump() {
     for (;;) {
       const job = jobs.next();
       if (!job) break;
+      if (job.type === "pause") { post({ type: "pause", source: job.source, at: job.at }); continue; }
       const text = await transcribe(job);
       if (text) post({ type: "text", source: job.source, piece: job.piece, final: job.type === "final", text, start: job.start, end: job.end });
     }
@@ -127,10 +132,7 @@ async function pump() {
 }
 
 function take(events) {
-  for (const e of events) {
-    if (e.type === "pause") post({ type: "pause", source: e.source, at: e.at });
-    else jobs.add(e);
-  }
+  for (const e of events) jobs.add(e);
   pump().catch((error) => post({ type: "error", reason: String(error?.message || error) }));
 }
 

@@ -75,6 +75,13 @@ export function clockText(seconds, sign = false) {
   return `${whole > 0 ? "+" : "−"}${text}`;
 }
 
+/** Where the show is, for a cue to the agent: the part on now (from 1), its name and whole minutes left (0 once over). */
+export function runPosition(view) {
+  const i = view.rows.findIndex((row) => row.state === "now");
+  if (i < 0) return undefined;
+  return { segment: i + 1, title: view.rows[i].name, minutesLeft: Math.max(0, Math.ceil(view.rows[i].left / 60)) };
+}
+
 /**
  * The run order of a plan's parts, timed from the moment Start is pressed. Next part ends the current part at that
  * moment (its real time is kept) and starts the next; on the last part it ends the plan, and the clock goes on.
@@ -114,7 +121,7 @@ export function createRunOrder(parts) {
         } else if (i === current) {
           const inPart = (now - at(i)) / 1000;
           const left = planned(i) - inPart;
-          Object.assign(row, { state: "now", fill: Math.min(1, inPart / planned(i)) });
+          Object.assign(row, { state: "now", fill: Math.min(1, inPart / planned(i)), left });
           Object.assign(row, left >= 0 ? { text: `${clockText(Math.ceil(left))} left` } : { text: `${clockText(-left)} over`, tone: "late" });
         } else if (i === (started ? current + 1 : 0)) {
           row.state = "next";
