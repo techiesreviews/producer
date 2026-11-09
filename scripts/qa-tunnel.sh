@@ -102,7 +102,7 @@ tail_of() { [[ -s $1 ]] && tail -n 12 "$1" | sed "s/^/  $2: /" >&2; true; }
 
 # Secret files wrangler would load or the page tree (dist/, which the tunnel serves) would hold. The same names the repo guard refuses.
 secret_files() {
-  find "$1" \( -name .git -o -name node_modules -o -name .wrangler -o -name .scratch \) -prune -o \( -type f -o -type l \) \
+  find -L "$1" \( -name .git -o -name node_modules -o -name .wrangler -o -name .scratch \) -prune -o ! -type d \
     \( -name '.env' -o -name '.env.*' -o -name '*.key' -o -name '*.pem' -o -name '.dev.vars' -o -name '.dev.vars.*' \) -print |
     sed "s|^$1/||"
 }

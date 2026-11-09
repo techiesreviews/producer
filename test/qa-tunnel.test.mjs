@@ -153,6 +153,15 @@ describe("qa-tunnel.sh", { concurrency: 8 }, () => {
       assert.match(result.out, /\.dev\.vars/);
       assert.equal(w.has("wrangler.json"), false);
     } finally { w.cleanup(); }
+    const through = world();
+    try {
+      mkdirSync(join(through.dir, "elsewhere"));
+      writeFileSync(join(through.dir, "elsewhere", "id.pem"), "x\n");
+      symlinkSync(join(through.dir, "elsewhere"), join(through.repo, "linked"));
+      const result = await through.run(["--here"]);
+      assert.equal(result.code, 1, "a secret inside a linked folder");
+      assert.match(result.out, /linked\/id\.pem/);
+    } finally { through.cleanup(); }
     if (process.getuid?.() === 0) return; // root can read any folder
     const locked = world();
     const folder = join(locked.repo, "locked");
