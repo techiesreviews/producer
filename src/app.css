@@ -79,13 +79,14 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 }
 
 /* Step 3, the show plan pasted by hand: the box opens under its button, the example's lines under the box. A bad
-   line shows on the button and as the box's orange edge. On a phone the box's text is 16px, so focusing it never zooms. */
+   line shows on the button and as the box's orange edge; once the show clock runs the box is greyed (fixed). On a phone the box's text is 16px, so focusing it never zooms. */
 .plan { flex-basis: 100%; display: grid; gap: 0.4rem; }
 .plan__in {
   inline-size: 100%; min-block-size: 8.5rem; resize: vertical; padding: 0.5rem 0.6rem;
   border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--text);
   font: 0.82rem/1.5 var(--mono);
 }
+.plan__in:read-only { background: var(--raised); color: var(--muted); cursor: default; }
 .plan__in[aria-invalid="true"] { border-color: color-mix(in oklch, var(--accent-ink) 55%, transparent); }
 @media (pointer: coarse) { .plan__in { font-size: 16px; } }
 .plan__eg { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.75rem; }
