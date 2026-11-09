@@ -167,7 +167,7 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await text("#suggestBtn"), await suggest.getAttribute("data-state")], ["Thinking…", "busy"], `${name}: Thinking… on the button`);
     const busyContrast = await paintedContrast(suggest);
     assert.ok(busyContrast >= 4.5, `${name}: Thinking… reads at ${busyContrast.toFixed(2)}:1`);
-    assert.deepEqual(await light(), { cls: "dot dot--think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until a new question is ready." }, `${name}: the quiet light breathes`);
+    assert.deepEqual(await light(), { cls: "dot dot--think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." }, `${name}: the quiet light breathes`);
     assert.equal((await card()).q, "How did it start?", `${name}: the card keeps its question while the agent thinks`);
     assert.deepEqual(await next.boundingBox(), box, `${name}: the thinking light does not move the card`);
     assert.equal(await text("#turnChip"), "1 turn", `${name}: one turn`);
