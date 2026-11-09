@@ -36,10 +36,10 @@ Who was your first customer?
 
 - `Show:` and `Guest:` name the show and the guest (both optional).
 - A part of the run order is its planned minutes, then its name: `10 Intro` (also `10 min Intro` or `10m Intro`). A line that starts with minutes is a part, even when it ends with a question mark (`10 Any questions?`). A plan needs at least one part.
-- A question is numbered (`1.` or `1)`) or is any other line ending with a question mark. A line starting with `-` or `*` counts the same without it.
+- A question is numbered (`1.` or `1)`) or is any other line ending with a question mark. Number a question that starts with a number (`1. 3 things you'd change?`), or it reads as a part. A line starting with `-` or `*` counts the same without it.
 - The button shows what it read ("12 questions · 5 parts ✓"), or the first line it cannot read ("Line 4 not clear", with the rule in its tooltip).
 
-On the producer screen, Start starts the show clock with the first part. Next part ends the current part at that moment (its real time is kept) and starts the next; on the last part it ends the plan. The current part shows its time left (or how far over); the clock shows how far ahead (green, minus) or behind (orange, plus) the plan is: done parts against their minutes, plus the time the current part runs over; after the last part, every minute the show goes on counts as behind. Once the clock runs, changing the plan in setup leaves the run order as it started. A narrow window shows only the current and the next part, with All for the rest.
+On the producer screen, Start starts the show clock with the first part. Next part ends the current part at that moment (its real time is kept) and starts the next; on the last part it ends the plan. The current part shows its time left (or how far over); the clock shows how far ahead (green, minus) or behind (orange, plus) the plan is: done parts against their minutes, plus the time the current part runs over; after the last part, every minute the show goes on counts as behind. Once the clock runs, the plan is fixed: back in setup the box reads but takes no edits. A narrow window shows only the current and the next part, with All for the rest.
 
 ## How it is built
 

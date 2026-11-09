@@ -207,14 +207,21 @@ export async function run({ browser, base, out }) {
       await press(page.locator("#runsMore"));
       assert.deepEqual([(await visibleNames()).length, await text("runsMore")], [2, "All"], `${name}: Less goes back`);
     }
-    // Fixing the plan in setup while the clock runs (a reworded question, even a changed part) keeps the run order.
+    // Once the clock runs the plan is fixed: the box takes no edits and its button says why. Even a change that
+    // reaches the box (a reworded question and a changed part, then an empty box) leaves the run order as it started.
+    assert.deepEqual([await box.evaluate((el) => el.readOnly), await planBtn.getAttribute("data-tip")], [true, "The show has started, so the plan stays as it is."], `${name}: the plan is fixed once the clock runs`);
+    assert.equal(await text("planBtn"), "12 questions · 5 parts ✓", `${name}: and its button still says what runs`);
     const before = await text("clockTime");
     await page.evaluate((plan) => { const box = document.querySelector("#planIn"); box.value = plan; box.dispatchEvent(new Event("input")); }, PLAN.replace("Question number 3?", "A reworded question?").replace("4 Wrap-up", "5 Wrap-up"));
     await page.clock.runFor(10_000);
     assert.notEqual(await text("clockTime"), before, `${name}: the clock goes on after the plan is edited`);
     assert.deepEqual(await states(), ["done", "now", "next", "later", "later"], `${name}: the run order stays as it started`);
     assert.equal((await times())[4], "4:00", `${name}: a part changed once the clock runs does not replace the timing`);
-    await page.clock.runFor(7 * 60_000 - 10_000);
+    await page.evaluate(() => { const box = document.querySelector("#planIn"); box.value = ""; box.dispatchEvent(new Event("input")); });
+    await page.clock.runFor(1_000);
+    assert.deepEqual([await page.locator("#runs").isVisible(), await page.locator("#clock").isVisible(), await states()], [true, true, ["done", "now", "next", "later", "later"]], `${name}: an emptied box leaves the run order and the clock`);
+    await page.evaluate((plan) => { const box = document.querySelector("#planIn"); box.value = plan; box.dispatchEvent(new Event("input")); }, PLAN);
+    await page.clock.runFor(7 * 60_000 - 11_000);
     await press(runBtn); // Her story: 7:00 of 8:00, a minute early
     assert.deepEqual([(await times())[1], await text("clockDelta")], ["−1:00", "−0:40 ahead of plan by 0:40"], `${name}: ahead of plan by 0:40 overall`);
     assert.equal(await page.locator("#clockDelta").getAttribute("data-tone"), "early", `${name}: in green`);
