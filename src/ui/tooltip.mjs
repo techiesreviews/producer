@@ -1,0 +1,54 @@
+// The one shared tooltip. Any element with data-tip shows its text in the element #tip on hover (after a short
+// delay), keyboard focus or a tap, and goes away on leaving, scrolling, Escape or a press elsewhere. A control that
+// is switched off (aria-disabled="true") shows its reason when pressed, so a touch screen can read it too.
+// The inlined page script keeps this file's code as it is (the build only drops `export`).
+export function installTooltip(doc = document) {
+  const tip = doc.getElementById("tip");
+  let timer;
+  let owner = null;
+  const show = (el) => {
+    const text = el.getAttribute("data-tip");
+    if (!text) return;
+    hide();
+    owner = el;
+    tip.textContent = text;
+    tip.setAttribute("data-on", "");
+    el.setAttribute("aria-describedby", tip.id);
+    const r = el.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    const view = doc.documentElement;
+    const x = Math.max(12, Math.min(r.left + r.width / 2 - t.width / 2, view.clientWidth - t.width - 12));
+    const below = r.bottom + 8;
+    const y = below + t.height > view.clientHeight - 8 ? Math.max(8, r.top - t.height - 8) : below;
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+  };
+  function hide() {
+    clearTimeout(timer);
+    tip.removeAttribute("data-on");
+    owner?.removeAttribute("aria-describedby");
+    owner = null;
+  }
+  doc.addEventListener("pointerover", (e) => {
+    const el = e.target.closest("[data-tip]");
+    clearTimeout(timer);
+    if (!el) hide();
+    else if (el !== owner) timer = setTimeout(() => show(el), e.pointerType === "mouse" ? 250 : 0);
+  });
+  doc.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-tip]")) hide(); });
+  doc.addEventListener("focusin", (e) => {
+    const el = e.target.closest("[data-tip]");
+    if (el && el.matches(":focus-visible")) show(el);
+  });
+  doc.addEventListener("focusout", hide);
+  doc.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  doc.addEventListener("scroll", hide, true);
+  doc.addEventListener("click", (e) => {
+    const el = e.target.closest('[aria-disabled="true"]');
+    if (!el) return;
+    e.stopPropagation();
+    e.preventDefault();
+    show(el);
+  }, true);
+  return { show, hide };
+}

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# kit: browser checks and screenshots, desktop and phone, light and dark
+set -euo pipefail
+root=${KIT_ROOT:-$(git rev-parse --show-toplevel)}
+exec "${KIT_NODE:-node}" "$root/scripts/agents/producer-kit.mjs" specs "$@"

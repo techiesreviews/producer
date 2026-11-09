@@ -6,9 +6,10 @@ A live host's private "producer" screen: a static page plus one Cloudflare Worke
 
 - Agent Kit (the shared kit, `scripts/agents/kit`) for all coding: `kit doctor` first, then the commands that fit the work. Delegated work must carry this requirement.
 - This repo is public. Never commit a key, token, password, private note or the Restream app secret (it lives only in Cloudflare). `test/repo-guard.test.mjs` checks the obvious cases; it does not replace care.
-- Nothing is stored: no server-side storage of talk, chat or questions, and no logging of request bodies.
+- Nothing is stored: no server-side storage of talk, chat or questions, and no logging of request bodies. `test/deploy-config.test.mjs`, `test/build.test.mjs` and `test/worker.test.mjs` guard this and the page policy: never weaken them.
 - Build only what is asked. No feature and no screen until the mock-up has Lex's approval.
-- Cloudflare free plan only. Do not deploy or change Cloudflare resources unless the lead says so.
+- Cloudflare free plan only. Do not deploy or change Cloudflare resources unless the lead says so. `wrangler.jsonc` and `.github/workflows/deploy-preview.yml` are written, not run: the Cloudflare token waits for TOOLS-144.
+- Layout and checks: README, section "How it is built".
 - Orbit board: follow the card standard (`orbit-card-standard.md` in the fleet repo) when you create or change a card. Only lead models write to the board.
 - Design: the kit's house style (`docs/house-style.md` in the folder `scripts/agents/kit --home` prints). Anything a person sees shows its state on the control itself: no toasts, no explainers.
 - Public status and plans stay plain English in `docs/wayfinder/producer/`.

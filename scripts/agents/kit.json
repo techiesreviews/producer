@@ -16,5 +16,14 @@
   },
   "standards": [
     "AGENTS.md"
-  ]
+  ],
+  "paths": {
+    "visible": [
+      "^src/page\\.html$",
+      "^src/(app|theme)\\.css$",
+      "^src/app\\.js$",
+      "^src/ui/",
+      "^scripts/build\\.mjs$"
+    ]
+  }
 }
