@@ -4,13 +4,13 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* Top bar, shared by every screen */
 .top {
   display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
-  min-block-size: 3.25rem; padding: 0.4rem max(0.9rem, env(safe-area-inset-right)) 0.4rem max(0.9rem, env(safe-area-inset-left));
+  min-block-size: 3.25rem; padding: max(0.4rem, env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right)) 0.4rem max(0.9rem, env(safe-area-inset-left));
   border-block-end: 1px solid var(--line); background: var(--surface);
 }
 .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; }
 .brand__mark { inline-size: 1.4rem; block-size: 1.4rem; border-radius: 6px; background: var(--accent); display: grid; place-items: center; color: var(--on-accent); }
 .brand small { font-weight: 500; color: var(--muted); font-size: 0.8rem; }
-.chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.45rem; border-radius: 99px; font-size: 0.72rem; font-weight: 600; background: var(--raised); color: var(--muted); white-space: nowrap; }
+.chip { display: inline-flex; border: 0; cursor: default; align-items: center; gap: 0.3rem; padding: 0.1rem 0.45rem; border-radius: 99px; font-size: 0.72rem; font-weight: 600; background: var(--raised); color: var(--muted); white-space: nowrap; }
 .private { position: relative; }
 /* On a touch screen the chip's tap area grows past its looks. */
 @media (pointer: coarse) { .private::after { content: ""; position: absolute; inset: -0.7rem -0.5rem; } }

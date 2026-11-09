@@ -20,7 +20,7 @@ file wins.
     `page.mjs` is the whole page at desktop 1366x900 and phone 390x844, light and dark, served through the
     real Worker with the page's own headers. What it checks lives in its file, not here. Screenshots land in
     the evidence folder (`.scratch/producer/specs-<time>/`). Playwright stays outside the repo: set
-    `KIT_PLAYWRIGHT_MODULE`, else the Native Site Editor's checkout next to this one is used.
+    `KIT_PLAYWRIGHT_MODULE` (the path of its `index.mjs`), else `~/Projects/native-site-editor-dev/node_modules` is used.
   - `kit size`: bytes of the built page, its headers and the Worker source. Report only.
 - **Shared file:** none.
 - **Docs the shared rulebook names:** no runner guide, issue tracker guide, UX rulebook or routines

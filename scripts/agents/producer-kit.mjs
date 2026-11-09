@@ -17,13 +17,13 @@ const landBase = `origin/${settings.branches?.land || "main"}`;
 const oneLine = (text) => String(text).replace(/\s+/g, " ").trim();
 const kitResult = (status, text) => console.log(`RESULT: ${status} ${oneLine(text)}`);
 const usage = {
-  specs: `Usage: kit specs [suite] [--affected [--base REF]]\nRuns the browser suites in test/browser/ with screenshots (each file one suite; a name runs only the suites whose file name holds it: kit specs page).\n--affected (kit pr uses it) runs the suites the changes since --base (default ${landBase}, from branches.land in scripts/agents/kit.json; committed or not, new files too) can reach, as scripts/agents/specs-affected.mjs says: the page suite for anything under src/, the build, wrangler.jsonc and the suite itself; none for docs (.md) only.\nThe page suite serves the build through the real Worker (src/worker.mjs) on a local port, with the page's own headers as Cloudflare sends them.\nWhat each suite checks: the comments and assertion messages in its file. A failure names error.txt (the full error with the values) in the evidence folder.\nPlaywright: KIT_PLAYWRIGHT_MODULE, else the one in a sibling checkout's node_modules (see playwrightModule in this file).`,
+  specs: `Usage: kit specs [suite] [--affected [--base REF]]\nRuns the browser suites in test/browser/ with screenshots (each file one suite; a name runs only the suites whose file name holds it: kit specs page).\n--affected (kit pr uses it) runs the suites the changes since --base (default ${landBase}, from branches.land in scripts/agents/kit.json; committed or not, new files too) can reach, as scripts/agents/specs-affected.mjs says: the page suite for anything under src/, the build, wrangler.jsonc and the suite itself; none for docs (.md) only.\nThe page suite serves the build through the real Worker (src/worker.mjs) on a local port, with the page's own headers as Cloudflare sends them.\nWhat each suite checks: the comments and assertion messages in its file. A failure names error.txt (the full error with the values) in the evidence folder.\nPlaywright: KIT_PLAYWRIGHT_MODULE (the path of its index.mjs), else the one in ~/Projects/native-site-editor-dev/node_modules.`,
   size: "Usage: kit size\nReports raw and gzip bytes of the built page and the Worker source. Report only; no budget.",
 };
 if (args.includes("--help") || args.includes("-h")) { console.log(usage[command] || "Unknown command"); process.exit(0); }
 
 // Playwright stays outside the repo (the repo guard forbids a home-folder path in a file): the environment names it,
-// else the Native Site Editor's checkout next to this one.
+// else the Native Site Editor's checkout in ~/Projects/native-site-editor-dev.
 const playwrightModule = () => [process.env.KIT_PLAYWRIGHT_MODULE, join(homedir(), "Projects/native-site-editor-dev/node_modules/playwright/index.mjs")].find((p) => p && existsSync(p));
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
