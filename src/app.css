@@ -36,6 +36,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .tb[data-state="ok"] { border-color: color-mix(in oklch, var(--agent) 45%, transparent); color: var(--agent-ink); }
 .tb[data-state="busy"] { color: var(--muted); cursor: progress; }
 .tb[data-state="error"] { border-color: color-mix(in oklch, var(--accent-ink) 55%, transparent); color: var(--accent-ink); }
+.tb--quiet { border-color: transparent; color: var(--muted); }
+.tb--small { min-block-size: 1.75rem; padding-inline: 0.6rem; font-size: 0.78rem; }
 .num { font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { .tb { min-block-size: 2.75rem; } }
 
@@ -76,6 +78,20 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
   .step__ctl { grid-column: 1 / -1; }
 }
 
+/* Step 3, the show plan pasted by hand: the box opens under its button, the example's lines under the box. A bad
+   line shows on the button and as the box's orange edge. On a phone the box's text is 16px, so focusing it never zooms. */
+.plan { flex-basis: 100%; display: grid; gap: 0.4rem; }
+.plan__in {
+  inline-size: 100%; min-block-size: 8.5rem; resize: vertical; padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--text);
+  font: 0.82rem/1.5 var(--mono);
+}
+.plan__in[aria-invalid="true"] { border-color: color-mix(in oklch, var(--accent-ink) 55%, transparent); }
+@media (pointer: coarse) { .plan__in { font-size: 16px; } }
+.plan__eg { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.75rem; }
+.plan__eg-k { font-weight: 600; margin-inline-end: 0.2rem; }
+.plan__eg code { padding: 0.05rem 0.4rem; border-radius: var(--radius-small); background: var(--raised); font: 500 0.72rem/1.5 var(--mono); white-space: pre; }
+
 /* The step below the panel: the one main action. */
 .setup__go { display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center; padding-block-start: 0.25rem; }
 
@@ -86,7 +102,44 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .listen[data-on="false"] { border-color: var(--line-strong); color: var(--muted); }
 .listen .tb { min-block-size: 1.6rem; padding-inline: 0.55rem; border-radius: 99px; font-size: 0.78rem; }
 @media (pointer: coarse) { .listen .tb { min-block-size: 2.75rem; padding-inline: 0.9rem; } }
-.live { padding: 0.9rem; }
+
+/* The live screen's panels, in the mock-up's grid: the question card (to come) on the left, the run order and the
+   viewer chat (to come) on the right; one column on a narrow window. */
+.live {
+  display: grid; gap: 0.9rem; align-content: start;
+  grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr); grid-template-areas: "card runs" "card chat";
+  padding: 0.9rem max(0.9rem, env(safe-area-inset-right)) max(0.9rem, env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+}
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-panel); overflow: clip; }
+.panel__head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; min-block-size: 3rem; padding: 0.6rem 0.85rem; border-block-end: 1px solid var(--line); }
+.panel__head h2 { font-size: 0.85rem; font-weight: 650; }
+.panel__head .end { margin-inline-start: auto; display: flex; align-items: center; gap: 0.4rem; }
+
+/* The show clock in the top bar: time since Start, and how far ahead (green, minus) or behind (orange, plus) the plan. */
+.clock { display: inline-flex; align-items: baseline; gap: 0.5rem; padding: 0.2rem 0.6rem; border-radius: var(--radius); background: var(--raised); font: 600 1rem/1.2 var(--mono); }
+.clock small { font: 600 0.75rem/1 var(--mono); color: var(--muted); }
+
+/* The run order: one row per part. Done parts are quiet with their real time against the plan; the current part is
+   tinted with the time left and a bar; the others show their planned minutes. */
+.runs { grid-area: runs; }
+.runs__list { padding: 0; list-style: none; }
+.run { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0.15rem 0.6rem; padding: 0.55rem 0.85rem; border-block-end: 1px solid var(--line); }
+.run:last-child { border-block-end: 0; }
+.run__name { font-weight: 600; overflow-wrap: anywhere; }
+.run__t { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); text-align: end; white-space: nowrap; }
+.run[data-s="done"] .run__name { color: var(--muted); font-weight: 500; }
+.run[data-s="now"] { background: var(--accent-faint); }
+.run__bar { grid-column: 1 / -1; block-size: 4px; border-radius: 99px; background: var(--line); overflow: clip; }
+.run__bar > i { display: block; block-size: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
+[data-tone="late"] { color: var(--accent-ink); }
+[data-tone="early"] { color: var(--agent-ink); }
+/* "All" exists only on a narrow window, where the list shows just the current and the next part. */
+.runs__more { display: none; }
+@media (max-width: 680px) {
+  .live { grid-template-columns: minmax(0, 1fr); grid-template-areas: "card" "runs" "chat"; gap: 0.6rem; padding: 0.6rem max(0.6rem, env(safe-area-inset-right)) max(0.6rem, env(safe-area-inset-bottom)) max(0.6rem, env(safe-area-inset-left)); }
+  .runs__more { display: inline-flex; }
+  .runs:not([data-open], [data-finished]) .run:not([data-s="now"], [data-s="next"]) { display: none; }
+}
 
 /* A row of choices, one pressed (filled) at a time. */
 .seg { display: inline-flex; flex-wrap: wrap; padding: 2px; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
@@ -118,6 +171,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 [aria-disabled="true"] { cursor: help; color: var(--faint) !important; border-color: var(--line) !important; background: transparent !important; }
 [aria-disabled="true"] svg { opacity: 0.55; }
 .off-mark { display: inline-grid; place-items: center; inline-size: 1rem; block-size: 1rem; border-radius: 50%; border: 1px solid currentColor; font: 700 0.62rem/1 system-ui, sans-serif; }
+
+/* Words for a screen reader only. */
+.sr { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); white-space: nowrap; }
 
 /* On a narrow window the bar keeps the name and the icon; the words move to the tooltip. */
 @media (max-width: 680px) {

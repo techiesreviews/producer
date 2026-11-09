@@ -1,5 +1,5 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/ui/tooltip.mjs, src/agent-ways.mjs,
-// src/agent-message.mjs and src/agent-link.mjs above this file.
+// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/runorder.mjs, src/ui/tooltip.mjs,
+// src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -183,11 +183,130 @@ testBtn.addEventListener("click", () => agent.test());
 // left working for whoever holds the message.
 addEventListener("pagehide", () => agent.disconnect());
 
-// Step 2: the host's own answer for the guest. Nothing else sets it.
+// Step 4: the host's own answer for the guest. Nothing else sets it.
 choices($("guestSeg"), (answer) => {
   state.guest = answer;
   done("sGuest", true);
   refresh();
+});
+
+// ---- Step 3, the show plan pasted by hand (format: src/runorder.mjs). It lives in this page's memory only: never
+// stored, never sent. Each change is read at once; the button says what was read, or which line is unclear. ----
+const planBtn = $("planBtn");
+const planBox = $("planBox");
+const planIn = $("planIn");
+/** The plan as last read clearly (null before), and its run order with the show clock. */
+const show = { plan: null, run: null, parts: "" };
+// The example's lines, a space apart in the text (a screen reader and a copy keep them apart; the layout ignores it).
+for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
+
+function readPasted() {
+  const plan = readPlan(planIn.value);
+  const said = planButton(plan);
+  label(planBtn, said.state, said.tip, said.text);
+  planIn.setAttribute("aria-invalid", String(said.state === "error"));
+  if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
+  show.plan = plan.ok ? plan : null;
+  // A new run order only when the parts change: fixing a question keeps a running clock.
+  const parts = plan.ok ? JSON.stringify(plan.parts) : "";
+  if (parts !== show.parts) {
+    show.parts = parts;
+    show.run = plan.ok ? createRunOrder(plan.parts) : null;
+    buildRuns();
+  }
+  $("showLine").textContent = showLine(show.plan);
+  done("sPlan", Boolean(show.plan));
+}
+planIn.addEventListener("input", readPasted);
+planBtn.addEventListener("click", () => {
+  const open = planBox.hidden;
+  planBox.hidden = !open;
+  planBtn.setAttribute("aria-expanded", String(open));
+  if (open) planIn.focus();
+});
+
+// ---- The run order and the show clock on the producer screen. Start starts the clock with the first part; Next
+// part ends the current part at that moment and starts the next. Shown only when a plan is loaded. ----
+const runs = $("runs");
+const runList = $("runList");
+const runBtn = $("runBtn");
+const runsMore = $("runsMore");
+const clock = $("clock");
+let ticker = null;
+let lastPress = 0;
+const make = (tag, className, text = "") => Object.assign(document.createElement(tag), { className, textContent: text });
+const setTone = (el, tone) => { if (tone) el.dataset.tone = tone; else el.removeAttribute("data-tone"); };
+
+function buildRuns() {
+  runList.replaceChildren(...(show.plan?.parts || []).map((part) => {
+    const bar = make("span", "run__bar");
+    bar.append(document.createElement("i"));
+    const row = make("li", "run");
+    row.append(make("span", "run__name", part.name), make("span", "run__t num"), bar);
+    return row;
+  }));
+  runs.removeAttribute("data-open");
+  runsMore.textContent = "All";
+  runsMore.setAttribute("aria-expanded", "false");
+  renderRun();
+}
+
+function renderRun() {
+  runs.hidden = !show.run;
+  clock.hidden = !show.run;
+  if (!show.run) return;
+  const view = show.run.view(Date.now());
+  view.rows.forEach((row, i) => {
+    const item = runList.children[i];
+    const [, when, bar] = item.children;
+    item.dataset.s = row.state;
+    if (row.state === "now") item.setAttribute("aria-current", "step"); else item.removeAttribute("aria-current");
+    if (when.textContent !== row.text) when.textContent = row.text;
+    setTone(when, row.tone);
+    bar.hidden = row.state !== "now";
+    bar.firstChild.style.transform = `scaleX(${row.fill.toFixed(4)})`;
+  });
+  runs.toggleAttribute("data-finished", view.finished);
+  runsMore.hidden = view.finished || view.rows.every((r) => ["now", "next"].includes(r.state));
+  if (view.button) {
+    if (runBtn.textContent !== view.button) runBtn.textContent = view.button;
+    runBtn.className = view.started ? "tb tb--small" : "tb tb--primary tb--small";
+    runBtn.hidden = false;
+  } else if (!runBtn.hidden) {
+    // The plan is done: Next part goes, and the keyboard lands on the list's heading rather than nowhere.
+    const focused = document.activeElement === runBtn;
+    runBtn.hidden = true;
+    if (focused) $("runsTitle").focus();
+  }
+
+  $("clockTime").textContent = clockText(view.clock);
+  const delta = $("clockDelta");
+  delta.hidden = !view.started;
+  if (view.started) {
+    const ahead = view.delta < 0;
+    const words = view.delta === 0 ? "on plan" : `${ahead ? "ahead of" : "behind"} plan by ${clockText(Math.abs(view.delta))}`;
+    delta.replaceChildren(clockText(view.delta, true), make("span", "sr", ` ${words}`));
+    setTone(delta, view.delta > 0 ? "late" : ahead ? "early" : "");
+    clock.dataset.tip = `Show time, ${words}.`;
+  } else {
+    clock.dataset.tip = "Show time. It starts when you press Start.";
+  }
+}
+
+runBtn.addEventListener("click", () => {
+  // A double click on Start must not also end the first part: a second press within a second is ignored.
+  const now = Date.now();
+  if (!show.run || now - lastPress < 1000) return;
+  lastPress = now;
+  if (show.run.view(now).started) show.run.next(now); else show.run.start(now);
+  ticker ??= setInterval(renderRun, 250);
+  renderRun();
+});
+runsMore.addEventListener("click", () => {
+  const open = !runs.hasAttribute("data-open");
+  runs.toggleAttribute("data-open", open);
+  runsMore.textContent = open ? "Less" : "All";
+  runsMore.setAttribute("aria-expanded", String(open));
 });
 
 // ---- Sound: the microphone, a live level meter, and the sound handed to the speech worker while listening ----
@@ -362,6 +481,7 @@ function showScreen(live) {
   $("setup").hidden = live;
   $("live").hidden = !live;
   $("topLive").hidden = !live;
+  if (live) renderRun();
 }
 
 goBtn.addEventListener("click", () => {
