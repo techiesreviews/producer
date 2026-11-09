@@ -688,9 +688,9 @@ export async function run({ playwright, base, dist, out }) {
     assert.ok(delay.middle < TARGET.middleDelay, `middle delay ${delay.middle.toFixed(2)} s, under ${TARGET.middleDelay} s`);
     assert.ok(pauses >= 1, "a pause of about 1.5 s is noticed");
     // A cue to the agent goes at a pause with the text heard so far, so the last words before a pause must be there:
-    // a piece that ended by the pause (its end is at most the 0.2 s tail after the last voice) arrives before it.
+    // a piece of the same source that ended by the pause (at most the 0.2 s tail after the last voice) arrives before it.
     const told = await page.evaluate(() => window.__watch.messages);
-    const late = told.flatMap((m, i) => (m.type === "pause" ? told.slice(i + 1).filter((f) => f.type === "text" && f.final && f.end <= m.at + 0.25).map((f) => `piece ${f.piece} after the pause at ${m.at.toFixed(2)} s`) : []));
+    const late = told.flatMap((m, i) => (m.type === "pause" ? told.slice(i + 1).filter((f) => f.type === "text" && f.final && f.source === m.source && f.end <= m.at + 0.25).map((f) => `piece ${f.piece} after the pause at ${m.at.toFixed(2)} s`) : []));
     assert.deepEqual(late, [], "the text heard before a pause arrives before the pause");
     ok(`speech: ${(score.rate * 100).toFixed(1)} % word errors on ${score.words} words; delay middle ${delay.middle.toFixed(2)} s, slowest 1 in 10 ${delay.slowest.toFixed(2)} s; ${pauses} pauses`);
 

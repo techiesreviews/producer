@@ -12,7 +12,7 @@ const PAGE_BUDGET_MS = 300;
 
 const PLAN = ["Show: Techies Live", "Guest: Jane Doe", "3 Intro", "8 Her story", "1. How did it start?", "2. Who paid first?"].join("\n");
 
-// Stand-ins for the microphone (a quiet tone), the speech worker (ready at once; window.__speech.emit(data) hands the
+// Stand-ins for the microphone and the studio tab (quiet tones), the speech worker (ready at once; window.__speech.emit(data) hands the
 // page a message as the worker would) and the relay (window.__relay.call(tool, args) plays one agent call).
 function standIns() {
   navigator.mediaDevices.getUserMedia = async () => {
@@ -22,6 +22,16 @@ function standIns() {
     tone.connect(out);
     tone.start();
     return out.stream;
+  };
+  navigator.mediaDevices.getDisplayMedia = async () => {
+    const context = new AudioContext();
+    const tone = context.createOscillator();
+    const out = context.createMediaStreamDestination();
+    tone.connect(out);
+    tone.start();
+    const video = document.createElement("canvas").captureStream(1).getVideoTracks()[0];
+    video.getSettings = () => ({ displaySurface: "browser" });
+    return new MediaStream([video, ...out.stream.getAudioTracks()]);
   };
   const RealWorker = window.Worker;
   window.Worker = function Worker(url, options) {
@@ -94,6 +104,8 @@ export async function run({ browser, base }) {
   await page.getByRole("button", { name: "Yes", exact: true }).click();
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+  await page.locator("#tabBtn").click();
+  await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
   await page.locator("#speechBtn").click();
   await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
   await page.locator("#goBtn").click();
