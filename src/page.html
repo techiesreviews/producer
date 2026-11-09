@@ -96,6 +96,26 @@
     </div>
   </section>
   <section class="live" id="live" aria-label="Producer screen" hidden>
+    <article class="panel next" id="next" aria-labelledby="nextTitle">
+      <div class="panel__head"><h2 id="nextTitle">Next question</h2>
+        <span class="end"><span class="dot" id="thinkDot" role="img" aria-label="No agent" data-tip=""></span></span>
+      </div>
+      <div class="next__body">
+        <p class="q-main" id="qMain" aria-live="polite"></p>
+        <p class="q-why" id="qWhy"></p>
+        <div class="q-src"><span class="chip" id="qSrc"></span></div>
+      </div>
+      <div class="q-act">
+        <button class="tb tb--ink" type="button" id="askedBtn">Asked</button>
+        <button class="tb" type="button" id="skipBtn">Skip</button>
+      </div>
+      <div class="alts" id="alts" role="group" aria-label="Swap in"></div>
+      <div class="next__foot">
+        <button class="tb tb--primary" type="button" id="suggestBtn">Suggest now</button>
+        <button class="switch" type="button" role="switch" aria-checked="false" id="slowBtn" data-tip="On: your agent is asked half as often."><span class="switch__track" aria-hidden="true"></span>Slow down</button>
+        <span class="end chip num" id="turnChip" data-tip="Times your agent was asked this show. At pauses at most once a minute, every 2 minutes with Slow down.">0 turns</span>
+      </div>
+    </article>
     <section class="panel runs" id="runs" aria-labelledby="runsTitle" hidden>
       <div class="panel__head"><h2 id="runsTitle" tabindex="-1">Run order</h2>
         <span class="end"><button class="tb tb--quiet tb--small runs__more" type="button" id="runsMore" aria-expanded="false" aria-controls="runList">All</button><button class="tb tb--primary tb--small" type="button" id="runBtn">Start</button></span>

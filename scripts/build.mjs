@@ -21,7 +21,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 export const STYLES = ["src/theme.css", "src/app.css"];
 
 /** Shared modules inlined into the page script, in this order, without `export`; then src/app.js. */
-export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/runorder.mjs", "src/cues.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-link.mjs"];
+export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/runorder.mjs", "src/cues.mjs", "src/questions.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-link.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
 export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];

@@ -108,8 +108,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .listen .tb { min-block-size: 1.6rem; padding-inline: 0.55rem; border-radius: 99px; font-size: 0.78rem; }
 @media (pointer: coarse) { .listen .tb { min-block-size: 2.75rem; padding-inline: 0.9rem; } }
 
-/* The live screen's panels, in the mock-up's grid: the question card (to come) on the left, the run order and the
-   viewer chat (to come) on the right; one column on a narrow window. */
+/* The live screen's panels, in the mock-up's grid: the question card on the left, the run order and the viewer chat
+   (to come) on the right; one column on a narrow window, the card first. */
 .live {
   display: grid; gap: 0.9rem; align-content: start;
   grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr); grid-template-areas: "card runs" "card chat";
@@ -138,6 +138,57 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .run__bar > i { display: block; block-size: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
 .run__t[data-tone="late"], .clock small[data-tone="late"] { color: var(--accent-ink); }
 .run__t[data-tone="early"], .clock small[data-tone="early"] { color: var(--agent-ink); }
+/* The Next question card (the mock-up's left column): the question large, a few words why, where it came from, Asked
+   and Skip, two to swap in, and the agent's controls at the foot. The light in the corner is the only sign the agent
+   works: a fixed 8px dot, so the card never moves for it. */
+.next { grid-area: card; display: flex; flex-direction: column; align-self: start; }
+.next__body { display: grid; gap: 0.5rem; padding: 1.1rem 1.1rem 0.6rem; }
+.q-main { font-size: clamp(1.3rem, 1rem + 1.2vw, 1.85rem); line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.q-main[data-empty] { color: var(--muted); font-weight: 600; }
+.q-why { color: var(--muted); font-size: 0.95rem; }
+.q-src { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.chip--accent { background: var(--accent-soft); color: light-dark(color-mix(in oklch, var(--accent-ink) 85%, var(--text)), var(--accent-ink)); }
+.q-act { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 1.1rem 1rem; }
+.tb--ink { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.tb--ink:active { background: color-mix(in oklch, var(--ink) 88%, var(--bg)); }
+@media (hover: hover) and (pointer: fine) { .tb--ink:hover:not([aria-disabled="true"]) { background: color-mix(in oklch, var(--ink) 88%, var(--bg)); } }
+.alts { display: grid; padding: 0.4rem 0.5rem; border-block-start: 1px solid var(--line); }
+.alts:empty { display: none; }
+.alt {
+  display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 0.6rem; padding: 0.5rem 0.6rem;
+  border: 0; border-radius: var(--radius); background: transparent; text-align: start; -webkit-tap-highlight-color: transparent;
+}
+.alt:active { background: var(--pressed); }
+@media (hover: hover) and (pointer: fine) { .alt:hover { background: var(--hover); } }
+@media (pointer: coarse) { .alt { min-block-size: 2.75rem; } }
+.alt__q { font-weight: 600; overflow-wrap: anywhere; }
+.alt__why { grid-column: 1; color: var(--muted); font-size: 0.82rem; }
+.alt .chip { grid-row: 1; grid-column: 2; align-self: start; }
+.next__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 0.85rem; border-block-start: 1px solid var(--line); background: var(--raised); }
+.next__foot .end { margin-inline-start: auto; }
+/* Suggest now keeps one width through Thinking… and the seconds to wait, so the switch beside it stays put. While the
+   agent thinks it steps back from orange to the quiet busy look. On a narrow window it spans the card, for the thumb. */
+#suggestBtn { min-inline-size: 10.5rem; }
+#suggestBtn[data-state="busy"] { background: transparent; border-color: var(--line-strong); color: var(--muted); }
+@media (max-width: 680px) { #suggestBtn { flex: 1 0 100%; } }
+
+/* An on/off switch (Slow down): the knob slides right and the track turns orange when on. */
+.switch {
+  display: inline-flex; flex: none; align-items: center; gap: 0.45rem; padding: 0.25rem 0.3rem;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--muted); font-weight: 600; font-size: 0.85rem; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.switch__track { position: relative; inline-size: 1.9rem; block-size: 1.1rem; border-radius: 99px; background: var(--line-strong); transition: background-color 150ms; }
+.switch__track::after {
+  content: ""; position: absolute; inset-block-start: 2px; inset-inline-start: 2px; inline-size: calc(1.1rem - 4px); block-size: calc(1.1rem - 4px);
+  border-radius: 50%; background: var(--surface); box-shadow: var(--shadow-small); transition: translate 180ms var(--ease-out);
+}
+.switch[aria-checked="true"] { color: var(--text); }
+.switch[aria-checked="true"] .switch__track { background: var(--accent); }
+.switch[aria-checked="true"] .switch__track::after { translate: 0.8rem 0; }
+@media (pointer: coarse) { .switch { min-block-size: 2.75rem; } }
+@media (prefers-reduced-motion: reduce) { .switch__track, .switch__track::after { transition: none; } }
+
 /* "All" exists only on a narrow window, where the list shows just the current and the next part. */
 .runs__more { display: none; }
 @media (max-width: 680px) {
