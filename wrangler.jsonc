@@ -1,0 +1,44 @@
+{
+  // One Worker serving one static page from ./dist. Free plan only. No KV, D1, R2 or Durable Object:
+  // nothing is stored, and no request is logged. NOTHING IS DEPLOYED YET: the addresses below are planned.
+  // The live address and the preview's are Cloudflare custom domains on techies.tools. A deploy waits for the
+  // Cloudflare token (TOOLS-144); the lead runs the first one.
+  "name": "producer",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-09-17",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "producer.techies.tools", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "html_handling": "auto-trailing-slash"
+  },
+  // No request logs: a host's talk, chat and questions must never be recorded.
+  "observability": { "enabled": false },
+  "build": { "command": "node scripts/build.mjs" },
+  // The preview: its own Worker, producer-preview, on preview-producer.techies.tools, so a test build never touches
+  // the live one. Built from dev by .github/workflows/deploy-preview.yml (once the secrets exist). Its build keeps
+  // search engines out (scripts/build.mjs --host). Settings that are not inherited are written again.
+  "env": {
+    "preview": {
+      "name": "producer-preview",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        { "pattern": "preview-producer.techies.tools", "custom_domain": true }
+      ],
+      "assets": {
+        "directory": "./dist",
+        "binding": "ASSETS",
+        "not_found_handling": "none",
+        "html_handling": "auto-trailing-slash"
+      },
+      "observability": { "enabled": false },
+      "build": { "command": "node scripts/build.mjs --host preview-producer.techies.tools" }
+    }
+  }
+}

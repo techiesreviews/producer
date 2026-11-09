@@ -1,0 +1,9 @@
+{
+  "name": "producer",
+  "private": true,
+  "description": "Nothing to install: these are shortcuts. Wrangler comes from the npx cache.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "deploy:preview": "npx --no-install --package wrangler wrangler deploy --env preview"
+  }
+}
