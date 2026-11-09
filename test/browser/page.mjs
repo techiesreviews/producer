@@ -97,6 +97,7 @@ async function checkSwitchedOff(page, name, out, { touch }) {
     b.dataset.tip = reason;
     b.dataset.v = "off";
     const mark = Object.assign(document.createElement("span"), { className: "off-mark", textContent: "i" });
+    mark.setAttribute("aria-hidden", "true");
     b.append(mark, " Tab sound");
     document.getElementById("streamSeg").append(b);
   }, OFF_REASON);
@@ -327,16 +328,18 @@ export async function run({ browser, playwright, base, out }) {
     await context.close();
   }
 
-  // The compact switch point is the mock-up's: at a 620px window the choices sit under the label, at 625px beside it (the old switch point sat near 630px).
-  for (const [width, compact] of [[620, true], [625, false]]) {
-    const context = await browser.newContext({ viewport: { width, height: 700 } });
+  // The compact switch point is the mock-up's: at a 620px window the choices sit under the label, at 625px beside it
+  // (the old switch point sat near 630px). A 320px phone may wrap the choices, but never scrolls sideways.
+  for (const [width, compact] of [[620, true], [625, false], [320, true]]) {
+    const context = await browser.newContext({ viewport: { width, height: 700 }, ...(width === 320 ? { isMobile: true, hasTouch: true } : {}) });
     const page = await context.newPage();
     await page.goto(`${base}/`);
     const box = await page.evaluate(() => {
       const r = (s) => document.querySelector(s).getBoundingClientRect().toJSON();
-      return { label: r("#sStream .step__label"), seg: r("#streamSeg"), scrollWidth: document.documentElement.scrollWidth };
+      return { label: r("#sStream .step__label"), seg: r("#streamSeg"), scrollWidth: document.documentElement.scrollWidth, buttons: [...document.querySelectorAll("#streamSeg button")].map((b) => b.getBoundingClientRect().toJSON()) };
     });
     assert.ok(box.scrollWidth <= width, `${width}px: no sideways scroll`);
+    for (const b of box.buttons) assert.ok(b.left >= box.seg.left && b.right <= box.seg.right, `${width}px: every choice sits inside its row`);
     if (compact) assert.ok(box.seg.top >= box.label.bottom, `${width}px: compact, the choices sit under the label`);
     else assert.ok(box.seg.left >= box.label.right && box.seg.top < box.label.bottom, `${width}px: wide, the choices sit beside the label`);
     await context.close();

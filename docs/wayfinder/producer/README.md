@@ -10,6 +10,7 @@ A plan the fleet can build: a public tool at producer.techies.tools that gives a
 
 - First users: Lex on a solo Restream stream (the trial), then a first guest stream on Wave.video (date not confirmed). The guest must agree before their voice is used.
 - Plan only. Nothing is built from this map; build cards come out of the screen design card and go to the fleet.
+- Build status (2026-11-09): on `dev` (not deployed), the first-run setup screen with step 1 "I stream with" and the browser it detects (TOOLS-162), and the Worker's agent relay (card 06).
 - Same shape as the Prompter (`~/Projects/techies-prompter`): one Worker, static page, no accounts, nothing stored, an agent relay like Wait for MCP. The tool has its own repo: https://github.com/techiesreviews/producer (public, empty on 2026-11-09). Public means no keys, tokens or private notes in it; the Restream app secret lives only in Cloudflare.
 - Lex speaks plain English, not technical: cards and docs say it in plain words. House style: `scripts/agents/kit --home`/docs/house-style.md.
 
