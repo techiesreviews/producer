@@ -18,12 +18,13 @@ const ALTS = 2;
 export function createQuestions() {
   let plan = [];
   const done = new Map(); // prepared question number -> "asked" | "skipped"
+  const gone = new Set(); // new questions (by their words) the host asked or skipped: they never come back
   let main = null;
   let alts = [];
   let seen = 0; // the newest answer's seq: each answer is shown once
 
   const key = (q) => (q.n ? `#${q.n}` : `t:${q.text.toLowerCase()}`);
-  const open = (q) => !(q.n && done.has(q.n));
+  const open = (q) => (q.n ? !done.has(q.n) : !gone.has(key(q)));
   const prepared = (n, extra = {}) => (Number.isInteger(n) && n >= 1 && n <= plan.length ? { n, text: plan[n - 1], ...extra } : null);
 
   // The card from what is left: an asked question leaves, the first alternative moves up, prepared questions fill in.
@@ -43,7 +44,7 @@ export function createQuestions() {
 
   function move(kind) {
     if (!main) return false;
-    if (main.n) done.set(main.n, kind);
+    if (main.n) done.set(main.n, kind); else gone.add(key(main));
     main = null;
     fill();
     return true;
