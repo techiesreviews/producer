@@ -394,6 +394,21 @@ test("asking: from a show cue until the agent's turn on it ends; an answer to an
   assert.equal(link.asking(), false);
 });
 
+test("asking ends with an answer through post_suggestions too", async () => {
+  const ended = [];
+  const { link, call, connect, flush } = setup();
+  link.onSettled(() => ended.push(link.asking()));
+  await connect();
+  await call("get_context");
+  link.send(CUE);
+  await call("wait_for_cue", { seq: 0 });
+  assert.equal(link.asking(), true);
+  await call("post_suggestions", { suggestions: [{ text: "For one?" }] });
+  await flush();
+  assert.deepEqual([link.asking(), ended], [false, [false]]);
+  link.disconnect();
+});
+
 test("a failed Test stays failed when the agent later answers a show cue", async () => {
   const { link, call, connect, flush, timers } = setup();
   await connect();

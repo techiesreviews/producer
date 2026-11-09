@@ -145,7 +145,7 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .next__body { display: grid; gap: 0.5rem; padding: 1.1rem 1.1rem 0.6rem; }
 .q-main { font-size: clamp(1.3rem, 1rem + 1.2vw, 1.85rem); line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .q-main[data-empty] { color: var(--muted); font-weight: 600; }
-.q-why { color: var(--muted); font-size: 0.95rem; }
+.q-why { color: var(--muted); font-size: 0.95rem; overflow-wrap: anywhere; }
 .q-src { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 .chip--accent { background: var(--accent-soft); color: light-dark(color-mix(in oklch, var(--accent-ink) 85%, var(--text)), var(--accent-ink)); }
 .q-act { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 1.1rem 1rem; }
@@ -162,7 +162,7 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 @media (hover: hover) and (pointer: fine) { .alt:hover { background: var(--hover); } }
 @media (pointer: coarse) { .alt { min-block-size: 2.75rem; } }
 .alt__q { font-weight: 600; overflow-wrap: anywhere; }
-.alt__why { grid-column: 1; color: var(--muted); font-size: 0.82rem; }
+.alt__why { grid-column: 1; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
 .alt .chip { grid-row: 1; grid-column: 2; align-self: start; }
 .next__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 0.85rem; border-block-start: 1px solid var(--line); background: var(--raised); }
 .next__foot .end { margin-inline-start: auto; }
@@ -223,8 +223,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* The one switched-off pattern: the control stays visible and reachable by keyboard, greyed with a round "i";
    hover, focus or a press shows its reason (data-tip, src/ui/tooltip.mjs) and never runs it. The "i" is
    <span class="off-mark" aria-hidden="true">i</span>, so a screen reader reads only the name and the reason. It wins
-   over any control's own colours, so it is marked important: move a pick off a choice before switching it off. */
-[aria-disabled="true"] { cursor: help; color: var(--faint) !important; border-color: var(--line) !important; background: transparent !important; }
+   over any control's own colours, so it is marked important: move a pick off a choice before switching it off. A busy
+   control that takes no press for now (Suggest now while the agent thinks) keeps its busy look; a press shows why. */
+[aria-disabled="true"]:not([data-state="busy"]) { cursor: help; color: var(--faint) !important; border-color: var(--line) !important; background: transparent !important; }
 [aria-disabled="true"] svg { opacity: 0.55; }
 .off-mark { display: inline-grid; place-items: center; inline-size: 1rem; block-size: 1rem; border-radius: 50%; border: 1px solid currentColor; font: 700 0.62rem/1 system-ui, sans-serif; }
 

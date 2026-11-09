@@ -83,13 +83,14 @@ async function shareTab(page, press) {
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
 }
 
-// Contrast of an element's text on what it is painted over (its own background over the panel's), as the browser paints it.
+// Contrast of an element's text on what it is painted over (its own background over its nearest painted parent's), as the browser paints it.
 const paintedContrast = (locator) => locator.evaluate((el) => {
   const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   const px = (...fills) => { c.clearRect(0, 0, 1, 1); for (const f of fills) { c.fillStyle = f; c.fillRect(0, 0, 1, 1); } return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3); };
   const lum = (rgb) => { const [x, y, z] = rgb.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
-  const panel = getComputedStyle(el.closest(".panel")).backgroundColor;
-  const [hi, lo] = [lum(px(getComputedStyle(el).color)), lum(px(panel, getComputedStyle(el).backgroundColor))].sort((p, q) => q - p);
+  let under = el.parentElement;
+  while (under && /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(under).backgroundColor)) under = under.parentElement;
+  const [hi, lo] = [lum(px(getComputedStyle(el).color)), lum(px(getComputedStyle(under ?? document.body).backgroundColor, getComputedStyle(el).backgroundColor))].sort((p, q) => q - p);
   return (hi + 0.05) / (lo + 0.05);
 });
 
@@ -173,7 +174,8 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([cue.cue, cue.seq], ["suggest_now", 1], `${name}: Suggest now sends a cue at once`);
     assert.deepEqual([await text("#suggestBtn"), await suggest.getAttribute("data-state")], ["Thinking…", "busy"], `${name}: Thinking… on the button`);
     const busyContrast = await paintedContrast(suggest);
-    assert.ok(busyContrast >= 4.5, `${name}: Thinking… reads at ${busyContrast.toFixed(2)}:1`);
+    assert.ok(busyContrast >= 4.5, `${name}: Thinking… reads at ${busyContrast.toFixed(2)}:1 on the card's foot`);
+    assert.deepEqual([await suggest.getAttribute("aria-disabled"), await suggest.getAttribute("aria-busy"), await suggest.getAttribute("data-tip")], ["true", "", "Your agent is thinking."], `${name}: busy, taking no press, with its reason`);
     assert.deepEqual(await light(), { cls: "dot dot--think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." }, `${name}: the quiet light breathes`);
     assert.equal((await card()).q, "How did it start?", `${name}: the card keeps its question while the agent thinks`);
     assert.deepEqual(await next.boundingBox(), box, `${name}: the thinking light does not move the card`);
@@ -312,6 +314,25 @@ export async function run({ browser, base, out }) {
     await page.locator("#suggestBtn").click({ force: true });
     await page.waitForFunction((t) => document.querySelector("#tip[data-on]")?.textContent === t, "No agent connected. The next question comes from your list.");
     ok("no agent from the start: the list question; Suggest now off with no agent");
+    for (let i = 0; i < 4; i++) await page.locator("#askedBtn").click();
+    assert.equal(await page.locator("#qMain").textContent(), "No questions left", "every prepared question asked: no questions left");
+    assert.deepEqual([await page.locator("#askedBtn").getAttribute("aria-disabled"), await page.locator("#skipBtn").getAttribute("aria-disabled"), await page.locator("#alts .alt").count()], ["true", "true", 0], "Asked and Skip off, nothing to swap in");
+    ok("every prepared question asked: No questions left; Asked and Skip off");
+    await context.close();
+  }
+
+  // Another tab takes the relay mid-show: the card keeps its question; Suggest now and the light say "other tab".
+  {
+    const context = await browser.newContext(VIEWS[0]);
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await openScreen(page, (l) => l.click(), { agent: true });
+    await page.evaluate(() => window.__relay.sockets.at(-1).close(4001));
+    await page.waitForFunction(() => document.querySelector("#suggestBtn").getAttribute("aria-disabled") === "true");
+    const said = await page.evaluate(() => ({ q: document.querySelector("#qMain").textContent, button: document.querySelector("#suggestBtn").textContent, tip: document.querySelector("#suggestBtn").dataset.tip, light: document.querySelector("#thinkDot").getAttribute("aria-label") }));
+    assert.deepEqual(said, { q: "How did it start?", button: "i Suggest now · other tab", tip: "Your agent is connected in another tab.", light: "Agent in another tab" }, "other tab: the card stays; Suggest now and the light say so");
+    ok("the agent in another tab: the card stays; \"other tab\" on Suggest now and the light");
     await context.close();
   }
 

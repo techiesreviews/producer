@@ -124,12 +124,13 @@ test("a new plan keeps what was asked and reads the prepared questions again", (
 test("with no agent connected, Suggest now says so on itself and the light is grey", () => {
   assert.deepEqual(suggestButton({ agent: "off", thinking: false, waitMs: 0 }), { text: "Suggest now · no agent", state: null, off: "No agent connected. The next question comes from your list." });
   assert.deepEqual(suggestButton({ agent: "waiting", thinking: false, waitMs: 0 }).text, "Suggest now · no agent", "a loop that went quiet counts as no agent");
-  assert.deepEqual(suggestButton({ agent: "elsewhere", thinking: false, waitMs: 0 }).off, "Your agent is connected in another tab.");
+  assert.deepEqual(suggestButton({ agent: "elsewhere", thinking: false, waitMs: 0 }), { text: "Suggest now · other tab", state: null, off: "Your agent is connected in another tab." }, "connected in another tab is not no agent");
+  assert.deepEqual(thinkLight({ agent: "elsewhere", thinking: false }), { kind: "", label: "Agent in another tab", tip: "Your agent is connected in another tab." });
   assert.deepEqual(thinkLight({ agent: "off", thinking: false }), { kind: "", label: "No agent", tip: "No agent: the next question comes from your list." });
 });
 
 test("while the agent works, the button and the light say so; then the 10 s spacing shows on the button", () => {
-  assert.deepEqual(suggestButton({ agent: "on", thinking: true, waitMs: 8_000 }), { text: "Thinking…", state: "busy", off: "" });
+  assert.deepEqual(suggestButton({ agent: "on", thinking: true, waitMs: 8_000 }), { text: "Thinking…", state: "busy", off: "Your agent is thinking." }, "busy, and a press says why nothing happens");
   assert.deepEqual(thinkLight({ agent: "on", thinking: true }), { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." });
   assert.deepEqual(suggestButton({ agent: "on", thinking: false, waitMs: 6_200 }), { text: "Suggest now · 7 s", state: null, off: "One every 10 s." });
   assert.deepEqual(suggestButton({ agent: "on", thinking: false, waitMs: 1, slow: true }).off, "One every 20 s with Slow down.");

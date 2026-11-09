@@ -104,17 +104,16 @@ export const isThinking = (since, now) => since > 0 && now - since < THINK_MS;
  * switched off ("" when it runs).
  */
 export function suggestButton({ agent, thinking: busy, waitMs, slow = false }) {
-  if (agent !== "on") {
-    const off = agent === "elsewhere" ? "Your agent is connected in another tab." : "No agent connected. The next question comes from your list.";
-    return { text: "Suggest now · no agent", state: null, off };
-  }
-  if (busy) return { text: "Thinking…", state: "busy", off: "" };
+  if (agent === "elsewhere") return { text: "Suggest now · other tab", state: null, off: "Your agent is connected in another tab." };
+  if (agent !== "on") return { text: "Suggest now · no agent", state: null, off: "No agent connected. The next question comes from your list." };
+  if (busy) return { text: "Thinking…", state: "busy", off: "Your agent is thinking." };
   if (waitMs > 0) return { text: `Suggest now · ${Math.ceil(waitMs / 1000)} s`, state: null, off: slow ? "One every 20 s with Slow down." : "One every 10 s." };
   return { text: "Suggest now", state: null, off: "" };
 }
 
 /** The quiet light in the card's corner: grey with no agent, green when ready, a slow orange breath while it thinks. */
 export function thinkLight({ agent, thinking: busy }) {
+  if (agent === "elsewhere") return { kind: "", label: "Agent in another tab", tip: "Your agent is connected in another tab." };
   if (agent !== "on") return { kind: "", label: "No agent", tip: "No agent: the next question comes from your list." };
   if (busy) return { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." };
   return { kind: "ok", label: "Agent ready", tip: "Agent ready." };
