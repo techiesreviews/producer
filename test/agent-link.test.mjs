@@ -12,15 +12,15 @@ const SITE = "https://producer.test";
 
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false } = {}) {
   const now = { t: Date.now() };
   const kit = relayWith(now);
   const env = { ASSETS: { fetch: async () => new Response("page") }, RELAY: { idFromName: (n) => n, get: () => ({ op: (m) => kit.relay.op(m) }) } };
-  const net = pageSockets(kit, checkToken);
+  const net = pageSockets(kit, (t) => checkToken(t, now.t));
   const timers = fakeTimers(now);
   const seen = [];
   const link = createAgentLink({
-    net: { token: tokenReply ?? (() => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST" }), env)), socket: net.socket },
+    net: { token: tokenReply ?? (tokensOnPageClock ? () => Promise.resolve(Response.json(newToken(now.t))) : () => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST" }), env)), socket: net.socket },
     onChange: (v) => seen.push(v),
     now: () => now.t,
     timers,
@@ -153,7 +153,7 @@ test("Disconnect revokes the token: the agent's next call gets 401, and the page
   const wait = call("wait_for_cue", { seq: 0 });
   await flush();
   link.disconnect();
-  assert.deepEqual(link.view(), { state: "off", failed: false, test: { state: "idle" } }, "off at once");
+  assert.deepEqual(link.view(), { state: "off", failed: false, test: { state: "idle" }, passed: false }, "off at once");
   await flush();
   const ended = await wait;
   assert.equal(ended.status, 401, "the wait in progress ends with 401");
@@ -183,13 +183,13 @@ test("no token from the Worker (offline, or too many tries): the button says so,
   let reply = () => Promise.reject(new Error("offline"));
   const { link, connect } = setup({ tokenReply: () => reply() });
   assert.equal(await connect(), null);
-  assert.deepEqual(link.view(), { state: "off", failed: true, test: { state: "idle" } });
+  assert.deepEqual(link.view(), { state: "off", failed: true, test: { state: "idle" }, passed: false });
   reply = () => Promise.resolve(Response.json({ error: "Too many requests" }, { status: 429 }));
   await connect();
   assert.equal(link.view().failed, true);
   reply = () => Promise.resolve(Response.json(newToken()));
   await connect();
-  assert.deepEqual(link.view(), { state: "waiting", failed: false, test: { state: "idle" } });
+  assert.deepEqual(link.view(), { state: "waiting", failed: false, test: { state: "idle" }, passed: false });
   link.disconnect();
 });
 
@@ -199,4 +199,51 @@ test("after eight hours the page lets the token go, like Disconnect", async () =
   await call("get_context");
   await timers.tick(8 * 60 * 60 * 1000);
   assert.equal(link.view().state, "off");
+});
+
+test("the loop going quiet during a Test: the page waits again, and the Test shows its result once the agent is back", async () => {
+  const { link, call, connect, timers, flush } = setup();
+  await connect();
+  await call("get_context");
+  link.test();
+  await timers.tick(AGENT_QUIET_MS);
+  assert.equal(link.view().state, "waiting");
+  assert.equal(link.view().test.state, "busy", "the Test keeps waiting for its answer");
+  assert.equal(link.view().passed, false);
+  const cue = await call("wait_for_cue", { seq: 0 });
+  assert.equal(link.view().state, "on");
+  call("wait_for_cue", { seq: cue.body.result.structuredContent.seq, suggestions: [{ text: "Back again?" }] });
+  await flush();
+  assert.equal(link.view().test.state, "ok");
+  assert.equal(link.view().passed, true);
+  await timers.tick(AGENT_HOLD_MS + AGENT_QUIET_MS);
+  assert.deepEqual([link.view().state, link.view().passed], ["waiting", true], "passed stays for the connection; the page shows done only while connected");
+  link.disconnect();
+});
+
+test("Disconnect while the relay socket is down still revokes the token", async () => {
+  const { link, call, connect, net, kit, flush } = setup();
+  await connect();
+  await call("get_context");
+  net.sockets[0].server.close(1006, "gone"); // the network drops; the page waits to reconnect
+  await flush();
+  link.disconnect();
+  await flush();
+  assert.equal((await kit.ctx.storage.get("meta")).revoked, true, "a fresh socket carried the revoke");
+  assert.equal((await call("get_context")).status, 401);
+});
+
+test("a token past its eight hours whose timer is late (a laptop waking up): the next press starts clean", async () => {
+  // Tokens made on the test's clock, so the relay (on the same clock) takes the new one.
+  const { link, call, connect, now, timers, kit } = setup({ tokensOnPageClock: true });
+  const first = await connect();
+  await call("get_context");
+  now.t += 8 * 60 * 60 * 1000 + 1; // the clock moved on, the timers did not run
+  await kit.ctx.storage.deleteAll(); // a new token has its own relay object; this test has one, so empty it
+  const second = await connect();
+  assert.notEqual(second.token, first.token, "a new token");
+  assert.equal(link.view().state, "waiting");
+  await timers.tick(1);
+  assert.equal(link.view().state, "waiting", "the old token's timer does not drop the new connection");
+  link.disconnect();
 });

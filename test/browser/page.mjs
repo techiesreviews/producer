@@ -508,6 +508,67 @@ export async function run({ browser, playwright, base, out }) {
   }
   ok("the setup goes compact at a 620px window, as in the mock-up");
 
+  // Step 2 when things go wrong, in Chromium: no token (the Worker says too many tries), no clipboard (the message
+  // shows, selected, to copy by hand), and the real relay socket under the page's policy.
+  {
+    const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    const page = await context.newPage();
+    const problems = [];
+    page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
+    await page.addInitScript(fakeRelay);
+    await page.addInitScript(() => {
+      const refuse = () => Promise.reject(new DOMException("Write permission denied.", "NotAllowedError"));
+      Object.defineProperty(navigator, "clipboard", { value: { write: refuse, writeText: refuse }, configurable: true });
+    });
+    await page.route("**/api/agent-token", (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
+    await page.goto(`${base}/`);
+    const connect = page.locator("#connectBtn");
+    await connect.click();
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "No connection · try again");
+    assert.equal(await page.evaluate(() => __relay.sockets.length), 0, "no token: no relay socket");
+    assert.equal(await page.locator("#agentMessage").isHidden(), true, "no token: no message");
+    await page.unroute("**/api/agent-token");
+    await connect.click();
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+    await page.locator("#agentMessage").waitFor({ state: "visible" });
+    const box = await page.evaluate(() => {
+      const b = document.getElementById("agentMessage");
+      return { focused: document.activeElement === b, start: b.selectionStart, end: b.selectionEnd, length: b.value.length, value: b.value, tip: document.getElementById("connectBtn").dataset.tip, protocols: __relay.sockets[0].protocols };
+    });
+    assert.ok(box.focused && box.start === 0 && box.end === box.length, "no clipboard: the message shows, focused and selected");
+    assert.ok(box.value.includes(`TOKEN='${box.protocols[1].slice(2)}'; URL='${base}'`) && box.value.includes("while out=$(curl"), "it holds this page's token, address and loop");
+    assert.equal(box.tip, "Copy the message below, then paste it into Claude Code.", "the tooltip says so");
+    const shot = join(out, "page-desktop-light-agent-no-clipboard.png");
+    const r = await page.locator("#sAgent").boundingBox();
+    await page.screenshot({ path: shot, clip: { x: 0, y: Math.max(0, r.y - 8), width: 1366, height: r.height + 24 } });
+    screenshots.push(shot);
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
+    assert.equal(await page.locator("#agentMessage").isHidden(), true, "the message box goes once the agent is connected");
+    assert.deepEqual(problems.filter((p) => !p.includes("429")), [], "no console problem beyond the refused token");
+    await context.close();
+
+    // The real WebSocket under the page's own policy: the browser may try this site's relay (the upgrade fails here,
+    // there is no relay object), and the policy does not block it.
+    const real = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await real.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    const plain = await real.newPage();
+    const blocked = [];
+    plain.on("console", (m) => { if (/CSP|Content Security Policy|Refused to connect/i.test(m.text())) blocked.push(m.text()); });
+    await plain.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
+    const tried = [];
+    plain.on("websocket", (ws) => tried.push(ws.url()));
+    await plain.goto(`${base}/`);
+    await plain.locator("#connectBtn").click();
+    await plain.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+    for (let i = 0; i < 50 && !tried.length; i++) await plain.waitForTimeout(20);
+    assert.deepEqual(tried, [`${base.replace("http", "ws")}/api/relay`], "the page opens this site's relay socket");
+    await plain.waitForTimeout(200);
+    assert.deepEqual(blocked, [], "the page policy lets the relay socket through");
+    await real.close();
+  }
+  ok("step 2: no token says so and recovers; without a clipboard the message shows selected; the page policy lets the real relay socket through");
+
   // The same screen in a real Firefox: it names itself, lays out the same and keeps every rule (no request, no
   // console problem). Firefox has no switched-off row of its own yet: the rows that switch off there come with
   // their features.
