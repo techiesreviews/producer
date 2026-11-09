@@ -60,12 +60,13 @@ try {
     await buildInto(dist);
     const server = await startServer(dist);
     cleanups.push(server.stop);
-    const { chromium } = await import(pathToFileURL(modulePath));
-    const browser = await chromium.launch({ headless: true });
+    // Suites get the shared Chromium, and Playwright itself for a suite that also opens another browser.
+    const playwright = await import(pathToFileURL(modulePath));
+    const browser = await playwright.chromium.launch({ headless: true });
     cleanups.push(() => browser.close());
     const report = { suites: {} };
     for (const [name, suite] of suites) {
-      report.suites[name] = await suite.run({ browser, base: server.base, dist, out });
+      report.suites[name] = await suite.run({ browser, playwright, base: server.base, dist, out });
       writeFileSync(join(out, "specs.json"), JSON.stringify(report, null, 2));
     }
     const all = Object.values(report.suites);
