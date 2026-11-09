@@ -29,8 +29,8 @@ file wins.
 ## Visible changes
 
 - **Feature list:** `docs/agents/features.md` (read by `kit ux`). **Screenshots:** `kit specs` (the page suite at desktop and phone, light and
-  dark, with the tooltip open). No screen beyond the shell is built before Lex approves its mock-up; the
-  approved look is the Producer mock-up.
+  dark, with the tooltip open, a switched-off choice with its reason, and the setup screen in Firefox). No screen
+  is built before Lex approves its mock-up; the approved look is the Producer mock-up.
 - Colours: `test/contrast.test.mjs` checks every text colour of the page on its background, light and dark.
 
 ## After a merge

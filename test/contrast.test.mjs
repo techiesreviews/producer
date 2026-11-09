@@ -55,8 +55,9 @@ test("the keyboard focus ring meets 3:1 on every surface it can sit on, in light
   }
 });
 
-// Mixes two colours in linear RGB (what oklchToRgb returns). The page mixes in oklch, so this is only an
-// approximation, close enough for a 3:1 floor.
+// Mixes two colours in linear RGB (what oklchToRgb returns). The page's color-mix with transparent only sets the
+// alpha, and the browser blends that over the panel in gamma sRGB, so this is an approximation: close enough for a
+// 3:1 floor.
 const over = (fg, bg, p) => fg.map((c, i) => c * p + bg[i] * (1 - p));
 
 test("the done step's green number reads on its own green tint over the panel, in light and dark", () => {

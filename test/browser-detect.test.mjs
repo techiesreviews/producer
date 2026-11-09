@@ -124,6 +124,22 @@ test("a Chrome without screen sharing (an old or trimmed build) has no tab sound
   assert.equal(b.features.tabSound.reason, REASONS.tabOther);
 });
 
+test("Opera and Samsung Internet are named before Chrome, which they also claim to be", () => {
+  const opera = detectBrowser(env({ ua: `${UA.chrome} OPR/120.0.0.0` }));
+  assert.equal(opera.label, "Opera 120 · desktop");
+  assert.equal(opera.features.tabSound.on, true);
+  const samsung = detectBrowser(env({ ua: "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36", display: false }));
+  assert.equal(samsung.label, "Samsung Internet 28 · phone");
+  assert.equal(samsung.features.tabSound.reason, REASONS.tabPhone);
+});
+
+test("Chrome on an Android tablet asking for the desktop site looks like a Linux computer: named desktop, tab sound off", () => {
+  // Its name gives no tablet away, and it has no screen sharing, so the general reason shows.
+  const b = detectBrowser(env({ ua: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36", touch: 5, display: false }));
+  assert.equal(b.label, "Chrome 157 · desktop");
+  assert.equal(b.features.tabSound.reason, REASONS.tabOther);
+});
+
 test("the headless Chrome of the browser checks counts as Chrome", () => {
   assert.equal(detectBrowser(env({ ua: UA.headless })).label, "Chrome 153 · desktop");
 });

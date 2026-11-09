@@ -18,7 +18,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* The screen under the bar. */
 .screen { flex: 1; }
 
-/* First-run setup: numbered steps in one panel. A step appears only once its feature exists. */
+/* First-run setup: numbered steps in one panel. A step appears only once its feature exists. The panel and the
+   choice row keep their outlines because the approved mock-up draws them. */
 .setup {
   display: grid; justify-items: center; align-content: start;
   padding: 1.5rem max(1rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
@@ -47,13 +48,14 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
 .seg button:active:not([aria-pressed="true"]) { background: var(--pressed); }
-@media (hover: hover) { .seg button:hover:not([aria-pressed="true"]) { background: var(--hover); color: var(--text); } }
+@media (hover: hover) and (pointer: fine) { .seg button:hover:not([aria-pressed="true"]) { background: var(--hover); color: var(--text); } }
 /* A finger needs a taller target than a mouse; the pressed colour replaces the browser's tap flash. */
 @media (pointer: coarse) { .seg button { min-block-size: 2.75rem; -webkit-tap-highlight-color: transparent; } }
 
 /* The one switched-off pattern: the control stays visible and reachable by keyboard, greyed with a round "i";
-   hover, focus or a press shows its reason (data-tip, src/ui/tooltip.mjs) and never runs it. It wins over any
-   control's own colours, so it is marked important. */
+   hover, focus or a press shows its reason (data-tip, src/ui/tooltip.mjs) and never runs it. The "i" is
+   <span class="off-mark" aria-hidden="true">i</span>, so a screen reader reads only the name and the reason. It wins
+   over any control's own colours, so it is marked important: move a pick off a choice before switching it off. */
 [aria-disabled="true"] { cursor: help; color: var(--faint) !important; border-color: var(--line) !important; background: transparent !important; }
 [aria-disabled="true"] svg { opacity: 0.55; }
 .off-mark { display: inline-grid; place-items: center; inline-size: 1rem; block-size: 1rem; border-radius: 50%; border: 1px solid currentColor; font: 700 0.62rem/1 system-ui, sans-serif; }
