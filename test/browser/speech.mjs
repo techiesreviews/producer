@@ -195,7 +195,7 @@ export async function run({ playwright, base, dist, out }) {
 
     // The new steps, in order, and the open button switched off with the first missing step as its reason.
     const steps = await page.locator(".step .step__label").allInnerTexts();
-    assert.deepEqual(steps, ["I stream with", "AI agent", "Guest agreed", "Sound", "Speech to text"], "the steps that exist, in order");
+    assert.deepEqual(steps, ["I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Sound", "Speech to text"], "the steps that exist, in order");
     const go = page.locator("#goBtn");
     assert.equal(await go.getAttribute("aria-disabled"), "true", "Open producer screen waits for the steps");
     assert.equal(await go.getAttribute("data-tip"), "Answer Guest agreed first.", "and says what is missing first");

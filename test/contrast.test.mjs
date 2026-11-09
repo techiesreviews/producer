@@ -27,7 +27,9 @@ for (const [, name, value] of css.matchAll(/^\s*--([\w-]+):\s*(.+?);\s*$/gm)) {
 
 // [text, background]: what the page puts text on. --faint is only for switched-off controls, which WCAG leaves out
 // of the contrast rule (inactive controls).
-const PAIRS = [["text", "bg"], ["text", "surface"], ["text", "raised"], ["muted", "bg"], ["muted", "surface"], ["muted", "raised"], ["on-ink", "ink"], ["on-accent", "accent"], ["agent-ink", "bg"], ["agent-ink", "surface"]];
+const PAIRS = [["text", "bg"], ["text", "surface"], ["text", "raised"], ["muted", "bg"], ["muted", "surface"], ["muted", "raised"], ["on-ink", "ink"], ["on-accent", "accent"], ["agent-ink", "bg"], ["agent-ink", "surface"],
+  // The show clock's plan difference (on --raised) and the run order's times (on --surface): behind in orange, ahead in green.
+  ["accent-ink", "raised"], ["agent-ink", "raised"], ["accent-ink", "surface"]];
 
 test("every text colour meets 4.5:1 on its background, in light and dark", () => {
   for (const mode of ["light", "dark"]) {

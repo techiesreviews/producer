@@ -47,16 +47,16 @@ const token = async (page, name) => paint(page, await page.evaluate((n) => {
 }, name));
 const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
-// The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Guest agreed",
-// "Sound", "Speech to text") and the open button, step 1's choices pressing one at a time with its done mark, the
+// The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Show,
+// questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at a time with its done mark, the
 // guest step's answers, the wide (label beside) or compact (label above) layout, and no word on the screen beyond its
 // labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
 async function checkSetup(page, name, { phone, touch, chip }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Guest agreed ${GUEST.join(" ")} 4 Sound Microphone 5 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
-  assert.equal(await page.locator(".step").count(), 5, `${name}: five steps, one per feature that exists`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone 6 Speech to text Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
   const pressed = () => page.locator('#streamSeg button[aria-pressed="true"]').allInnerTexts();
@@ -662,7 +662,7 @@ export async function run({ browser, playwright, base, out }) {
     });
     assert.ok(box.scrollWidth <= box.width, `${name}: no sideways scroll (${box.scrollWidth} > ${box.width})`);
     // A computer's window shows the whole setup screen. A phone's may need a scroll once step 2 has its four agent choices
-    // and two ways (card 09: five steps, about 70px over 844); it never scrolls sideways (checked above).
+    // and two ways (card 09; card 07 adds step 3); it never scrolls sideways (checked above).
     if (!options.isMobile) assert.ok(box.scrollHeight <= box.height, `${name}: the setup screen does not scroll (${box.scrollHeight} > ${box.height})`);
     assert.ok(box.top.left === 0 && Math.round(box.top.width) === box.width, `${name}: the bar spans the window`);
     assert.ok(box.chip.right <= box.width && box.chip.left >= 0, `${name}: the Private chip is inside the window`);
