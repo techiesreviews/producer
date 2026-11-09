@@ -62,6 +62,7 @@ export class Relay extends DurableObject {
       }
       // Only the newest page receives calls; the others hear 4001 and offer "Use this tab".
       for (const old of this.ctx.getWebSockets("tab")) {
+        this.endCallsOf(old);
         try { old.close(4001, "Open in another tab"); } catch { /* already closed */ }
       }
       this.ctx.acceptWebSocket(server, ["tab"]);
@@ -89,7 +90,14 @@ export class Relay extends DurableObject {
     }
   }
 
+  // Calls that were sent to a page that is gone end at once ("superseded"): the agent then asks again and reaches
+  // the new page, or hears "no-tab", instead of sitting on a dead page for the rest of its wait.
+  endCallsOf(ws) {
+    for (const p of [...this.pending.values()]) if (p.ws === ws) p.done({ status: "superseded" });
+  }
+
   async webSocketClose(ws, code) {
+    this.endCallsOf(ws);
     try { ws.close(code === 1005 || code === 1006 ? 1000 : code, "bye"); } catch { /* closed */ }
   }
 
@@ -143,7 +151,7 @@ export class Relay extends DurableObject {
           if (slot && this.slots.get(slot) === id) this.slots.delete(slot);
           resolve(r);
         };
-        this.pending.set(id, { done: settle });
+        this.pending.set(id, { done: settle, ws });
         if (slot) this.slots.set(slot, id);
         if (!this.send(ws, { type: "call", id, tool: message.tool, args: message.args ?? {} })) settle({ status: "no-tab" });
       });

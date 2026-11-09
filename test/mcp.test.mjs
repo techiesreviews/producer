@@ -259,6 +259,14 @@ test("wait_for_cue: bad seq or suggestions are a tool error and never reach the 
   assert.deepEqual(s.page.waits.at(-1), { seq: 0, holdMs: 25_000 });
 });
 
+test("post_suggestions reports what the page says it showed", async () => {
+  const s = await setup();
+  s.page.maxShown = 1;
+  const r = await s.call("post_suggestions", { suggestions: [{ question: 1 }, { question: 2 }] });
+  assert.deepEqual(r.structuredContent, { ok: true, shown: 1 });
+  assert.match(r.content[0].text, /\(1\)/);
+});
+
 test("get_new_transcript: a catch-up read by seq, with labels", async () => {
   const s = await setup();
   s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "first" }] });
@@ -305,6 +313,10 @@ test("a tab error is passed on, short; an unknown tool is a protocol error", asy
   const r = await failing;
   assert.equal(r.isError, true);
   assert.ok(r.content[0].text.length <= 2000);
+  const objectError = s.call("get_context");
+  await settle();
+  await s.relay.webSocketMessage(ws, JSON.stringify({ type: "result", id: ws.sent.at(-1).id, error: { message: "No show loaded.", code: 7 } }));
+  assert.equal((await objectError).content[0].text, "No show loaded.", "an error object is read as its message, never [object Object]");
   const unknown = (await s.rpc("tools/call", { name: "show_script", arguments: {} })).body;
   assert.equal(unknown.error.code, -32602);
   assert.equal((await s.rpc("nope")).body.error.code, -32601);
@@ -317,6 +329,10 @@ test("bad bodies: too large, not JSON, empty or oversized batch", async () => {
   assert.equal((await s.post("{nope")).status, 400);
   assert.equal((await s.post([])).status, 400);
   assert.equal((await s.post(Array(21).fill({ jsonrpc: "2.0", id: 1, method: "ping" }))).status, 400);
+  const twoCalls = { jsonrpc: "2.0", method: "tools/call", params: { name: "get_context" } };
+  const refusedBatch = await s.post([{ ...twoCalls, id: 1 }, { ...twoCalls, id: 2 }]);
+  assert.equal(refusedBatch.status, 400, "a batch is one request for the limits, so it may hold only one tool call");
+  assert.equal((await s.post([{ ...twoCalls, id: 1 }, { jsonrpc: "2.0", id: 2, method: "ping" }])).status, 200);
   const batch = await (await s.post([{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }])).json();
   assert.equal(batch.length, 1);
   assert.equal((await s.post({ jsonrpc: "1.0", id: 1, method: "ping" })).status, 200);

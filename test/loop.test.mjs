@@ -64,6 +64,28 @@ test("the foreground curl loop waits through idle answers with no sleep and ends
   }
 });
 
+test("a loop that carries an answer repeats it on each idle round; the page shows it once", async () => {
+  const now = { t: Date.now() };
+  const { token, born } = newToken(now.t);
+  const kit = relayWith(now);
+  await kit.tab(born);
+  const page = fakePage(kit.relay, lastServer(), { hold: 100 });
+  page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "first point" }] });
+  const s = await serve(now, kit.relay);
+  try {
+    setTimeout(() => page.cue({ cue: "suggest_now", transcript: [] }), 330);
+    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 1, suggestions: [{ question: 2, why: "next in the list" }] } } });
+    const r = await run({ TOKEN: token, BODY, URL: s.url });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).result.structuredContent.seq, 2);
+    assert.ok(page.waits.length >= 3, `${page.waits.length} rounds`);
+    assert.ok(page.waits.every((w) => w.suggestions?.length === 1), "every round carried the answer");
+    assert.deepEqual(page.shown, [{ question: 2, why: "next in the list" }], "shown once");
+  } finally {
+    await s.close();
+  }
+});
+
 test("the loop ends at once when no page is open or the token is refused (it must not spin)", async () => {
   const now = { t: Date.now() };
   const { token } = newToken(now.t);

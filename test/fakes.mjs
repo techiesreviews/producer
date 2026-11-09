@@ -55,6 +55,14 @@ export const QUESTIONS = [{ n: 1, text: "What made you start?" }, { n: 2, text: 
  */
 export function fakePage(relay, ws, { hold = 25_000 } = {}) {
   const page = { seq: 0, items: [], shown: [], waits: [], calls: [], held: [] };
+  // The same answer to the same cue is shown once: a repeat (an idle round of the curl loop, or a retry) changes nothing.
+  const answered = new Set();
+  const show = (seq, suggestions) => {
+    const key = `${seq}|${JSON.stringify(suggestions)}`;
+    if (answered.has(key)) return;
+    answered.add(key);
+    page.shown.push(...suggestions);
+  };
   const reply = (id, body) => relay.webSocketMessage(ws, JSON.stringify({ type: "result", id, ...body }));
   const material = (after) => {
     const fresh = page.items.filter((i) => i.seq > after);
@@ -73,11 +81,11 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
     page.calls.push({ tool: msg.tool, args: msg.args });
     if (msg.tool === "get_context") return reply(msg.id, { result: { showTitle: "Live talk", questions: QUESTIONS, segments: [{ title: "Intro", plannedMinutes: 5 }, { title: "Main talk", plannedMinutes: 30, live: true }], notes: "Ask about the early days.", seq: page.seq } });
     if (msg.tool === "get_new_transcript") return reply(msg.id, { result: { seq: page.seq, transcript: page.items.flatMap((i) => i.seq > (msg.args.seq ?? 0) ? i.transcript ?? [] : []) } });
-    if (msg.tool === "post_suggestions") { page.shown.push(...msg.args.suggestions); return reply(msg.id, { result: { shown: msg.args.suggestions.length } }); }
+    if (msg.tool === "post_suggestions") { show(page.seq, msg.args.suggestions); return reply(msg.id, { result: { shown: Math.min(msg.args.suggestions.length, page.maxShown ?? 3) } }); }
     if (msg.tool === "post_report") return reply(msg.id, { result: { saved: true } });
     if (msg.tool === "wait_for_cue") {
       page.waits.push(msg.args);
-      if (msg.args.suggestions) page.shown.push(...msg.args.suggestions);
+      if (msg.args.suggestions) show(msg.args.seq ?? 0, msg.args.suggestions);
       const m = material(msg.args.seq ?? 0);
       if (m) return reply(msg.id, { result: m });
       const w = { id: msg.id, args: msg.args };
