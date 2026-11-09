@@ -1,4 +1,4 @@
-/* The page shell: a full-height column with the top bar and an empty screen below it. */
+/* The page shell: a full-height column with the top bar and the screen below it. */
 body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 
 /* Top bar, shared by every screen */
@@ -32,8 +32,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .step[data-done] .step__n { background: color-mix(in oklch, var(--agent) 18%, transparent); color: var(--agent); }
 .step__label { font-weight: 650; }
 .step__ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-/* Compact: the controls move under the label. */
-@container steps (max-width: 36rem) {
+/* Compact, from a 620px window as in the mock-up: tighter sides, and the controls move under the label. */
+@media (max-width: 620px) { .setup { padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right)); } }
+@container steps (max-width: 37.25rem) {
   .step { grid-template-columns: 1.6rem 1fr; }
   .step__ctl { grid-column: 1 / -1; }
 }
@@ -60,7 +61,6 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* On a narrow window the bar keeps the name and the icon; the words move to the tooltip. */
 @media (max-width: 680px) {
   .brand small { display: none; }
-  .setup { padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right)); }
   .chip .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
 }
 

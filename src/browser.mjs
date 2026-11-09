@@ -1,6 +1,8 @@
 // Which browser opened the page and what it can do. The setup screen names it in its chip; later steps read
 // `features` to switch a control off and show its reason. Tab sound cannot be tested without asking the person to
 // share, so it follows the TOOLS-149 table: only Chrome-family browsers on a computer hand a tab's sound to a page.
+// Chrome or Edge on an iPad asking for the desktop site says it is Safari: it shows as "Safari · tablet", and its
+// features are right, since every iPad browser runs on Safari's engine.
 // The inlined page script keeps this file's code as it is (the build only drops `export`).
 
 /** Tooltip reasons for a feature that is off (the tab-sound ones are the TOOLS-149 wording). */
@@ -16,7 +18,7 @@ export const REASONS = {
 };
 
 // Most specific first: Edge, Opera and Samsung Internet also say "Chrome"; every browser says "Safari".
-const NAMES = [
+const BROWSER_NAMES = [
   ["Edge", /\bEdg(?:e|A|iOS)?\/(\d+)/],
   ["Opera", /\bOPR\/(\d+)/],
   ["Samsung Internet", /\bSamsungBrowser\/(\d+)/],
@@ -25,15 +27,15 @@ const NAMES = [
   ["Safari", /\bVersion\/(\d+)[\d.]* (?:Mobile\/\S+ )?Safari\//],
 ];
 
-const on = (extra) => ({ on: true, ...extra });
-const off = (reason) => ({ on: false, reason });
-
 /** @param {object} win the page's window (or any object shaped like it) */
 export function detectBrowser(win) {
+  // Kept inside: every inlined file shares one scope, so short names stay local.
+  const on = (extra) => ({ on: true, ...extra });
+  const off = (reason) => ({ on: false, reason });
   const nav = win.navigator || {};
   const ua = String(nav.userAgent || "");
   const [name, version] = (() => {
-    for (const [label, pattern] of NAMES) {
+    for (const [label, pattern] of BROWSER_NAMES) {
       const m = ua.match(pattern);
       if (m) return [label, Number(m[1])];
     }
