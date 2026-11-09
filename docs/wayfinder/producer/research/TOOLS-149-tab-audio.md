@@ -62,7 +62,7 @@ Needs: a desktop Chrome (and ideally Edge, Firefox and Safari for the "cannot do
 
 **Open the test page**
 
-1. Open the file `docs/wayfinder/producer/research/TOOLS-149-tab-audio-test/index.html` in the producer folder (`/home/ubulex/Projects/producer`) in Chrome (drag it into a Chrome window).
+1. Open the file `docs/wayfinder/producer/research/TOOLS-149-tab-audio-test/index.html` in the producer folder (`~/Projects/producer`) in Chrome (drag it into a Chrome window).
 2. If Chrome refuses to share or listen, ask the fleet to serve the folder at a local address (for example `python3 -m http.server 8765` in that folder, then open `http://localhost:8765/`). The box "What this browser reported" tells you if the address counts as secure.
 
 **Wave.video session with a guest**
