@@ -20,6 +20,7 @@
   --ink: light-dark(oklch(22% 0 none), oklch(95% 0.012 280));
   --on-ink: light-dark(oklch(99% 0 none), oklch(16% 0.055 280));
   --agent: light-dark(oklch(53% 0.1 155), oklch(76% 0.11 155));
+  --agent-ink: light-dark(oklch(48% 0.1 155), oklch(76% 0.11 155));
   --live: light-dark(oklch(55% 0.2 25), oklch(68% 0.19 25));
   --radius-small: 4px;
   --radius: 6px;

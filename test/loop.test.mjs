@@ -6,11 +6,12 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fakePage, lastServer, relayWith } from "./fakes.mjs";
 import { newToken } from "../src/token.mjs";
+import { AGENT_LOOP } from "../src/agent-message.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
 
-/** The loop as the connect message will give it (card 08 owns the wording; the shape is fixed here). */
-const LOOP = `while out=$(curl -sS -m 40 -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$BODY" "$URL/mcp"); do case $out in *'"idle":true'*) ;; *) printf '%s' "$out"; break;; esac; done`;
+/** The loop exactly as the connect message gives it (src/agent-message.mjs). */
+const LOOP = AGENT_LOOP;
 
 async function serve(now, relay) {
   const requests = [];

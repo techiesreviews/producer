@@ -13,6 +13,7 @@ const VIEWS = [
   { name: "phone-dark", colorScheme: "dark", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
 ];
 const STREAM = ["Restream Studio", "Wave.video", "OBS", "Other"];
+const AGENTS = "Claude Code i Codex i T3 Code";
 const OFF_REASON = "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.";
 
 // The colour the browser paints for a CSS colour, as [r, g, b] (a canvas turns oklch and light-dark into pixels).
@@ -39,8 +40,8 @@ async function checkSetup(page, name, { phone, touch, chip }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.equal(words, `Set up ${label} 1 I stream with ${STREAM.join(" ")}`, `${name}: the screen says only its labels`);
-  assert.equal(await page.locator(".step").count(), 1, `${name}: one step, until the next feature exists`);
+  assert.equal(words, `Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message`, `${name}: the screen says only its labels`);
+  assert.equal(await page.locator(".step").count(), 2, `${name}: two steps, until the next feature exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
   const pressed = () => page.locator('#streamSeg button[aria-pressed="true"]').allInnerTexts();
@@ -150,6 +151,150 @@ async function checkSwitchedOff(page, name, out, { touch }) {
   return [shot];
 }
 
+// A stand-in for the browser's WebSocket, put in before the page runs: the page's relay socket talks to it instead of
+// the Worker's relay (these checks serve the page without a relay object). window.__relay.call(tool, args) sends a
+// call as the relay would and resolves with the page's answer; a revoke is recorded and closes the socket with 4003.
+function fakeRelay() {
+  const relay = { sockets: [], answers: new Map(), revoked: false, next: 1 };
+  class RelaySocket extends EventTarget {
+    constructor(url, protocols) {
+      super();
+      Object.assign(this, { url, protocols, readyState: 0 });
+      relay.sockets.push(this);
+      setTimeout(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); this.emit({ type: "ready", createdAt: Date.now() }); }, 0);
+    }
+    emit(message) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(message) })); }
+    send(text) {
+      const m = JSON.parse(text);
+      if (m.type === "result") relay.answers.get(m.id)?.(m);
+      if (m.type === "revoke") { relay.revoked = true; this.close(4003); }
+    }
+    close(code = 1000) {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      this.dispatchEvent(Object.assign(new Event("close"), { code }));
+    }
+  }
+  relay.call = (tool, args = {}) => new Promise((resolve) => {
+    const id = `call-${relay.next++}`;
+    relay.answers.set(id, resolve);
+    relay.sockets.at(-1).emit({ type: "call", id, tool, args });
+  });
+  window.WebSocket = RelaySocket;
+  window.__relay = relay;
+}
+
+// Step 2, the AI agent, as in the mock-up: Claude Code picked, Codex and T3 Code switched off with a reason; Copy
+// connect message copies the message (the loop, this page's address and token) and reads Waiting for Claude Code;
+// the agent's first call makes it Claude Code connected and shows Test; Test hands a sample cue to the held wait and
+// shows the seconds of the answer (step 2 turns done); a press on the connected button disconnects (the token is
+// revoked). Returns the close-up screenshots.
+async function checkAgent(page, name, out, { base, touch, clipboard }) {
+  const connect = page.locator("#connectBtn");
+  const testBtn = page.locator("#testBtn");
+  const shots = [];
+  const press = (el) => (touch ? el.tap() : el.click());
+  const shoot = async (label) => {
+    await page.waitForTimeout(150);
+    const r = await page.locator("#sAgent").boundingBox();
+    const shot = join(out, `page-${name}-agent-${label}.png`);
+    await page.screenshot({ path: shot, clip: { x: 0, y: Math.max(0, r.y - 8), width: page.viewportSize().width, height: Math.min(r.height + 90, 300) } });
+    shots.push(shot);
+  };
+  const state = () => page.evaluate(() => {
+    const b = document.getElementById("connectBtn");
+    const t = document.getElementById("testBtn");
+    return { label: b.textContent, state: b.dataset.state ?? null, tip: b.dataset.tip ?? null, dot: b.querySelector(".dot")?.className ?? null, test: t.hidden ? null : t.textContent, testTip: t.dataset.tip ?? null, done: document.getElementById("sAgent").hasAttribute("data-done") };
+  });
+
+  assert.deepEqual(await page.locator('#agentSeg button[aria-pressed="true"]').allInnerTexts(), ["Claude Code"], `${name}: Claude Code is picked`);
+  for (const off of ["codex", "t3"]) {
+    const b = page.locator(`#agentSeg [data-v="${off}"]`);
+    assert.equal(await b.getAttribute("aria-disabled"), "true", `${name}: ${off} is switched off`);
+    assert.equal(await b.getAttribute("data-tip"), "Comes next. Use Claude Code for now.", `${name}: ${off} says why`);
+  }
+  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: null, done: false }, `${name}: off, Test hidden`);
+  await shoot("off");
+
+  // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token.
+  await press(connect);
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+  const waiting = await state();
+  assert.equal(waiting.state, "busy", `${name}: waiting is the busy look`);
+  assert.equal(waiting.dot, "dot dot--think", `${name}: with the breathing dot`);
+  // Without a clipboard (a browser that refuses the write), the message shows below, selected, and the tooltip says so.
+  const boxShown = await page.locator("#agentMessage").isVisible();
+  assert.equal(waiting.tip, boxShown ? "Copy the message below, then paste it into Claude Code." : "Message copied. Paste it into Claude Code.", `${name}: the tooltip says what to do`);
+  await page.waitForFunction(() => __relay.sockets.length === 1);
+  const socket = await page.evaluate(() => ({ url: __relay.sockets[0].url, protocols: __relay.sockets[0].protocols }));
+  assert.equal(socket.url, `${base.replace("http", "ws")}/api/relay`, `${name}: the relay is this site's`);
+  assert.equal(socket.protocols[0], "producer", `${name}: the producer subprotocol`);
+  const agentToken = socket.protocols[1].slice(2);
+  assert.match(agentToken, /^pr1-[0-9a-z]{8,10}-[A-Za-z0-9_-]{43}$/, `${name}: a producer token from the Worker`);
+  if (clipboard) {
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(copied.includes(`TOKEN='${agentToken}'; URL='${base}'`), `${name}: the message carries this page's address and token`);
+    assert.match(copied, /```bash\n[\s\S]*while out=\$\(curl -sS -m 40 [\s\S]*```/, `${name}: and the ready-made loop`);
+  }
+  if (clipboard) assert.equal(boxShown, false, `${name}: the message box stays hidden when the copy worked`);
+  else if (boxShown) assert.match(await page.locator("#agentMessage").inputValue(), /while out=\$\(curl/, `${name}: the shown message holds the loop`);
+  await shoot("waiting");
+
+  // The agent's first call: connected, and Test appears.
+  const context = await page.evaluate(() => __relay.call("get_context"));
+  assert.deepEqual(context.result, { questions: [], segments: [], seq: 0 }, `${name}: the page answers get_context`);
+  await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
+  const open = await page.evaluate(() => document.querySelector("#tip[data-on]")?.textContent ?? null);
+  assert.ok(open === null || open === "Click to disconnect.", `${name}: an open tooltip follows the new state (${open})`);
+  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: null, done: false }, `${name}: connected`);
+  const green = await page.evaluate(() => getComputedStyle(document.getElementById("connectBtn")).color);
+  assert.deepEqual(await paint(page, green), await token(page, "agent-ink"), `${name}: connected reads green`);
+  await shoot("connected");
+
+  // Test: the held wait gets the sample cue; the answer in the next wait shows its seconds and the sample.
+  await page.evaluate(() => { window.__wait = __relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }); });
+  await press(testBtn);
+  const cue = await page.evaluate(() => window.__wait);
+  assert.equal(cue.result.cue, "suggest_now", `${name}: Test hands a cue to the waiting agent`);
+  assert.deepEqual(cue.result.transcript.map((e) => e.speaker), ["host", "guest"], `${name}: labelled host and guest`);
+  assert.equal((await state()).test, "Testing…", `${name}: Testing while the agent answers`);
+  await page.evaluate((seq) => { __relay.call("wait_for_cue", { seq, holdMs: 25000, suggestions: [{ text: "What did the first month on the road cost?", why: "follows the van story" }] }); }, cue.result.seq);
+  await page.waitForFunction(() => document.getElementById("testBtn").dataset.state === "ok");
+  const tested = await state();
+  assert.match(tested.test, /^Test ✓ · \d+\.\d s$/, `${name}: the seconds of the round trip (${tested.test})`);
+  assert.equal(tested.testTip, 'Sample: "What did the first month on the road cost?"', `${name}: the sample answer in the tooltip`);
+  assert.equal(tested.done, true, `${name}: step 2 is done`);
+  if (!touch) {
+    await page.mouse.move(1, 1);
+    await testBtn.hover();
+    await page.waitForFunction(() => document.querySelector("#tip[data-on]")?.textContent.startsWith("Sample:"));
+  }
+  await shoot("tested");
+  if (!touch) await page.keyboard.press("Escape");
+
+  // The keyboard reaches every control of the step, in order.
+  await page.locator('#agentSeg [data-v="claude"]').focus();
+  const order = [];
+  for (let i = 0; i < 4; i++) { await page.keyboard.press("Tab"); order.push(await page.evaluate(() => document.activeElement.id || document.activeElement.textContent.trim())); }
+  assert.deepEqual(order, ["i Codex", "i T3 Code", "connectBtn", "testBtn"], `${name}: Tab order`);
+  await page.keyboard.press("Escape");
+
+  // Layout: every control inside the window; on a touch screen each one is finger-sized.
+  const { width, boxes } = await page.evaluate(() => ({ width: innerWidth, boxes: [...document.querySelectorAll("#sAgent button")].map((b) => b.getBoundingClientRect().toJSON()) }));
+  for (const b of boxes) assert.ok(b.left >= 0 && b.right <= width + 0.5, `${name}: step 2 fits the window`);
+  if (touch) for (const b of boxes) assert.ok(b.height >= 44, `${name}: finger-sized (${b.height}px)`);
+
+  // Disconnect: the token is revoked and the step starts over; nothing was kept in the browser.
+  await press(connect);
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Copy connect message");
+  assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: Disconnect revokes the token`);
+  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: null, done: false }, `${name}: back to off`);
+  const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
+  assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: the token was never stored`);
+  await page.evaluate(() => document.activeElement?.blur());
+  return shots;
+}
+
 export async function run({ browser, playwright, base, out }) {
   const checks = [];
   const screenshots = [];
@@ -158,7 +303,9 @@ export async function run({ browser, playwright, base, out }) {
   for (const view of VIEWS) {
     const { name, ...options } = view;
     const context = await browser.newContext(options);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
     const page = await context.newPage();
+    await page.addInitScript(fakeRelay);
     const requests = [];
     const problems = [];
     page.on("request", (r) => requests.push(r.url()));
@@ -236,6 +383,11 @@ export async function run({ browser, playwright, base, out }) {
 
     await checkSetup(page, name, { phone: Boolean(options.isMobile), touch: Boolean(options.hasTouch), chip: options.isMobile ? /^Chrome 157 · phone$/ : /^Chrome \d+ · desktop$/ });
     ok(`${name}: the setup screen (browser chip, step 1, picking by mouse${options.hasTouch ? ", tap" : ""} and keyboard, ${options.isMobile ? "compact" : "wide"} layout, no extra words)`);
+
+    screenshots.push(...await checkAgent(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
+    assert.deepEqual(requests, [`${base}/`, `${base}/api/agent-token`], `${name}: besides the page, only this site's token was asked for`);
+    assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation while connecting`);
+    ok(`${name}: step 2 (copy the connect message, waiting, connected, Test with its seconds, Disconnect), by ${options.hasTouch ? "tap" : "mouse"} and keyboard`);
 
     // The Private chip is a real control (a button), so a screen reader and the keyboard reach it as one.
     assert.equal(await page.locator(".private").evaluate((el) => el.tagName), "BUTTON", `${name}: the chip is a button`);
@@ -380,7 +532,10 @@ export async function run({ browser, playwright, base, out }) {
       const plain = join(out, `page-${name}.png`);
       await page.screenshot({ path: plain });
       screenshots.push(plain);
+      await page.addInitScript(fakeRelay);
+      await page.reload();
       await checkSetup(page, name, { phone: false, touch: false, chip: /^Firefox \d+ · desktop$/ });
+      screenshots.push(...await checkAgent(page, name, out, { base, touch: false, clipboard: false }));
       screenshots.push(...await checkSwitchedOff(page, name, out, { touch: false }));
       ok(`${name}: loads alone, names Firefox, the setup screen works and a switched-off choice shows its reason`);
       await context.close();

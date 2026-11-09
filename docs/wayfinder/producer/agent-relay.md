@@ -1,6 +1,6 @@
 # The agent relay (card 06)
 
-Written 2026-11-09. This is what exists on the Worker: the line between the host's own AI agent and the open producer page. The page itself (cards 03, 08 and 10) is not built yet; this file is what it must answer.
+Written 2026-11-09. This is what exists on the Worker: the line between the host's own AI agent and the open producer page. The page's side of it is step 2 "AI agent" (card 08, below); the live screen (cards 03 and 10) is not built yet.
 
 ## In plain words
 
@@ -50,7 +50,13 @@ An agent whose tool allows a long foreground command can run one curl loop that 
 while out=$(curl -sS -m 40 -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$BODY" "$URL/mcp"); do case $out in *'"idle":true'*) ;; *) printf '%s' "$out"; break;; esac; done
 ```
 
-The wording of the message that gives this to the agent belongs to card 08.
+## The connect message and the page (card 08)
+
+- Copy connect message (`src/agent-message.mjs`) copies one message: a three-line block (token and address, `BODY`, the loop above) and seven rules. The agent runs the block in the foreground with a 10-minute limit and changes only `BODY`: first `get_context`, then `wait_for_cue`, and each answer goes in the next wait. No sleep, no helper file, no settings change: TOOLS-154 found that an agent told "no helper files" still wrote a loop script when the command was not given whole, and that a sleep loop is blocked by some hooks. The address is the page's own, so the same message works on the preview.
+- The page (`src/agent-link.mjs`) holds each wait for 25 seconds, then answers idle; the loop asks again at once. The button reads Waiting for Claude Code until the first call, then Claude Code connected while calls keep coming; after a minute with no call and no wait held it waits again. An answer is shown once (the same `seq` with the same suggestions changes nothing).
+- Test is the warm-up (TOOLS-154: the first answer after pasting took 7 to 25 s): it hands one made-up host and guest exchange to the waiting agent and shows the seconds until the answer arrives, with the answer in its tooltip. 90 seconds without an answer reads "no answer".
+- Disconnect revokes the token, so the agent's next call (and the wait in progress) gets 401. A reload forgets the token (nothing is stored): the host copies a new message.
+- `test/connect-message.test.mjs` runs the copied block in bash against the Worker: connect, Test, answer, Disconnect.
 
 ## Not verified yet
 
