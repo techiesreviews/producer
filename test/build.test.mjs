@@ -31,10 +31,13 @@ test("the page is one self-contained file and asks for no outside file", () => {
   assert.ok(!html.includes("/*@") && !html.includes("<!--@"), "every build marker is replaced");
 });
 
-test("the page keeps nothing, sends nothing and logs nothing", () => {
-  const banned = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|caches|serviceWorker|importScripts|cookie|console)\b|\bimport\s*\(/;
+test("the page keeps nothing, logs nothing and talks only to its own agent relay", () => {
+  const banned = /\b(XMLHttpRequest|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|caches|serviceWorker|importScripts|cookie|console)\b|\bimport\s*\(/;
   assert.doesNotMatch(script, banned);
   assert.doesNotMatch(script, /^\s*(import|export)\s/m, "the inlined script is plain code");
+  // Two calls, both to this site: the agent token and the relay's WebSocket (card 08). Nothing else is sent anywhere.
+  assert.deepEqual([...script.matchAll(/\bfetch\b[^)]*\)/g)].map((m) => m[0]), ['fetch("/api/agent-token", { method: "POST", cache: "no-store" })'], "one fetch: the token");
+  assert.deepEqual([...script.matchAll(/\bWebSocket\b[^,]*/g)].map((m) => m[0]), ['WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`'], "one WebSocket: the relay on this host");
 });
 
 test("the policy pins the page's own script and style by hash and allows nothing from outside", () => {

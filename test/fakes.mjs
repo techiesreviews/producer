@@ -109,3 +109,82 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
   };
   return page;
 }
+
+/**
+ * A browser WebSocket class for src/agent-link.mjs whose other end is the relay object of `kit` (relayWith): what the
+ * relay sends arrives as "message" events, what the page sends reaches relay.webSocketMessage, and a close from the
+ * relay arrives as a "close" event with its code. The token's birth time comes from the subprotocol, as the Worker
+ * reads it. `sockets` lists every socket made; `calls` counts the tool calls the relay handed to the page.
+ */
+export function pageSockets(kit, checkToken) {
+  const sockets = [];
+  let calls = 0;
+  class PageSocket extends EventTarget {
+    constructor(protocols) {
+      super();
+      this.protocols = protocols;
+      this.readyState = 0;
+      sockets.push(this);
+      const token = protocols.find((p) => p.startsWith("t."))?.slice(2);
+      queueMicrotask(async () => {
+        const t = checkToken(token);
+        const attach = (server) => {
+          this.server = server;
+          const send = server.send.bind(server);
+          server.send = (text) => {
+            send(text);
+            if (JSON.parse(text).type === "call") calls += 1;
+            queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: text })));
+          };
+          const close = server.close.bind(server);
+          server.close = (code = 1000, reason = "") => {
+            if (server.closed) return;
+            close(code, reason);
+            if (this.readyState === 3) return;
+            this.readyState = 3;
+            queueMicrotask(() => this.dispatchEvent(Object.assign(new Event("close"), { code, reason })));
+          };
+        };
+        await kit.tab(t.ok ? t.born : 1, attach);
+        if (this.readyState === 0) { this.readyState = 1; this.dispatchEvent(new Event("open")); }
+      });
+    }
+    send(text) {
+      if (this.readyState !== 1) throw new Error("not open");
+      kit.relay.webSocketMessage(this.server, text);
+    }
+    close(code = 1000) {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      if (this.server) kit.relay.webSocketClose(this.server, code);
+    }
+  }
+  return { sockets, socket: (protocols) => new PageSocket(protocols), get calls() { return calls; } };
+}
+
+/** Timers for the page under test: nothing runs until tick(ms) moves the clock `now` ({ t }) forward. */
+export function fakeTimers(now) {
+  let next = 1;
+  const due = new Map();
+  const timers = {
+    setTimeout(fn, ms) { const id = next++; due.set(id, { at: now.t + Math.max(0, ms), fn }); return id; },
+    clearTimeout(id) { due.delete(id); },
+    setInterval(fn, ms) { const id = next++; const again = () => { due.set(id, { at: now.t + ms, fn: () => { again(); fn(); } }); }; again(); return id; },
+    clearInterval(id) { due.delete(id); },
+    async tick(ms) {
+      const end = now.t + ms;
+      for (;;) {
+        const [id, first] = [...due].filter(([, d]) => d.at <= end).sort((a, b) => a[1].at - b[1].at)[0] ?? [];
+        if (!first) break;
+        due.delete(id);
+        now.t = first.at;
+        first.fn();
+        await settle();
+      }
+      now.t = end;
+      await settle();
+    },
+    pending: () => due.size,
+  };
+  return timers;
+}

@@ -38,3 +38,11 @@ Each entry:
 - Phone: yes
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
+
+### F-setup-02 Step 2 "AI agent": connect Claude Code with the paste message
+- Try: In step 2 press Copy connect message, paste the message into Claude Code; watch the button; press Test; press the connected button to disconnect. Hover or tap Codex and T3 Code.
+- Good: As the mock-up: Claude Code picked, Codex and T3 Code switched off with a reason; the button reads Waiting for Claude Code (breathing dot), then Claude Code connected (green) with Test beside it; Test reads Testing, then "Test ✓ · 4.2 s" with the sample answer in its tooltip, and step 2 turns green; a press on the connected button disconnects. No explainer text.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/agent-message.mjs`, `src/agent-link.mjs`, `src/ui/tooltip.mjs`
+- Phone: yes
+- Spec: `test/browser/page.mjs`
+- Steps: none yet (no kit shots command)

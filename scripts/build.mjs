@@ -16,7 +16,7 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 export const STYLES = ["src/theme.css", "src/app.css"];
 
 /** Shared modules inlined into the page script, in this order, without `export`; then src/app.js. */
-export const INLINED = ["src/browser.mjs", "src/ui/tooltip.mjs"];
+export const INLINED = ["src/browser.mjs", "src/ui/tooltip.mjs", "src/agent-message.mjs", "src/agent-link.mjs"];
 
 /** The live address, and the preview's (Worker producer-preview). */
 export const LIVE_HOST = "producer.techies.tools";
