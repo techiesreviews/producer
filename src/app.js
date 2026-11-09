@@ -365,6 +365,7 @@ const skipBtn = $("skipBtn");
 const suggestBtn = $("suggestBtn");
 const slowBtn = $("slowBtn");
 const thinkDot = $("thinkDot");
+const turnChip = $("turnChip");
 const asking = { since: 0, timer: 0, alts: "" }; // since: when the newest cue went
 
 /** A control switched off with its reason (the round "i" in front), or on again. */
@@ -389,7 +390,7 @@ function renderCard() {
   const why = main?.why ?? (main?.from === "list" && main.n === first ? "Next on your list." : "");
   qWhy.textContent = why;
   qWhy.hidden = !why;
-  qSrc.hidden = !main;
+  qSrc.parentElement.hidden = !main;
   if (main) {
     qSrc.textContent = main.n ? `Q${main.n} · your list` : "New";
     qSrc.className = main.n ? "chip chip--accent" : "chip";
@@ -407,8 +408,8 @@ function renderCard() {
       const b = make("button", "alt");
       b.type = "button";
       b.dataset.i = String(i);
-      b.append(make("span", "alt__q", q.text), make("span", q.n ? "chip chip--accent" : "chip", q.n ? `Q${q.n} · your list` : "New"));
-      if (q.why) b.append(make("span", "alt__why", q.why));
+      b.append(Object.assign(make("span", "alt__q", q.text), { dir: "auto" }), make("span", q.n ? "chip chip--accent" : "chip", q.n ? `Q${q.n} · your list` : "New"));
+      if (q.why) b.append(Object.assign(make("span", "alt__why", q.why), { dir: "auto" }));
       return b;
     }));
     if (focused >= 0) (altsBox.children[focused] ?? altsBox.lastElementChild ?? askedBtn).focus();
@@ -419,6 +420,7 @@ function renderCard() {
   const button = suggestButton({ agent: link, thinking: busy, waitMs: suggestInMs, slow });
   label(suggestBtn, button.state, button.off || null, ...(link !== "on" ? [offMark(), " "] : []), button.text);
   switchOff(suggestBtn, button.off);
+  suggestBtn.toggleAttribute("aria-busy", busy);
   const light = thinkLight({ agent: link, thinking: busy });
   thinkDot.className = light.kind ? `dot dot--${light.kind}` : "dot";
   thinkDot.setAttribute("aria-label", light.label);
@@ -426,7 +428,6 @@ function renderCard() {
     thinkDot.dataset.tip = light.tip;
     if (thinkDot.getAttribute("aria-describedby") === "tip") tooltip.show(thinkDot);
   }
-  const turnChip = $("turnChip");
   turnChip.textContent = turnsText(turns);
   turnChip.dataset.tip = `Agent turns this show. At most one ${slow ? "in 2 minutes" : "a minute"} on its own.`;
 
