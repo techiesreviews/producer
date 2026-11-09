@@ -31,5 +31,5 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
   font: 500 12.5px/1.35 system-ui, sans-serif; color: var(--on-ink); background: var(--ink); box-shadow: var(--shadow);
   opacity: 0; transition: opacity 120ms;
 }
-.tip[data-on] { opacity: 1; }
+.tip[data-on] { opacity: 1; pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
