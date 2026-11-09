@@ -101,7 +101,7 @@ test("with no agent connected, Suggest now says so on itself and the light is gr
 
 test("while the agent works, the button and the light say so; then the 10 s spacing shows on the button", () => {
   assert.deepEqual(suggestButton({ agent: "on", thinking: true, waitMs: 8_000 }), { text: "Thinking…", state: "busy", off: "" });
-  assert.deepEqual(thinkLight({ agent: "on", thinking: true }), { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until a new question is ready." });
+  assert.deepEqual(thinkLight({ agent: "on", thinking: true }), { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." });
   assert.deepEqual(suggestButton({ agent: "on", thinking: false, waitMs: 6_200 }), { text: "Suggest now · 7 s", state: null, off: "One every 10 s." });
   assert.deepEqual(suggestButton({ agent: "on", thinking: false, waitMs: 1, slow: true }).off, "One every 20 s with Slow down.");
   assert.deepEqual(suggestButton({ agent: "on", thinking: false, waitMs: 0 }), { text: "Suggest now", state: null, off: "" });

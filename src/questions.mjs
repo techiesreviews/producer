@@ -112,7 +112,7 @@ export function suggestButton({ agent, thinking: busy, waitMs, slow = false }) {
 /** The quiet light in the card's corner: grey with no agent, green when ready, a slow orange breath while it thinks. */
 export function thinkLight({ agent, thinking: busy }) {
   if (agent !== "on") return { kind: "", label: "No agent", tip: "No agent: the next question comes from your list." };
-  if (busy) return { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until a new question is ready." };
+  if (busy) return { kind: "think", label: "Agent is thinking", tip: "Agent is thinking. The card stays until it is ready." };
   return { kind: "ok", label: "Agent ready", tip: "Agent ready." };
 }
 
