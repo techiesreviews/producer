@@ -1,0 +1,17 @@
+# producer
+
+A live host's private "producer" screen: a static page plus one Cloudflare Worker, no accounts, nothing stored, an agent relay like the Prompter's Wait for MCP. Public repo: https://github.com/techiesreviews/producer. Owner: Lex (non-technical; explain in plain words). Status: not built yet; the plan is in `docs/wayfinder/producer/`.
+
+## Rules
+
+- Agent Kit (the shared kit, `scripts/agents/kit`) for all coding: `kit doctor` first, then the commands that fit the work. Delegated work must carry this requirement.
+- This repo is public. Never commit a key, token, password, private note or the Restream app secret (it lives only in Cloudflare). `test/repo-guard.test.mjs` checks the obvious cases; it does not replace care.
+- Nothing is stored: no server-side storage of talk, chat or questions, and no logging of request bodies.
+- Build only what is asked. No feature and no screen until the mock-up has Lex's approval.
+- Cloudflare free plan only. Do not deploy or change Cloudflare resources unless the lead says so.
+- Orbit board: follow the card standard (`orbit-card-standard.md` in the fleet repo) when you create or change a card. Only lead models write to the board.
+- Design: the kit's house style (`docs/house-style.md` in the folder `scripts/agents/kit --home` prints). Anything a person sees shows its state on the control itself: no toasts, no explainers.
+- Public status and plans stay plain English in `docs/wayfinder/producer/`.
+
+Kitchen rulebook: `scripts/agents/kit rulebook` (stations, who decides, builder and reviewer pins).
+Agent commands: `scripts/agents/kit --help`; `scripts/agents/kit <command> --help` for one.

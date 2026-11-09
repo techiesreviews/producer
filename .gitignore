@@ -1,0 +1,9 @@
+node_modules/
+.scratch/
+.wrangler/
+dist/
+.dev.vars
+.env
+.env.*
+*.key
+*.pem
