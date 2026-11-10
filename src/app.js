@@ -241,7 +241,7 @@ function readPasted() {
 planIn.addEventListener("input", () => {
   // The host's own edit: what the agent loaded is no longer what is there, and the host's go-ahead for the agent is used up.
   if (loadState.phase === "loaded") { loadState.phase = "idle"; renderLoad(); }
-  Object.assign(loadState, { byAgent: false, hostAsked: false });
+  Object.assign(loadState, { byAgent: false, hostAsked: false, gaveUp: false });
   readPasted();
   // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
   if (show.notes && (show.plan ? show.plan.show !== show.notesFor?.show || show.plan.guest !== show.notesFor?.guest : !planIn.value.trim())) show.notes = "";
@@ -262,7 +262,7 @@ planBtn.addEventListener("click", () => {
 const demoBtn = $("demoBtn");
 /** The demo is in the box and has not been edited since. */
 let demoLoaded = false;
-/** The first press over a plan of the host's own only asks (on the button); the second press, within 5 seconds, replaces it. */
+/** The first press over a plan of the host's own only asks (on the button); the second press, within 8 seconds, replaces it. */
 let demoConfirm = false;
 let demoTimer = 0;
 
@@ -278,7 +278,7 @@ demoBtn.addEventListener("click", () => {
   // A plan in the box that is not the untouched demo is the host's (or the agent's): the button asks before it replaces it.
   if (planIn.value.trim() && !demoLoaded && !demoConfirm) {
     demoConfirm = true;
-    demoTimer = setTimeout(() => { demoConfirm = false; renderDemo(); }, 5000);
+    demoTimer = setTimeout(() => { demoConfirm = false; renderDemo(); }, 8000);
     renderDemo();
     return;
   }
@@ -333,7 +333,7 @@ function loadFromAgent(args) {
   const read = readLoad(args);
   if (!read.ok) return refuse(read.reason);
   if (planIn.readOnly) return refuse("The show has started, so the plan stays as it is.");
-  if (loadState.gaveUp && !loadState.hostAsked) return refuse("The host loaded the demo show instead. Nothing to do.");
+  if (loadState.gaveUp && !loadState.hostAsked) { loadState.gaveUp = false; return refuse("The host loaded the demo show instead. Nothing to do."); }
   // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
   if (!loadState.hostAsked && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
   const text = planText(read.plan);

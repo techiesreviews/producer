@@ -193,7 +193,7 @@ export async function run({ browser, base, out }) {
     const askContrast = await paintedContrast(demo);
     assert.ok(askContrast >= 4.5, `${name}: the question reads at ${askContrast.toFixed(2)}:1`);
     await shot("confirm");
-    await page.clock.fastForward(6000);
+    await page.clock.fastForward(9000);
     assert.deepEqual(await button(), IDLE, `${name}: a few seconds without a press and the question goes away`);
     assert.equal(await page.locator("#planIn").inputValue(), HOST, `${name}: the plan is still the host's`);
     await press(demo);
@@ -222,6 +222,21 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await button(), (await context_()).notes], [LOADED, DEMO_NOTES], `${name}: the demo and its notes are in`);
     assert.equal((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).error, "The host loaded the demo show instead. Nothing to do.", `${name}: a late answer to the given-up request is refused with that reason, the demo stays`);
     assert.equal(await page.locator("#planIn").inputValue(), DEMO_TEXT, `${name}: the box still holds the demo`);
+    // The refusal is for that one late answer: with the box emptied, the agent can load without a press.
+    await page.locator("#planIn").fill("");
+    assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).result, { loaded: true, questions: 1, parts: 1 }, `${name}: after an edit the agent may load again`);
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000 }); });
+    await press(load);
+    await page.evaluate(() => window.__wait);
+    await press(demo);
+    assert.equal((await button()).text, CONFIRM.text, `${name}: the demo button asks while the agent is loading`);
+    assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).result, { loaded: true, questions: 1, parts: 1 }, `${name}: the agent's show arrives meanwhile`);
+    assert.deepEqual([await button(), (await loadText()).startsWith("Loaded by")], [IDLE, true], `${name}: the question is gone and the agent's show is in`);
+    await page.clock.fastForward(9000);
+    assert.deepEqual(await button(), IDLE, `${name}: the old timer does nothing`);
+    await page.locator("#planIn").fill("Show: My Own\n5 Only part\n1. Typed by the host?");
+    await press(demo);
+    await press(demo);
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000 }); });
     await press(load);
     await page.evaluate(() => window.__wait);
