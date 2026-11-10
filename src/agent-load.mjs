@@ -9,7 +9,7 @@
 /** The cue that asks the agent to call load_show (the host pressed the button). */
 export const LOAD_CUE = "load_show";
 /** The agent has this long to answer the button (it may ask the host in the chat first); then the button says so. A show that comes later still lands. */
-export const LOAD_WAIT_MS = 180_000;
+export const LOAD_WAIT_MS = 180_000; // keep it in whole minutes: the button's reason counts them
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */
 export const LOAD_MAX_BYTES = 200 * 1024;
 export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000 };
