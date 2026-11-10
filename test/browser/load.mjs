@@ -184,6 +184,9 @@ export async function run({ browser, base, out }) {
     ok(`${name}: the biggest allowed plan loads and its label fits the screen`);
 
     // The host can still edit: the button goes back; a plan the host typed is theirs.
+    // The long button now shares its row with Load demo show, so Paste it myself can sit on the next line under the open tooltip: the pointer leaves first.
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => !document.querySelector("#tip").hasAttribute("data-on"));
     await page.locator("#planBtn").click();
     await page.locator("#planIn").fill(HOST_PLAN);
     assert.deepEqual(await button(), { text: "Let my agent load it", state: null, off: null, tip: "Claude Code sends the show name, guest, questions and run order. You can still change them." }, `${name}: after the host's edit the button is ready again`);
