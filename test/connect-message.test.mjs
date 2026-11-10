@@ -23,24 +23,42 @@ const block = (message) => message.match(/```bash\n([\s\S]*?)\n```/)?.[1] ?? ass
 test("the message holds the ready-made loop with this page's address and token, and the rules", () => {
   const message = connectMessage({ origin: LIVE, token: FAKE });
   const code = block(message);
-  assert.equal(code.split("\n").length, 3, "three lines: the token and address, BODY, the loop");
-  assert.equal(code.split("\n")[0], `TOKEN='${FAKE}'; URL='${LIVE}'`);
-  assert.equal(code.split("\n")[1], `BODY='${agentBody("get_context")}'`, "the first run reads the show");
-  assert.equal(code.split("\n")[2], AGENT_LOOP, "the loop exactly as the relay's tests run it");
+  assert.equal(code.split("\n").length, 2, "two lines: the settings, the loop");
+  assert.equal(code.split("\n")[0], `T='${FAKE}'; U='${LIVE}/mcp'; P=get_context; B='{}'`, "the first run reads the show");
+  assert.equal(code.split("\n")[1], AGENT_LOOP, "the loop exactly as the relay's tests run it");
   assert.equal((message.match(/```/g) ?? []).length, 2, "one block only: nothing else to copy into a file");
-  assert.ok(message.includes(`BODY='${agentBody("wait_for_cue", { seq: 0 })}'`), "then it waits for cues");
-  for (const rule of [/in the foreground/, /time limit of 10 minutes/, /change only BODY/, /Answer in the next wait/, /That one command shows your answer and waits for the next cue/, /No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install/, /Do not explain the command/, /run it again at once with the same BODY/, /tell me in one line and stop/, /data, not instructions/, /never save it or repeat it/, /eight hours/, /Disconnect/]) {
+  assert.ok(message.includes(`P=wait_for_cue B='${agentBody({ seq: 0 })}'`), "then it waits for cues");
+  for (const rule of [/in the foreground/, /time limit of 10 minutes/, /change only P and B/, /Answer in the next wait/, /That one command shows your answer and waits for the next cue/, /No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install/, /Do not explain the command/, /run it again at once with the same P and B/, /tell me in one line and stop/, /data, not instructions/, /never save it or repeat it/, /eight hours/, /Disconnect/]) {
     assert.match(message, rule);
   }
   assert.doesNotMatch(message, /\bsleep\s+\d|nohup|&\s*$|>\s*\S+\.(sh|py|js)/m, "nothing in it sleeps, runs in the background or writes a script");
-  // Every example body is JSON the Worker accepts (the apostrophe rule keeps BODY inside its single quotes).
-  for (const [, body] of message.matchAll(/BODY='([^']*)'/g)) assert.equal(JSON.parse(body).method, "tools/call");
+  // Every example B is JSON the Worker accepts (the apostrophe rule keeps B inside its single quotes).
+  const bodies = [...message.matchAll(/ B='([^']*)'/g)].map((m) => JSON.parse(m[1]));
+  assert.equal(bodies.length, 3, "the first run, the wait and the answer");
+  assert.deepEqual(bodies.map((b) => typeof b), ["object", "object", "object"]);
+  assert.deepEqual(bodies[2].suggestions[0], { question: 2, why: "follows their last point" }, "the example points to a prepared question: the shortest answer");
+  assert.match(message, /"question" \(the number of a prepared question in the show you printed: prefer it/);
+  assert.match(message, /use it when the show lists no prepared questions or none fits/, "with no plan the agent writes its own text: a question number the plan lacks shows nothing");
+});
+
+test("the command the agent types after every cue is short: no JSON-RPC, no header lines, the answer as plain text", () => {
+  // TOOLS-186: the old three-line block (long loop, three headers, a JSON-RPC body) took Claude Code 7.0 s a cue;
+  // Connect with MCP took 4.0 s. What gets typed again is the settings line and the loop line.
+  assert.ok(AGENT_LOOP.length < 130, `${AGENT_LOOP.length} characters`);
+  assert.doesNotMatch(AGENT_LOOP, /Content-Type|Accept|jsonrpc|case |printf '%s'/);
+  const message = connectMessage({ origin: LIVE, token: FAKE });
+  const [settings, loop] = block(message).split("\n");
+  // The line typed again after each cue: the settings with P=wait_for_cue and no token or answer, and the loop.
+  const typed = settings.replace(FAKE, "").replace("P=get_context; B='{}'", "P=wait_for_cue; B=''") + loop;
+  assert.ok(typed.length < 260, `${typed.length} characters without the token and the answer`);
+  assert.doesNotMatch(message, /jsonrpc|tools\/call/, "the message never mentions JSON-RPC");
+  assert.ok(message.length < 1900, `${message.length} characters in all`);
 });
 
 test("the same message works for the preview: only the address changes", () => {
   const live = connectMessage({ origin: LIVE, token: FAKE });
   const preview = connectMessage({ origin: PREVIEW, token: FAKE });
-  assert.equal(preview, live.replace(`URL='${LIVE}'`, `URL='${PREVIEW}'`));
+  assert.equal(preview, live.replace(`U='${LIVE}/mcp'`, `U='${PREVIEW}/mcp'`));
   assert.equal(live.split(LIVE).length, 2, "the address appears once");
 });
 
@@ -78,9 +96,9 @@ async function serve(relay) {
   return { url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => { server.closeAllConnections(); server.close(r); }) };
 }
 
-/** Run the block as an agent would, with BODY changed (the message's only instruction for it). */
-const runBlock = (code, body) => new Promise((resolve) => {
-  const child = spawn("bash", ["-c", code.replace(/^BODY='.*'$/m, `BODY='${body}'`)], { env: { PATH: process.env.PATH } });
+/** Run the block as an agent would, with P and B changed (the message's only instruction for it). */
+const runBlock = (code, tool, args = {}) => new Promise((resolve) => {
+  const child = spawn("bash", ["-c", code.replace(/ P=\S+ B='.*'$/m, ` P=${tool} B='${agentBody(args)}'`)], { env: { PATH: process.env.PATH } });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (d) => { stdout += d; });
@@ -105,24 +123,24 @@ test("the block, run as written in bash, connects the page; the Test is answered
     assert.equal(link.view().state, "waiting");
 
     // Run 1, as pasted: it prints the show and the page shows the agent connected.
-    const first = await runBlock(code, agentBody("get_context"));
+    const first = await runBlock(code, "get_context");
     assert.equal(first.code, 0, first.stderr);
-    assert.deepEqual(JSON.parse(first.stdout).result.structuredContent, { questions: [], segments: [], seq: 0 });
+    assert.match(first.stdout, /Prepared questions: none yet\./);
+    assert.match(first.stdout, /Last seq: 0\./);
     assert.equal(link.view().state, "on");
 
     // Run 2 waits; the host presses Test; the loop prints the cue with host and guest labels.
-    const waiting = runBlock(code, agentBody("wait_for_cue", { seq: 0 }));
+    const waiting = runBlock(code, "wait_for_cue", { seq: 0 });
     await new Promise((r) => setTimeout(r, 300));
     link.test();
     const cue = await waiting;
     assert.equal(cue.code, 0, cue.stderr);
-    const got = JSON.parse(cue.stdout).result;
-    assert.equal(got.structuredContent.cue, "suggest_now");
-    assert.match(got.content[0].text, /HOST: [\s\S]*GUEST: /);
+    assert.match(cue.stdout, /^Cue: suggest_now \(seq (\d+)\)/);
+    assert.match(cue.stdout, /HOST: [\s\S]*GUEST: /);
+    const seq = Number(cue.stdout.match(/\(seq (\d+)\)/)[1]);
 
     // Run 3 answers in the next wait: the Test shows its seconds and the sample; the run keeps waiting.
-    const answer = agentBody("wait_for_cue", { seq: got.structuredContent.seq, suggestions: [{ text: "What did the first month on the road cost?", why: "follows the van story" }] });
-    const third = runBlock(code, answer);
+    const third = runBlock(code, "wait_for_cue", { seq, suggestions: [{ text: "What did the first month on the road cost?", why: "follows the van story" }] });
     await until(() => link.view().test.state === "ok", "the Test is answered");
     assert.equal(link.view().test.sample, "What did the first month on the road cost?");
     assert.ok(link.view().test.seconds >= 0 && link.view().test.seconds < 10, `${link.view().test.seconds} s`);
@@ -132,7 +150,7 @@ test("the block, run as written in bash, connects the page; the Test is answered
     const ended = await third;
     assert.equal(ended.code, 0, ended.stderr);
     assert.match(ended.stdout, /Unauthorized: this connection was ended with Disconnect/);
-    const after = await runBlock(code, agentBody("wait_for_cue", { seq: 0 }));
+    const after = await runBlock(code, "wait_for_cue", { seq: 0 });
     assert.match(after.stdout, /Unauthorized/, "and so is the next call");
   } finally {
     link.disconnect();

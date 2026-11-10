@@ -58,7 +58,7 @@ async function checkSetup(page, name, { phone, touch, chip, tabOff, service = tr
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message Connect with MCP 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
@@ -444,7 +444,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   const key = page.locator('#agentSeg [data-v="key"]');
   assert.equal(await key.getAttribute("aria-disabled"), "true", `${name}: the API key is switched off`);
   assert.equal(await key.getAttribute("data-tip"), KEY_TIP, `${name}: and says when it comes`);
-  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: off, Test hidden`);
+  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: off, Test hidden`);
   await shoot("off");
 
   // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token.
@@ -464,11 +464,11 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   assert.match(agentToken, /^pr1-[0-9a-z]{8,10}-[A-Za-z0-9_-]{43}$/, `${name}: a producer token from the Worker`);
   if (clipboard) {
     const copied = await page.evaluate(() => navigator.clipboard.readText());
-    assert.ok(copied.includes(`TOKEN='${agentToken}'; URL='${base}'`), `${name}: the message carries this page's address and token`);
-    assert.match(copied, /```bash\n[\s\S]*while out=\$\(curl -sS -m 40 [\s\S]*```/, `${name}: and the ready-made loop`);
+    assert.ok(copied.includes(`T='${agentToken}'; U='${base}/mcp'`), `${name}: the message carries this page's address and token`);
+    assert.match(copied, /```bash\n[\s\S]*while o=\$\(curl -sS -m 40 [\s\S]*```/, `${name}: and the ready-made loop`);
   }
   if (clipboard) assert.equal(boxShown, false, `${name}: the message box stays hidden when the copy worked`);
-  else if (boxShown) assert.match(await page.locator("#agentMessage").inputValue(), /while out=\$\(curl/, `${name}: the shown message holds the loop`);
+  else if (boxShown) assert.match(await page.locator("#agentMessage").inputValue(), /while o=\$\(curl/, `${name}: the shown message holds the loop`);
   await shoot("waiting");
 
   // The agent's first call: connected, and Test appears.
@@ -517,9 +517,9 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
 
   // Disconnect: the token is revoked and the step starts over; nothing was kept in the browser.
   await press(connect);
-  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Copy connect message");
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Copy connect message slower");
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: Disconnect revokes the token`);
-  assert.deepEqual(await state(), { label: "Copy connect message", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: back to off`);
+  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: back to off`);
   const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
   assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: the token was never stored`);
   // Leaving or reloading the page revokes the token too (the page keeps none).
@@ -529,7 +529,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
   await page.evaluate(() => { __relay.revoked = false; dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })); });
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: leaving the page revokes the token`);
-  assert.equal((await state()).label, "Copy connect message", `${name}: and the step starts over`);
+  assert.equal((await state()).label, "Copy connect message slower", `${name}: and the step starts over`);
   await page.evaluate(() => document.activeElement?.blur());
   return shots;
 }
@@ -617,10 +617,11 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   const idle = (agent, pasteTip, slow) => ({
     paste: { label: slow ? "Copy connect message slower" : "Copy connect message", state: null, tip: pasteTip, off: false, shown: true },
     mcp: agent.mcp
-      ? { label: "Connect with MCP", state: null, tip: agent.mcp.idleTip, off: false, shown: true }
+      ? { label: "Connect with MCP recommended", state: null, tip: agent.mcp.idleTip, off: false, shown: true }
       : { label: "i Connect with MCP", state: null, tip: T3_MCP_TIP, off: true, shown: true },
   });
-  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", false), `${name}: Claude Code, idle`);
+  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", true), `${name}: Claude Code, idle`);
+  assert.deepEqual([await page.locator("#connectBtn .tag").innerText(), await page.locator("#mcpBtn .tag").innerText()], ["slower", "recommended"], `${name}: Claude Code: the message way is slower, Connect with MCP is recommended`);
   // The keyboard reaches every control of the idle step, in order.
   await chip("claude").focus();
   const order = [];
@@ -631,10 +632,12 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   await pick("codex");
   assert.deepEqual(await view(), idle(AGENT_WAYS.codex, `Copies a message. Paste it into Codex. ${CODEX_TIP}.`, true), `${name}: Codex, idle: its paste way is the slower one and carries the warning`);
   assert.equal(await page.locator("#connectBtn .tag").innerText(), "slower", `${name}: the slower label sits on the paste way`);
+  assert.equal(await page.locator("#mcpBtn .tag").innerText(), "recommended", `${name}: Codex: the recommended label sits on Connect with MCP`);
   await shoot("codex-idle");
   await pick("t3");
   assert.deepEqual(await view(), idle(AGENT_WAYS.t3, "Copies a message. Paste it into T3 Code.", false), `${name}: T3 Code, idle: no MCP way`);
   assert.equal(await page.locator("#connectBtn .tag").count(), 0, `${name}: T3 Code's chip already says slower, so its button does not say it twice`);
+  assert.equal(await page.locator("#mcpBtn .tag").count(), 0, `${name}: T3 Code has no MCP way to recommend`);
   // The "slower" label reads at 4.5:1 on its own fill, as the browser paints it: on the picked chip (over the ink fill)
   // and on the paste button (over the page's surface).
   const tagContrast = (selector, under) => page.locator(selector).evaluate((el, under) => {
@@ -648,13 +651,21 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   assert.ok(await tagContrast('#agentSeg [data-v="t3"] .tag', "button") >= 4.5, `${name}: the label on the picked chip reads at 4.5:1`);
   await pick("codex");
   assert.ok(await tagContrast("#connectBtn .tag", ".steps") >= 4.5, `${name}: the label on the paste button reads at 4.5:1`);
+  assert.ok(await tagContrast("#mcpBtn .tag", ".steps") >= 4.5, `${name}: the recommended label on Connect with MCP reads at 4.5:1`);
   assert.ok(await tagContrast('#agentSeg [data-v="t3"] .tag', ".seg") >= 4.5, `${name}: the label on an unpicked chip reads at 4.5:1`);
+  // Layout: everything inside the window, finger-sized on a touch screen, in the two states with the longest labels:
+  // Claude Code and Codex ("Copy connect message slower" beside "Connect with MCP recommended") and T3 Code (its chip's tag).
+  const fits = async (who) => {
+    const { width, scrollWidth, boxes } = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => b.getBoundingClientRect().toJSON()) }));
+    assert.ok(scrollWidth <= width, `${name}: ${who}: no sideways scroll with the tags`);
+    for (const b of boxes) assert.ok(b.left >= 0 && b.right <= width + 0.5, `${name}: ${who}: step 2 fits the window`);
+    if (touch) for (const b of boxes) assert.ok(b.height >= 44, `${name}: ${who}: finger-sized (${b.height}px)`);
+  };
+  await fits("Codex");
+  await pick("claude");
+  await fits("Claude Code");
   await pick("t3");
-  // Layout: everything inside the window, finger-sized on a touch screen, with the longest labels (T3 Code slower, the tag on the paste way).
-  const { width, scrollWidth, boxes } = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => b.getBoundingClientRect().toJSON()) }));
-  assert.ok(scrollWidth <= width, `${name}: no sideways scroll with the tags`);
-  for (const b of boxes) assert.ok(b.left >= 0 && b.right <= width + 0.5, `${name}: step 2 fits the window`);
-  if (touch) for (const b of boxes) assert.ok(b.height >= 44, `${name}: finger-sized (${b.height}px)`);
+  await fits("T3 Code");
   // T3 Code's MCP button is switched off: it shows its reason on a press, by mouse or tap, and by keyboard, and connects nothing.
   const before = await sockets();
   await pressOff(page.locator("#mcpBtn"));
@@ -682,7 +693,7 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Codex…");
   const tokenA = await lastToken();
   let w = await view();
-  assert.equal(w.mcp.shown && w.mcp.off === false && w.mcp.label === "Connect with MCP", true, `${name}: Codex waiting on the message: Connect with MCP is still there`);
+  assert.equal(w.mcp.shown && w.mcp.off === false && w.mcp.label === "Connect with MCP recommended", true, `${name}: Codex waiting on the message: Connect with MCP is still there`);
   await page.evaluate(() => { __relay.revoked = false; });
   const w1 = await sockets();
   await press(page.locator("#mcpBtn"));
@@ -696,7 +707,7 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   // A new pick while it waits gives that wait up too: nothing is left connected or locked.
   await page.evaluate(() => { __relay.revoked = false; });
   await press(chip("claude"));
-  await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP");
+  await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP recommended");
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: a new pick while waiting revokes the token`);
   assert.deepEqual(await pressed(), ["Claude Code"], `${name}: and the pick is the new one`);
   assert.equal((await view()).mcp.state, null, `${name}: nothing is waiting any more`);
@@ -762,7 +773,7 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
     // Disconnect: the token is revoked, both ways are back, and the agents are free again with their own notes.
     await page.evaluate(() => { __relay.revoked = false; });
     await press(page.locator("#mcpBtn"));
-    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP");
+    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connect with MCP recommended");
     assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: ${agent.name}: Disconnect revokes the token`);
     v = await view();
     assert.equal(v.paste.shown && v.mcp.shown, true, `${name}: ${agent.name}: both ways are back`);
@@ -793,7 +804,7 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
 
   // Back to the start, and nothing was stored.
   await pick("claude");
-  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", false), `${name}: back to the start`);
+  assert.deepEqual(await view(), idle(AGENT_WAYS.claude, "Copies a message. Paste it into Claude Code.", true), `${name}: back to the start`);
   const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
   assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: nothing was stored`);
   await reset();
@@ -906,7 +917,7 @@ export async function run({ browser, playwright, base, out }) {
     assert.deepEqual(requests, [`${base}/`, ...Array(7).fill(`${base}/api/agent-token`)], `${name}: besides the page, only this site's token was asked for (once per connection)`);
     assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation while connecting`);
     ok(`${name}: step 2 (copy the connect message, waiting, connected, Test with its seconds, Disconnect), by ${options.hasTouch ? "tap" : "mouse"} and keyboard`);
-    ok(`${name}: step 2 ways (each agent's note by ${options.hasTouch ? "tap" : "mouse"} and keyboard, the slower label, Connect with MCP for Claude Code and Codex, none for T3 Code, the agents locked while connected)`);
+    ok(`${name}: step 2 ways (each agent's note by ${options.hasTouch ? "tap" : "mouse"} and keyboard, the slower label on the message way and the recommended label on Connect with MCP for Claude Code and Codex, none for T3 Code, the agents locked while connected)`);
 
     // The Private chip is a real control (a button), so a screen reader and the keyboard reach it as one.
     assert.equal(await page.locator(".private").evaluate((el) => el.tagName), "BUTTON", `${name}: the chip is a button`);
@@ -1081,7 +1092,7 @@ export async function run({ browser, playwright, base, out }) {
     // the MCP button when another agent with that way is picked.
     await page.locator("#mcpBtn").click();
     await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "No connection · try again");
-    assert.equal(await page.locator("#connectBtn").innerText(), "Copy connect message", "no token: the message button is not marked");
+    assert.equal((await page.locator("#connectBtn").innerText()).replace(/\s+/g, " "), "Copy connect message slower", "no token: the message button is not marked");
     await page.locator('#agentSeg [data-v="codex"]').click();
     assert.equal(await page.locator("#mcpBtn").innerText(), "No connection · try again", "no token: still said on the MCP button for Codex");
     await page.locator('#agentSeg [data-v="claude"]').click();
@@ -1095,7 +1106,7 @@ export async function run({ browser, playwright, base, out }) {
       return { focused: document.activeElement === b, start: b.selectionStart, end: b.selectionEnd, length: b.value.length, value: b.value, tip: document.getElementById("connectBtn").dataset.tip, protocols: __relay.sockets[0].protocols };
     });
     assert.ok(box.focused && box.start === 0 && box.end === box.length, "no clipboard: the message shows, focused and selected");
-    assert.ok(box.value.includes(`TOKEN='${box.protocols[1].slice(2)}'; URL='${base}'`) && box.value.includes("while out=$(curl"), "it holds this page's token, address and loop");
+    assert.ok(box.value.includes(`T='${box.protocols[1].slice(2)}'; U='${base}/mcp'`) && box.value.includes("while o=$(curl"), "it holds this page's token, address and loop");
     assert.equal(box.tip, "Copy the message below, then paste it into Claude Code.", "the tooltip says so");
     const shot = join(out, "page-desktop-light-agent-no-clipboard.png");
     const r = await page.locator("#sAgent").boundingBox();

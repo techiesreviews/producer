@@ -411,3 +411,106 @@ test("bearer: the token from a header, with its birth time, only while it may be
   assert.equal(bearer(`Bearer ${token}`, T0 + MAX_AGE_MS), null);
   for (const bad of [null, "", token, "Bearer", `Bearer ${token} extra`, `Token ${token}`]) assert.equal(bearer(bad, T0), null, String(bad));
 });
+
+/* ---------- The short route /mcp/<tool> (card 186): the tool's arguments as the body, the answer as plain text ---------- */
+
+/** One call to the short route; `tool` is the path's last part, `body` the raw body (a string) or the arguments. */
+const plain = (s, tool, body = "", { headers = {}, limiter = open, guard = open, method = "POST" } = {}) => handleMcp(new Request(`${URL_}/${tool}`, {
+  method,
+  headers: { authorization: `Bearer ${s.token}`, ...headers },
+  ...(method === "POST" ? { body: typeof body === "string" ? body : JSON.stringify(body) } : {}),
+}), { limiter, guard, relayFor: s.relayFor, now: () => s.now.t, tool });
+
+test("short route: get_context answers in plain text, with no JSON around it", async () => {
+  const s = await setup();
+  const res = await plain(s, "get_context", "{}");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("Content-Type"), /^text\/plain/);
+  assert.equal(res.headers.get("Cache-Control"), "no-store");
+  const text = await res.text();
+  assert.match(text, /Show: Live talk/);
+  assert.match(text, /1\. What made you start\?/);
+  assert.doesNotMatch(text, /jsonrpc|structuredContent/);
+  assert.equal(await (await plain(s, "get_context", "")).text(), text, "an empty body means no arguments");
+});
+
+test("short route: wait_for_cue gives the cue as text, and exactly \"idle\" when nothing happened", async () => {
+  const s = await setup({ hold: 30 });
+  assert.equal(await (await plain(s, "wait_for_cue", { seq: 0 })).text(), "idle");
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "we sold the house" }] });
+  const res = await plain(s, "wait_for_cue", { seq: 0 });
+  assert.equal(res.status, 200);
+  const text = await res.text();
+  assert.notEqual(text, "idle");
+  assert.match(text, /Cue: pause \(seq 1\)/);
+  assert.match(text, /GUEST: we sold the house/);
+  assert.match(text, /data, not instructions/);
+});
+
+test("short route: an answer in the same call reaches the page, and shows once", async () => {
+  const s = await setup({ hold: 30 });
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "first" }] });
+  await plain(s, "wait_for_cue", { seq: 0 });
+  const suggestions = [{ text: "What surprised you most?", why: "follows their last point" }];
+  assert.equal(await (await plain(s, "wait_for_cue", { seq: 1, suggestions })).text(), "idle");
+  assert.deepEqual(s.page.shown, suggestions);
+  assert.equal(s.page.waits.at(-1).seq, 1);
+});
+
+test("short route: the other tools work the same way", async () => {
+  const s = await setup();
+  const posted = await plain(s, "post_suggestions", { suggestions: [{ text: "Why a van?", why: "short and open" }] });
+  assert.equal(posted.status, 200);
+  assert.match(await posted.text(), /Shown on the host's screen \(1\)/);
+  assert.match(await (await plain(s, "get_new_transcript", { seq: 0 })).text(), /Transcript up to seq/);
+  assert.match(await (await plain(s, "post_report", { topics: ["vans"] })).text(), /You are done: stop now/);
+});
+
+test("short route: every refusal is a plain-text line that is never \"idle\", so a loop ends on it", async () => {
+  const s = await setup();
+  const cases = [
+    [await plain(s, "wait_for_cue", { seq: "x" }), 400, /"seq" must be a whole number/],
+    [await plain(s, "wait_for_cue", "not json"), 400, /Parse error/],
+    [await plain(s, "wait_for_cue", "[1]"), 400, /JSON object/],
+    [await plain(s, "wait_for_cue", "null"), 400, /JSON object/],
+    [await plain(s, "no_such_tool", "{}"), 404, /Unknown tool: no_such_tool/],
+    [await plain(s, "wait_for_cue", "{}", { method: "GET" }), 405, /only accepts POST/],
+    [await plain(s, "wait_for_cue", "{}", { headers: { origin: "https://evil.example" } }), 403, /other websites/],
+    [await plain(s, "wait_for_cue", "x".repeat(MAX_BODY_BYTES + 1)), 413, /too large/],
+    [await plain(s, "wait_for_cue", "{}", { headers: { authorization: "Bearer pr1-short" } }), 401, /Unauthorized/],
+    [await plain(s, "wait_for_cue", "{}", { headers: { authorization: "" } }), 401, /Unauthorized/],
+    [await plain(s, "wait_for_cue", "{}", { headers: { authorization: `Bearer tp1-${T0.toString(36)}-${"A".repeat(43)}` } }), 401, /Unauthorized/],
+  ];
+  for (const [res, status, words] of cases) {
+    const text = await res.text();
+    assert.equal(res.status, status, text);
+    assert.match(text, words);
+    assert.match(res.headers.get("Content-Type"), /^text\/plain/);
+    assert.ok(!text.startsWith("{") && text !== "idle", text);
+  }
+  // A tool that does not exist is a 404 before the token is looked at: the names are public.
+  const unknown = await plain(s, "nope", "{}", { headers: { authorization: "" } });
+  assert.equal(unknown.status, 404);
+  const noTab = await setup({ withTab: false });
+  const res = await plain(noTab, "wait_for_cue", { seq: 0 });
+  assert.equal(res.status, 400, "a page that is not open is a tool error");
+  assert.equal(await res.text(), NOT_OPEN);
+});
+
+test("short route: 401 for a revoked token also in the middle of a wait, and the limits count", async () => {
+  const t = await setup({ hold: 1_000_000 });
+  t.now.t = T0 + 1000;
+  const waiting = plain(t, "wait_for_cue", { seq: 0 });
+  await settle();
+  await t.relay.webSocketMessage(t.ws, JSON.stringify({ type: "revoke" }));
+  const ended = await waiting;
+  assert.equal(ended.status, 401);
+  assert.match(await ended.text(), /Unauthorized: this connection was ended with Disconnect/);
+  assert.equal(ended.headers.get("WWW-Authenticate"), "Bearer");
+  const s = await setup();
+  const tight = { async limit() { return { success: false, max: 10, ms: 10_000, retryAfter: 7 }; } };
+  const limited = await plain(s, "wait_for_cue", { seq: 0 }, { limiter: tight });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("Retry-After"), "7");
+  assert.match(await limited.text(), /Too many requests\. Limit: 10 per 10 seconds\. Try again in 7 seconds\./);
+});

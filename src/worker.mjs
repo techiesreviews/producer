@@ -1,6 +1,6 @@
 // Cloudflare Worker: serves the one static page from ./dist (the ASSETS binding) and answers /mcp and /api/*.
-// Only /mcp uses the MCP_LIMITER Durable Object; only /mcp and /api/relay reach a RELAY object. It logs nothing,
-// keeps nothing and reads no request body except /mcp's own capped one: the page itself accepts GET and HEAD only.
+// Only the MCP routes (/mcp and /mcp/<tool>) use the MCP_LIMITER Durable Object; only they and /api/relay reach a RELAY object. It logs nothing,
+// keeps nothing and reads no request body except the MCP routes' own capped one: the page itself accepts GET and HEAD only.
 import { durableLimiter } from "./limiter.mjs";
 import { handleMcp, memoryLimiter } from "./mcp.mjs";
 import { PROTOCOL } from "./relay.mjs";
@@ -41,7 +41,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
-    if (pathname === "/mcp" || pathname === "/mcp/") {
+    // /mcp is the MCP server; /mcp/<tool> is its short route for an agent that runs curl (card 186).
+    if (pathname === "/mcp" || pathname.startsWith("/mcp/")) {
+      const tool = pathname === "/mcp" || pathname === "/mcp/" ? undefined : pathname.slice("/mcp/".length);
       const stubs = new Map();
       const relayFor = (token) => ({
         async op(message) {
@@ -49,7 +51,7 @@ export default {
           return stubs.get(token).op(message);
         },
       });
-      return handleMcp(request, { limiter: env.MCP_LIMITER && durableLimiter(env.MCP_LIMITER), relayFor });
+      return handleMcp(request, { limiter: env.MCP_LIMITER && durableLimiter(env.MCP_LIMITER), relayFor, tool });
     }
     if (pathname === "/api/agent-token") {
       // A new agent token with the Worker's own time inside (see token.mjs). It touches no relay object.

@@ -3,7 +3,8 @@
 // proves the page's own share. A stand-in agent answers each cue after a set delay, through the real Worker over
 // HTTP and the relay object, in real time (no fake clock): from the pause to the answer kept on the page, minus the
 // agent's own delay, must stay under 0.3 s on each of 10 cues. Both ways are run: one tool call per turn (Connect with
-// MCP) and the ready-made curl loop from the connect message, run in bash for real (Copy connect message).
+// MCP) and the ready-made curl loop from the connect message, run in bash for real against the short route
+// /mcp/<tool> (Copy connect message, card 186).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -23,6 +24,8 @@ const PAGE_BUDGET_MS = 300;
 const AGENT_FAST = { middle: 2.5, slowest: 5.9 };
 const PAUSE_S = 1.5; // the speech worker's pause: silence after the last word before a cue can go
 
+/** One JSON-RPC tools/call body: what an MCP client sends to /mcp. */
+const rpcBody = (name, args = {}) => JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const middle = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
 
@@ -96,7 +99,7 @@ test("one tool call per turn (Connect with MCP): the page adds under 0.3 s to ea
   let stop = false;
   // The stand-in agent: calls the tools directly, answers each cue after AGENT_DELAY_MS inside its next wait.
   const call = async (name, args) => {
-    const res = await fetch(`${s.url}/mcp`, { method: "POST", headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: agentBody(name, args) });
+    const res = await fetch(`${s.url}/mcp`, { method: "POST", headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: rpcBody(name, args) });
     return (await res.json()).result.structuredContent;
   };
   const loop = (async () => {
@@ -131,24 +134,25 @@ test("the curl loop from the connect message, run in bash (Copy connect message)
   let rounds = 0;
   let stop = false;
   let child = null;
-  const runLoop = (body) => new Promise((resolve) => {
-    child = spawn("bash", ["-c", AGENT_LOOP], { env: { PATH: process.env.PATH, TOKEN: s.token, URL: s.url, BODY: body } });
+  const runLoop = (tool, args) => new Promise((resolve) => {
+    child = spawn("bash", ["-c", AGENT_LOOP], { env: { PATH: process.env.PATH, T: s.token, U: `${s.url}/mcp`, P: tool, B: agentBody(args) } });
     let out = "";
     child.stdout.on("data", (d) => { out += d; });
     child.on("close", () => resolve(out));
   });
   const loop = (async () => {
-    await runLoop(agentBody("get_context"));
-    let body = agentBody("wait_for_cue", { seq: 0 });
+    await runLoop("get_context", {});
+    let args = { seq: 0 };
     while (!stop) {
       rounds += 1;
-      const out = await runLoop(body);
+      const out = await runLoop("wait_for_cue", args);
       if (stop) break;
       const got = performance.now();
-      const cue = JSON.parse(out).result.structuredContent;
+      const seq = Number(out.match(/^Cue: \w+ \(seq (\d+)\)/)?.[1]);
+      assert.ok(seq > 0, `a cue, not "${out.slice(0, 80)}"`);
       await sleep(AGENT_DELAY_MS);
       thinking.push(performance.now() - got);
-      body = agentBody("wait_for_cue", { seq: cue.seq, suggestions: [{ text: `Question for cue ${cue.seq}?` }] });
+      args = { seq, suggestions: [{ text: `Question for cue ${seq}?` }] };
     }
   })();
   try {

@@ -7,6 +7,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 - The page asks the Worker for a private token (`POST /api/agent-token`). It looks like `pr1-<time>-<random>` and works for eight hours.
 - The page keeps a WebSocket open to `/api/relay` (the token travels as a subprotocol, never in the address).
 - The host's agent talks to `/mcp` with `Authorization: Bearer <token>`. Every request needs the token. A Prompter token never works here.
+- An agent that runs curl can use the short route `/mcp/<tool>` instead (card 186, below): same token, same limits, same relay, but the body is only the tool's arguments and the answer is plain text.
 - The agent can never be pushed to. It sits inside one tool, `wait_for_cue`, and the page answers when something happens (or says "idle" after about 25 seconds).
 - The Worker only passes calls on. The page keeps the transcript, the questions and the run order, and answers each call with only what is new.
 
@@ -42,17 +43,29 @@ A suggestion is `{ question }` (a prepared question number), `{ text }` (a short
 - The Worker waits at most 30 seconds for the page (after a page takes a call, the relay never holds it past 35 seconds; before that, a call that finds no page waits up to 5 seconds for one). A page that is too slow, or a newer `wait_for_cue` that replaces an older one, ends as an ordinary idle answer with the agent's own `seq`.
 - The page answers the call by id in `{ type: "result", id, result }` or `{ type: "result", id, error }`. A page error reaches the agent as a short tool error.
 
+## The short route `/mcp/<tool>` (card 186)
+
+TOOLS-170 found that Claude Code retyped the whole long curl command after every cue and that the copied message took 7 s from the end of the speech (Connect with MCP: 4 s). The short route keeps that command small. It helps a little; most of the gain measured in card 186 came from the answers pointing to prepared questions by number (see [the cues](cues.md)).
+
+- `POST /mcp/<tool>` with `<tool>` one of the five tools above. The body is the tool's arguments as a JSON object (`{"seq":3,"suggestions":[...]}`), or nothing when the tool takes none. No `Content-Type`, no `Accept` and no JSON-RPC wrapper are needed.
+- The answer is plain text (`text/plain`): the same words the MCP tool would hand the agent (a cue with `HOST:` and `GUEST:` labels, the show, "Shown on the host's screen (1)"). A wait with nothing new is exactly `idle`.
+- Everything else is the same as `/mcp`: the token check (a Prompter token never works), the per-client limits, one `tools/call` per request, the 200 KB body cap, the refusal of other websites' pages, and a 401 mid-wait after Disconnect. Refusals are one plain line with a status: 400 (bad body or a tool error such as "the page is not open"), 401, 403, 404 (a tool that does not exist, answered before the token is looked at: the names are public), 405 (only POST), 413, 429.
+- Nothing is stored or logged and the body is read only by the same capped reader.
+- Connect with MCP does not use it: Claude Code and Codex speak MCP to `/mcp` directly.
+
 ## The ready-made loop (no sleep, no helper file)
 
-An agent whose tool allows a long foreground command can run one curl loop that repeats on idle and ends on the first real answer or any error. Idle answers contain `"idle":true`; no other answer does (a cue says `"idle":false`, and quotes inside text are escaped). Errors (no page open, 401, 429) end the loop at once, so it never spins against the limit. `test/loop.test.mjs` runs this loop for real against the Worker:
+An agent whose tool allows a long foreground command can run one curl loop that repeats on idle and ends on the first real answer or any error. It compares the whole answer with the word `idle`, so a cue that happens to mention idle is never mistaken for one. Errors (no page open, 401, 429) are plain lines, so they end the loop at once and it never spins against the limit. `test/loop.test.mjs` runs this loop for real against the Worker:
 
 ```
-while out=$(curl -sS -m 40 -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$BODY" "$URL/mcp"); do case $out in *'"idle":true'*) ;; *) printf '%s' "$out"; break;; esac; done
+while o=$(curl -sS -m 40 -H "Authorization: Bearer $T" -d "$B" "$U/$P") && [ "$o" = idle ]; do :; done; printf %s "$o"
 ```
+
+`T` is the token, `U` is this site's address with `/mcp`, `P` the tool and `B` its arguments.
 
 ## The connect message and the page (card 08)
 
-- Copy connect message (`src/agent-message.mjs`) copies one message: a three-line block (token and address, `BODY`, the loop above) and seven rules. The agent runs the block in the foreground with a 10-minute limit and changes only `BODY`: first `get_context`, then `wait_for_cue`, and each answer goes in the next wait. No sleep, no helper file, no settings change: TOOLS-154 found that an agent told "no helper files" still wrote a loop script when the command was not given whole, and that a sleep loop is blocked by some hooks. The address is the page's own, so the same message works on the preview.
+- Copy connect message (`src/agent-message.mjs`) copies one message: a two-line block (`T`, `U`, `P` and `B`, then the loop above) and seven rules. The agent runs the block in the foreground with a 10-minute limit and changes only `P` and `B`: first `get_context`, then `wait_for_cue`, and each answer goes in the next wait. What it types again after every cue is about 240 characters with the token, plus its answer (about 450 before card 186). The example answer points to a prepared question by its number, the shortest answer to type; the rules say to prefer it. No sleep, no helper file, no settings change: TOOLS-154 found that an agent told "no helper files" still wrote a loop script when the command was not given whole, and that a sleep loop is blocked by some hooks. The address is the page's own, so the same message works on the preview.
 - The page (`src/agent-link.mjs`) holds each wait for 25 seconds, then answers idle; the loop asks again at once. The button reads Waiting for Claude Code until the first call, then Claude Code connected while calls keep coming; after a minute with no call and no wait held it waits again. An answer is shown once (the same `seq` with the same suggestions changes nothing).
 - Test is the warm-up (TOOLS-154: the first answer after pasting took 7 to 25 s): it hands one made-up host and guest exchange to the waiting agent and shows the seconds until the answer arrives, with the answer in its tooltip. 90 seconds without an answer reads "no answer".
 - Disconnect revokes the token, so the agent's next call (and the wait in progress) gets 401. A reload forgets the token (nothing is stored): the host copies a new message.
@@ -60,7 +73,7 @@ while out=$(curl -sS -m 40 -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 
 ## The other ways (card 09)
 
-The same relay serves Connect with MCP (Claude Code, Codex) and the message for Codex and T3 Code; see [the ways](agent-ways.md). The page's token, Test and Disconnect work the same for every way.
+The same relay serves Connect with MCP (Claude Code, Codex) and the message for Claude Code, Codex and T3 Code; see [the ways](agent-ways.md). The page's token, Test and Disconnect work the same for every way.
 
 ## Not verified yet
 
