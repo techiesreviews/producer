@@ -58,7 +58,7 @@ async function checkSetup(page, name, { phone, touch, chip, tabOff, service = tr
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 3 Show, questions & plan Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 3 Show, questions & plan i Let my agent load it Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);

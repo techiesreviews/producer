@@ -57,10 +57,10 @@ test("notifications get 202 with no body; ping answers", async () => {
   assert.deepEqual((await s.rpc("ping")).body.result, {});
 });
 
-test("tools/list: the five tools, each with a schema; the readers are marked read-only", async () => {
+test("tools/list: the six tools, each with a schema; the readers are marked read-only", async () => {
   const s = await setup();
   const { result } = (await s.rpc("tools/list")).body;
-  assert.deepEqual(result.tools.map((t) => t.name), ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report"]);
+  assert.deepEqual(result.tools.map((t) => t.name), ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report", "load_show"]);
   assert.deepEqual(result.tools, TOOLS);
   for (const t of result.tools) assert.equal(t.inputSchema.type, "object", t.name);
   for (const name of ["get_context", "get_new_transcript"]) assert.equal(result.tools.find((t) => t.name === name).annotations.readOnlyHint, true);
@@ -513,4 +513,127 @@ test("short route: 401 for a revoked token also in the middle of a wait, and the
   assert.equal(limited.status, 429);
   assert.equal(limited.headers.get("Retry-After"), "7");
   assert.match(await limited.text(), /Too many requests\. Limit: 10 per 10 seconds\. Try again in 7 seconds\./);
+});
+
+/* ---------- load_show (card 14): the agent loads the show into the page ---------- */
+
+const SHOW = {
+  show: "Sample Show",
+  guest: "Sample Guest",
+  questions: ["How did it start?", "What went wrong first?"],
+  parts: [{ name: "Intro", minutes: 5 }, { name: "Main talk", minutes: 30 }],
+  notes: "Ask about the early days.",
+};
+
+test("load_show: a good plan reaches the page cleaned, and the agent is told what is on the screen", async () => {
+  const s = await setup();
+  const r = await s.call("load_show", { ...SHOW, show: "  Sample   Show ", parts: [{ name: " Intro\n", minutes: 5 }, SHOW.parts[1]] });
+  assert.equal(r.isError, undefined);
+  assert.deepEqual(s.page.loaded, SHOW, "the page gets the cleaned plan: only the five fields");
+  assert.deepEqual(r.structuredContent, { ok: true, questions: 2, parts: 2 });
+  assert.match(r.content[0].text, /Loaded on the host's screen: 2 questions, 2 parts\./);
+  assert.match(r.content[0].text, /host can still change/i);
+  assert.match(r.content[0].text, /Guest consent, the microphone and tab sharing stay the host's own clicks/);
+  assert.match(r.content[0].text, /wait_for_cue/);
+  assert.deepEqual(s.page.calls.map((c) => c.tool), ["load_show"]);
+});
+
+test("load_show: the schema has the five fields and nothing for consent, the microphone or the tab", async () => {
+  const s = await setup();
+  const tool = (await s.rpc("tools/list")).body.result.tools.find((t) => t.name === "load_show");
+  assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ["guest", "notes", "parts", "questions", "show"]);
+  assert.deepEqual(tool.inputSchema.required, ["parts"]);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+  assert.equal(tool.annotations.readOnlyHint, false);
+  assert.match(tool.description, /host's own clicks|never/i);
+  assert.match(tool.description, /get_context/);
+});
+
+test("load_show: a too big or broken plan is refused with a plain reason, and the page is never asked", async () => {
+  const s = await setup();
+  const refuse = async (args, words) => {
+    const r = await s.call("load_show", args);
+    assert.equal(r.isError, true, JSON.stringify(args).slice(0, 60));
+    assert.match(r.content[0].text, words);
+    return r;
+  };
+  await refuse({}, /"parts" is needed/);
+  await refuse({ ...SHOW, parts: [{ name: "Intro", minutes: "five" }] }, /whole minutes/);
+  await refuse({ ...SHOW, questions: Array.from({ length: 101 }, () => "Why?") }, /Too many questions\. Limit: 100/);
+  await refuse({ ...SHOW, notes: "n".repeat(MAX_BODY_BYTES - 1000) }, /"notes" is too long|too big/);
+  assert.deepEqual(s.page.calls, [], "nothing reached the page");
+});
+
+test("load_show: a plan over 200 KB is refused as too big, whole, on both routes", async () => {
+  const s = await setup();
+  // Under the request limit but over the plan limit is not possible (both are 200 KB): the request limit refuses first.
+  const huge = JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "load_show", arguments: { ...SHOW, notes: "n".repeat(MAX_BODY_BYTES) } } });
+  const res = await s.post(huge);
+  assert.equal(res.status, 413);
+  assert.match((await res.json()).error.message, /too large\. Limit: 200 KB/);
+  const short = await plain(s, "load_show", JSON.stringify({ ...SHOW, notes: "n".repeat(MAX_BODY_BYTES) }));
+  assert.equal(short.status, 413);
+  assert.deepEqual(s.page.calls, []);
+});
+
+test("load_show cannot set consent, the microphone or the tab: such a field is refused and never reaches the page", async () => {
+  const s = await setup();
+  for (const field of ["guestAgreed", "consent", "microphone", "shareTab"]) {
+    const r = await s.call("load_show", { ...SHOW, [field]: true });
+    assert.equal(r.isError, true, field);
+    assert.match(r.content[0].text, new RegExp(`Unknown field "${field}"`));
+    assert.match(r.content[0].text, /host's own clicks/);
+  }
+  assert.deepEqual(s.page.calls, []);
+});
+
+test("load_show: the page's own refusal reaches the agent as a plain line; a page that is not open says so", async () => {
+  const s = await setup();
+  s.page.loadError = "The show has started, so the plan stays as it is.";
+  const r = await s.call("load_show", SHOW);
+  assert.equal(r.isError, true);
+  assert.equal(r.content[0].text, "The show has started, so the plan stays as it is.");
+  const none = await setup({ withTab: false });
+  const gone = await none.call("load_show", SHOW);
+  assert.equal(gone.isError, true);
+  assert.equal(gone.content[0].text, NOT_OPEN);
+});
+
+test("load_show: nothing of the show is stored or logged by the Worker", async () => {
+  const s = await setup();
+  await s.call("load_show", { ...SHOW, guest: "Sample Guest", notes: SECRET });
+  assert.ok(!JSON.stringify([...s.ctx.storage.data.values()]).includes(SECRET));
+  assert.ok(!JSON.stringify([...s.ctx.storage.data.values()]).includes("Sample Guest"));
+});
+
+test("load_show on the short route: the show as the body, the answer as a line of text", async () => {
+  const s = await setup();
+  const ok = await plain(s, "load_show", SHOW);
+  assert.equal(ok.status, 200);
+  assert.match(await ok.text(), /^Loaded on the host's screen: 2 questions, 2 parts\./);
+  assert.deepEqual(s.page.loaded, SHOW);
+  const bad = await plain(s, "load_show", { ...SHOW, parts: [] });
+  assert.equal(bad.status, 400);
+  assert.match(await bad.text(), /"parts" is needed/);
+});
+
+test("the cue the Load button sends tells the agent to call load_show and how to go on", async () => {
+  const s = await setup();
+  s.page.cue({ cue: "load_show", transcript: [] });
+  const cue = await s.call("wait_for_cue", { seq: 0 });
+  assert.equal(cue.structuredContent.cue, "load_show");
+  const text = cue.content[0].text;
+  assert.match(text, /Cue: load_show \(seq 1\)/);
+  assert.match(text, /host pressed Let my agent load it/);
+  assert.match(text, /call load_show/);
+  assert.match(text, /outline|notes/i);
+  assert.match(text, /then call wait_for_cue with seq 1/);
+  assert.doesNotMatch(text, /with seq 1 and your suggestions/, "a load cue takes no suggestions");
+});
+
+test("the server's instructions and the tool list name load_show", async () => {
+  const s = await setup();
+  const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
+  assert.match(body.result.instructions, /load_show/);
+  assert.match(body.result.instructions, /never.*(consent|guest agreed)|host's own clicks/i);
 });

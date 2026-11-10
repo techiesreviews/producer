@@ -5,7 +5,9 @@
 // warm-up: one sample cue, timed until the agent's answer comes back.
 // This is the agent's own part of the page: the cue rules (src/cues.mjs) hand it a cue with send(), it gives the agent
 // the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()). asking() says whether
-// the newest show cue still waits for the agent's turn (the question card's thinking light).
+// the newest show cue still waits for the agent's turn (the question card's thinking light). The agent's load_show
+// call goes to load() (card 14): the page checks and takes the show, the link only passes it on and answers. The load
+// cue (the host pressed Let my agent load it) goes alone and is not a question on the card.
 // Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
 // The inlined page script keeps this file's code as it is (the build only drops `export`).
@@ -31,9 +33,10 @@ const UNCONFIRMED_CHARS = 20_000;
 
 /**
  * show() gives what get_context hands the agent: { showTitle?, guestName?, questions: [{ n, text }],
- * segments: [{ title, plannedMinutes, live? }] }, or nothing before a plan is loaded.
+ * segments: [{ title, plannedMinutes, live? }], notes? }, or nothing before a plan is loaded. load(args) takes what the
+ * agent's load_show sent and gives { result } or { error } (a plain line) for the agent.
  */
-export function createAgentLink({ net, onChange = () => {}, show = () => null, now = () => Date.now(), timers = globalThis }) {
+export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
@@ -83,10 +86,11 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
   }
 
   // What is new after the agent's seq in one cue: the lines joined, the newest reason, position and guest name. The
-  // Test's made-up talk never joins the show's: a Test cue goes alone, and show cues go up to the next Test cue.
+  // Test's made-up talk never joins the show's: a Test cue goes alone, and show cues go up to the next Test cue. A load
+  // cue goes alone too: a later cue's words must not hide the host's request.
   function deliver(id, after) {
     const fresh = cues.filter((c) => c.seq > after);
-    const end = fresh.findIndex((c) => c.test !== fresh[0].test);
+    const end = fresh.findIndex((c) => c.kind !== fresh[0].kind);
     const group = end < 0 ? fresh : fresh.slice(0, end);
     const last = group.at(-1);
     if (!last) return reply(id, { result: { idle: true, seq: after } });
@@ -100,15 +104,18 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
 
   function queue(item, test = false) {
     seq += 1;
-    cues.push({ ...item, seq, test });
+    const kind = test ? "test" : item.cue === "load_show" ? "load" /* LOAD_CUE of src/agent-load.mjs: an inlined file imports nothing */ : "show";
+    // A second press while the first request still waits is the same request.
+    if (kind === "load") cues = cues.filter((c) => c.kind !== "load");
+    cues.push({ ...item, seq, test, kind });
     let chars = cues.reduce((n, c) => n + c.transcript.reduce((m, l) => m + l.text.length, 0), 0);
     // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it.
     for (let i = 0; chars > UNCONFIRMED_CHARS && i < cues.length - 1;) {
       if (cues[i].test) { i += 1; continue; }
       chars -= cues.splice(i, 1)[0].transcript.reduce((m, l) => m + l.text.length, 0);
     }
-    sent.set(seq, { cue: item.cue, sentAt: now(), test });
-    if (!test) askedSeq = seq;
+    sent.set(seq, { cue: item.cue, sentAt: now(), test, kind });
+    if (kind === "show") askedSeq = seq;
     if (sent.size > SENT_KEPT) sent.delete(sent.keys().next().value);
     if (held) {
       const { id, after } = held;
@@ -124,12 +131,12 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     if (answered.has(key)) return suggestions.length;
     answered.add(key);
     const of = sent.get(after);
-    // The Test's answer stays on the Test button; an older answer never replaces a newer one.
-    if (of && !of.test && after > (latest?.seq ?? 0)) {
+    // The Test's answer stays on the Test button; an older answer never replaces a newer one; the load cue takes none.
+    if (of?.kind === "show" && after > (latest?.seq ?? 0)) {
       latest = { seq: after, cue: of.cue, suggestions, ms: now() - of.sentAt };
       suggested(latest);
     }
-    if (of && !of.test) settle(after);
+    if (of?.kind === "show") settle(after);
     // The Test is done by the answer to its cue, or, while it still runs, by any later answer.
     if (cue && link.test.state !== "ok" && (after === cue.seq || (link.test.state === "busy" && after > cue.seq))) {
       timers.clearTimeout(testTimer);
@@ -165,6 +172,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, n
     if (tool === "post_suggestions") return reply(id, { result: { shown: take(handed, a.suggestions) } });
     // The seq to wait from: just before the oldest cue the agent has not confirmed, so none is skipped.
     if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } });
+    if (tool === "load_show") return reply(id, load(a));
     if (tool === "get_new_transcript") {
       // The show's own lines only: the Test's made-up talk never joins them.
       const after = Number(a.seq) || 0;

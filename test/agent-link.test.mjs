@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeTimers, pageSockets, relayWith, settle } from "./fakes.mjs";
 import { checkToken, newToken } from "../src/token.mjs";
+import { LOAD_CUE } from "../src/agent-load.mjs";
 import { AGENT_HOLD_MS, AGENT_QUIET_MS, AGENT_SAMPLE, AGENT_TEST_MS, createAgentLink } from "../src/agent-link.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
@@ -16,7 +17,7 @@ const SITE = "https://producer.test";
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show, load } = {}) {
   const now = { t: Date.now() };
   const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
@@ -28,6 +29,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show } = {}) {
     net: { token: tokenReply ?? (tokensOnPageClock ? () => Promise.resolve(Response.json(newToken(now.t))) : () => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": ip } }), env)), socket: net.socket },
     onChange: (v) => seen.push(v),
     show,
+    load,
     now: () => now.t,
     timers,
   });
@@ -535,5 +537,50 @@ test("the catch-up read never mixes the Test's talk in, and get_context's seq sk
   const ctx = (await call("get_context")).body.result.structuredContent;
   assert.equal(ctx.seq, 0, "wait from before the oldest cue not yet confirmed");
   assert.equal((await call("wait_for_cue", { seq: ctx.seq })).body.result.structuredContent.seq, 1);
+  link.disconnect();
+});
+
+test("load_show: the page's own check and load run on what the agent sent, and the answer goes back to the agent", async () => {
+  const got = [];
+  const { link, call, connect } = setup({ load: (args) => { got.push(args); return args.parts?.length ? { result: { loaded: true, questions: 1, parts: args.parts.length } } : { error: "Add the run order." }; } });
+  await connect();
+  const plan = { show: "Sample Show", questions: ["Why?"], parts: [{ name: "Intro", minutes: 5 }] };
+  const ok = await call("load_show", plan);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(got, [{ show: "Sample Show", guest: "", questions: ["Why?"], parts: plan.parts, notes: "" }], "what the Worker cleaned and passed on");
+  assert.deepEqual(ok.body.result.structuredContent, { ok: true, questions: 1, parts: 1 });
+  assert.equal(link.view().state, "on", "a load counts as the agent's own call");
+  assert.equal(link.view().test.state, "idle", "and is not a Test");
+  link.disconnect();
+});
+
+test("load_show on a page that cannot load: a plain refusal, never a crash", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  const r = await call("load_show", { parts: [{ name: "Intro", minutes: 5 }] });
+  assert.equal(r.body.result.isError, true);
+  assert.match(r.body.result.content[0].text, /cannot load/i);
+  link.disconnect();
+});
+
+test("the load cue goes alone, is not a question for the agent to answer, and never takes suggestions as an answer", async () => {
+  const { link, call, connect, flush } = setup();
+  link.onSuggestions(() => assert.fail("a load cue has no suggestions"));
+  await connect();
+  await call("get_context");
+  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 1
+  assert.equal(link.asking(), false, "loading is not a question on the card");
+  link.send(CUE); // seq 2
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.cue, first.seq, first.transcript], ["load_show", 1, []], "alone: the pause cue's words do not hide it");
+  const second = (await call("wait_for_cue", { seq: 1, suggestions: [{ text: "Not an answer to the load" }] })).body.result.structuredContent;
+  assert.deepEqual([second.cue, second.seq], ["pause", 2], "the next wait gets the pause cue");
+  assert.equal(link.suggestion(), null, "an answer to the load cue is not a suggestion");
+  // A second press while the first still waits replaces it.
+  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 3
+  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 4
+  const again = (await call("wait_for_cue", { seq: 2 })).body.result.structuredContent;
+  assert.deepEqual([again.cue, again.seq], ["load_show", 4]);
+  await flush();
   link.disconnect();
 });
