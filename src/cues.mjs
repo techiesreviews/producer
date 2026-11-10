@@ -24,14 +24,16 @@ export const speakerOf = (source) => (source === "guest" ? "guest" : "host");
 
 /**
  * createCues({ send, context, now, ...rules }): context() gives { position?, guestName? } at the moment a cue goes.
- * heard(line) takes each final line ({ source, text, start, end }, seconds); talking(source) a draft (someone is
- * speaking); pause(source) is the speech worker's pause (of that source; of all when none is named) and sends a cue
- * when the rules allow it (true when one went); suggestNow() gives { ok: true }, { ok: false, waitMs } or
- * { ok: false, noAgent: true }; slowDown(on) switches Slow down; view() gives { slow, cues, suggestInMs }.
+ * heard(line) takes each final line ({ source, text, start, end, at? }: seconds, and the show time "m:ss" it was heard
+ * at, which rides along); talking(source) a draft (someone is speaking); pause(source) is the speech worker's pause (of
+ * that source; of all when none is named) and sends a cue when the rules allow it (true when one went); suggestNow()
+ * gives { ok: true }, { ok: false, waitMs } or { ok: false, noAgent: true }; end() sends the end_report cue at once,
+ * whatever the spacing (true when the agent took it); slowDown(on) switches Slow down; view() gives { slow, cues,
+ * suggestInMs }.
  */
 export function createCues({ send, context = () => ({}), now = () => Date.now(), ...options }) {
   const o = { ...CUE_RULES, ...options };
-  let lines = []; // { speaker, text } heard since the last cue that went
+  let lines = []; // { speaker, text, at? } heard since the last cue that went
   let chars = 0;
   let speechMs = 0;
   let last = -Infinity; // when the last cue went
@@ -57,11 +59,11 @@ export function createCues({ send, context = () => ({}), now = () => Date.now(),
   }
 
   return {
-    heard({ source, text, start, end }) {
+    heard({ source, text, start, end, at }) {
       const said = typeof text === "string" ? text.trim() : "";
       if (!said) return;
       talking.set(speakerOf(source), now());
-      lines.push({ speaker: speakerOf(source), text: said });
+      lines.push({ speaker: speakerOf(source), text: said, ...(typeof at === "string" && at ? { at } : {}) });
       chars += said.length;
       // The oldest lines go first once the held text is past the cap.
       while (chars > o.maxChars && lines.length > 1) chars -= lines.shift().text.length;
@@ -81,6 +83,7 @@ export function createCues({ send, context = () => ({}), now = () => Date.now(),
       if (waitMs > 0) return { ok: false, waitMs };
       return fire("suggest_now") ? { ok: true } : { ok: false, noAgent: true };
     },
+    end: () => fire("end_report"),
     slowDown(on) {
       slow = Boolean(on);
     },

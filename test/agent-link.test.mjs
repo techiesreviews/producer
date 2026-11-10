@@ -17,7 +17,7 @@ const SITE = "https://producer.test";
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false, show, load } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show, load, report } = {}) {
   const now = { t: Date.now() };
   const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
@@ -30,6 +30,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show, load } = {}) {
     onChange: (v) => seen.push(v),
     show,
     load,
+    report,
     now: () => now.t,
     timers,
   });
@@ -600,4 +601,19 @@ test("the load cue is the host's request: the 20,000-character cap lets it stay 
 
 test("the cue name the page sends is the one the Worker and the link know", () => {
   assert.equal(LOAD_CUE, "load_show", "src/agent-link.mjs spells it out: an inlined file imports nothing");
+});
+
+test("post_report: the page's own report() takes what the agent sent, and its answer goes back to the agent", async () => {
+  const got = [];
+  const { link, call, connect } = setup({ report: (args) => { got.push(args); return args.topics.length ? { result: { shown: true } } : { error: "There is no show to report on yet." }; } });
+  await connect();
+  const report = { topics: ["Vans"], asked: [1], clips: [{ at: "7:42", note: "The van story" }] };
+  const ok = await call("post_report", report);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(got, [report], "what the Worker checked and passed on");
+  assert.deepEqual(ok.body.result.structuredContent, { ok: true });
+  const refused = await call("post_report", { topics: [] });
+  assert.equal(refused.body.result.isError, true);
+  assert.match(refused.body.result.content[0].text, /no show to report on yet/);
+  link.disconnect();
 });

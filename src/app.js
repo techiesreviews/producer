@@ -1,5 +1,5 @@
 // The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
-// src/questions.mjs,
+// src/questions.mjs, src/report.mjs,
 // src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
@@ -138,9 +138,10 @@ const agent = createAgentLink({
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: (view) => { renderAgent(view); renderLoad(); renderCard(); },
+  onChange: (view) => { renderAgent(view); renderLoad(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
+  report: reportFromAgent,
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();
@@ -803,8 +804,11 @@ const heard = { lines: [], drafts: {}, pauses: {} };
  * labelled with the source it was heard on ("host" or "guest"; the browser's service hears the host's microphone only). */
 function hear(data) {
   if (data.final) {
-    heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end });
-    cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end });
+    // The show time it was heard at (once the clock runs): for the end report's transcript and the agent's clip moments.
+    const view = show.run?.view(Date.now());
+    const at = view?.started ? clockText(view.clock) : "";
+    heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end, at });
+    cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end, at });
     if (heard.drafts[data.source]?.piece === data.piece) delete heard.drafts[data.source];
   } else {
     heard.drafts[data.source] = { piece: data.piece, text: data.text };
@@ -1023,5 +1027,180 @@ stopBtn.addEventListener("click", async () => {
     // No microphone, nothing is listened to: a tab picked meanwhile is let go again.
     // Only this press's own tab: a later press may be waiting for the same picker.
     sharing?.then(() => { if (press === listenPress && !state.listening) { tabOff(); tabWanted = true; } });
+  }
+});
+
+// ---- End & report (card 12, src/report.mjs): listening stops, the run order is frozen where it is, the agent is asked
+// for its report (the end_report cue) and the report screen shows at once with what the page knows itself. The agent's
+// topics and clip moments join when its post_report comes; with no agent, or after REPORT_WAIT_MS, they are switched
+// off with the reason. Copy and Save report give the same Markdown the screen shows. The report lives in this page's
+// memory only; the one copy that outlives the tab is the file the host saves. ----
+const endBtn = $("endBtn");
+const copyBtn = $("copyBtn");
+const saveBtn = $("saveBtn");
+const SAVE_TIP = saveBtn.dataset.tip;
+/** at: when the show ended (null before); run: the run order's view then; agent: { phase, name, reason?, report? };
+ * asked: the end cue reached the agent; md: the report as last shown. */
+const ending = { at: null, run: null, agent: { phase: "off", name: "", reason: "" }, asked: false, timer: 0, md: "", copyTimer: 0 };
+
+endBtn.addEventListener("click", () => {
+  if (ending.at) return;
+  const now = Date.now();
+  ending.at = new Date(now);
+  ending.run = show.run ? show.run.view(now) : null;
+  clearInterval(ticker);
+  ticker = null;
+  tabWanted = false;
+  micOff();
+  tabOff();
+  const name = AGENT_WAYS[agentKey()].name;
+  const link = agent.view().state;
+  ending.asked = cues.end();
+  if (ending.asked) {
+    ending.agent = { phase: "waiting", name };
+    ending.timer = setTimeout(() => agentGone(`No report came back from ${name} in ${REPORT_WAIT_MS / 60_000} minutes.`), REPORT_WAIT_MS);
+  } else {
+    ending.agent = { phase: "off", name, reason: link === "elsewhere" ? "Your agent is connected in another tab." : "No agent was connected when the show ended." };
+  }
+  tooltip.hide();
+  $("setup").hidden = true;
+  $("live").hidden = true;
+  $("topLive").hidden = true;
+  $("report").hidden = false;
+  renderReport();
+  $("reportTitle").focus();
+});
+
+/** The agent's parts switch off with the reason, unless its report is already in. */
+function agentGone(reason) {
+  if (ending.agent.phase !== "waiting") return;
+  clearTimeout(ending.timer);
+  ending.agent = { phase: "off", name: ending.agent.name, reason };
+  renderReport();
+}
+
+/** The agent went (Disconnect, or another tab took it) while the report screen waits for it. A quiet loop waits on. */
+function renderEnding(link) {
+  if (link === "off") agentGone(`${ending.agent.name} disconnected before its report came.`);
+  else if (link === "elsewhere") agentGone("Your agent moved to another tab before its report came.");
+}
+
+/** The agent's post_report: checked again here (the Worker checked it first), taken only after End & report asked for it. */
+function reportFromAgent(args) {
+  if (!ending.asked) return { error: "There is no show to report on yet." };
+  const read = readReport(args);
+  if (!read.ok) return { error: read.reason };
+  clearTimeout(ending.timer);
+  ending.agent = { phase: "in", name: ending.agent.name, report: read.report };
+  renderReport();
+  return { result: { shown: true } };
+}
+
+const reportRow = (...cells) => {
+  const li = document.createElement("li");
+  li.append(...cells);
+  return li;
+};
+const userText = (className, text) => Object.assign(make("span", className, text), { dir: "auto" });
+const oneRow = (text) => Object.assign(reportRow(make("span", "rows__x", text)), { className: "rows__one" });
+
+/** An agent's part: its rows, or one row that says it waits (a breathing dot) or why it is switched off (the round "i"). */
+function agentRows(part, rows, empty) {
+  if (part.state === "in") return rows.length ? rows : [oneRow(empty)];
+  const row = reportRow(part.state === "waiting" ? dot("think") : offMark(), make("span", "rows__x", part.reason));
+  row.className = "rows__state";
+  return [row];
+}
+
+function renderReport() {
+  const model = buildReport({ plan: show.plan, run: ending.run, marks: questions.marked(), agent: ending.agent, heard: heard.lines, date: ending.at });
+  const md = reportMarkdown(model);
+  if (md === ending.md) return;
+  // A saved or copied file no longer holds what the screen shows: the buttons go back to offering it again.
+  if (ending.md) { resetSave(); resetCopy(); }
+  ending.md = md;
+
+  $("reportChip").textContent = model.chip;
+  $("reportStats").replaceChildren(...model.stats.map((stat) => {
+    const words = make("span", "", stat.label);
+    if (stat.note) {
+      const note = make("span", "", stat.note);
+      setTone(note, stat.tone);
+      words.append(" · ", note);
+    }
+    return Object.assign(reportRow(make("b", "num", stat.value), words), { className: "stat" });
+  }));
+  $("clipList").replaceChildren(...agentRows(model.clips, model.clips.rows.map((c) => reportRow(userText("rows__t", c.at), userText("rows__x", c.text))), REPORT_EMPTY.clips));
+  $("realList").replaceChildren(...(model.runs.length ? model.runs.map((r) => {
+    // A time against the plan in the mono figures; "not reached" and "not run" in plain words.
+    const real = make("span", /\d/.test(r.real) ? "rows__r num" : "rows__r rows__r--words", r.real);
+    setTone(real, r.tone);
+    return reportRow(make("span", "rows__t num", r.planned), userText("rows__x", r.name), real);
+  }) : [oneRow(REPORT_EMPTY.runs)]));
+  $("topicList").replaceChildren(...agentRows(model.topics, model.topics.rows.map((t) => Object.assign(reportRow(userText("rows__x", t)), { className: "rows__one" })), REPORT_EMPTY.topics));
+  $("notAskedList").replaceChildren(...(model.notAsked.length ? model.notAsked.map((q) => reportRow(make("span", "rows__t", q.n), userText("rows__x", q.text), make("span", "chip", q.why))) : [oneRow(model.noQuestions ? REPORT_EMPTY.noQuestions : REPORT_EMPTY.notAsked)]));
+  $("heardCount").textContent = `${model.heard.length} ${model.heard.length === 1 ? "line" : "lines"}`;
+  $("heardList").replaceChildren(...(model.heard.length ? model.heard.map((l) => {
+    const words = userText("rows__x", "");
+    words.append(make("span", "rows__who", l.who), `: ${l.text}`);
+    const row = reportRow(make("span", "rows__t num", l.at), words);
+    if (!l.at) row.className = "rows__one";
+    return row;
+  }) : [oneRow(REPORT_EMPTY.heard)]));
+}
+
+function resetCopy() {
+  clearTimeout(ending.copyTimer);
+  label(copyBtn, null, null, "Copy");
+}
+copyBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(ending.md);
+    label(copyBtn, "ok", null, "Copied ✓");
+    clearTimeout(ending.copyTimer);
+    ending.copyTimer = setTimeout(resetCopy, 1600);
+  } catch {
+    label(copyBtn, "error", "The browser blocked the clipboard. Save report holds the same text.", "Copy failed");
+  }
+});
+
+function resetSave() {
+  label(saveBtn, null, SAVE_TIP, "Save report");
+  saveBtn.className = "tb tb--big tb--primary";
+}
+function saved(file) {
+  label(saveBtn, "ok", "Saved on your computer. Nothing is kept anywhere else.", `Saved ✓ · ${file}`);
+  saveBtn.className = "tb tb--big";
+}
+/** The browser's own download: the file goes where the browser puts downloads (or asks, if the host set it to). */
+function download(file, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+  Object.assign(document.createElement("a"), { href: url, download: file }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+// Save report: where the browser lets the host pick the place and name (Chrome, Edge), it asks; elsewhere the file is
+// a download. Either way it holds exactly what the screen shows at the press.
+saveBtn.addEventListener("click", async () => {
+  if (saveBtn.dataset.state === "busy") return;
+  const file = reportFileName(ending.at);
+  const text = ending.md;
+  if (typeof window.showSaveFilePicker !== "function") { download(file, text); saved(file); return; }
+  let handle;
+  try {
+    handle = await window.showSaveFilePicker({ suggestedName: file, types: [{ description: "Markdown", accept: { "text/markdown": [".md"] } }] });
+  } catch (error) {
+    if (error?.name === "AbortError") return; // the host closed the picker: nothing saved, nothing to say
+    download(file, text); // a browser that refuses the picker here still downloads
+    saved(file);
+    return;
+  }
+  label(saveBtn, "busy", null, dot("think"), "Saving…");
+  try {
+    const out = await handle.createWritable();
+    await out.write(text);
+    await out.close();
+    saved(handle.name);
+  } catch {
+    label(saveBtn, "error", "The file could not be written. Press again to pick another place.", "Not saved · try again");
   }
 });

@@ -159,3 +159,19 @@ test("the turn count", () => {
   assert.equal(turnsText(1), "1 turn");
   assert.equal(turnsText(14), "14 turns");
 });
+
+test("marked(): the host's own presses for the end report: prepared questions asked and skipped by number, new questions asked", () => {
+  const q = createQuestions();
+  assert.deepEqual(q.marked(), { asked: [], skipped: [], newAsked: 0 });
+  q.setPlan(PLAN);
+  q.swap(1); // Q3 on the card
+  q.asked(); // Q3; Q2 moves up
+  q.skip(); // Q2; Q1 moves up
+  q.suggest({ seq: 1, suggestions: [{ text: "Why a van?" }, { text: "Who drove?" }] });
+  q.asked(); // a new one
+  q.skip(); // a new one, skipped: not counted
+  q.asked(); // Q1
+  assert.deepEqual(q.marked(), { asked: [1, 3], skipped: [2], newAsked: 1 });
+  q.setPlan(PLAN.slice(0, 2));
+  assert.deepEqual(q.marked(), { asked: [1], skipped: [2], newAsked: 1 }, "only the questions of the plan as it is now");
+});

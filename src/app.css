@@ -197,6 +197,52 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
   .runs:not([data-open], [data-finished]) .run:not([data-s="now"], [data-s="next"]) { display: none; }
 }
 
+/* End & report in the top bar: the full words on a wide window, "End" on a narrow one (the full words stay for a
+   screen reader). */
+#endBtn .short { display: none; }
+
+/* The end report (the mock-up's screen 4): four numbers, then the clip moments, the run order plan against real,
+   the topics and the questions not asked in two columns (one on a narrow window), what was heard (folded), and Copy
+   and Save report. The agent's parts show their state in their own list: waiting, or switched off with the reason. */
+.report {
+  display: grid; justify-items: center; align-content: start;
+  padding: 1.25rem max(1rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+.report__col { inline-size: min(820px, 100%); display: grid; gap: 0.9rem; }
+.report h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.report h1:focus:not(:focus-visible) { outline: none; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.6rem; padding: 0; list-style: none; }
+.stat { padding: 0.75rem 0.9rem; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--surface); }
+.stat b { display: block; font: 650 1.35rem/1.2 var(--mono); }
+.stat > span { color: var(--muted); font-size: 0.8rem; }
+.rep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; align-items: start; }
+.rows { padding: 0; list-style: none; }
+.rows > li { display: grid; grid-template-columns: 4rem 1fr auto; align-items: baseline; gap: 0.6rem; padding: 0.5rem 0.85rem; border-block-end: 1px solid var(--line); }
+.rows > li:last-child { border-block-end: 0; }
+.rows__t { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); }
+.rows__x { overflow-wrap: anywhere; }
+.rows__r { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); text-align: end; white-space: nowrap; }
+.rows__r--words { font-family: inherit; }
+.rows > li.rows__one { grid-template-columns: 1fr; }
+.rows > li.rows__state { grid-template-columns: auto 1fr; align-items: center; color: var(--muted); }
+.rows__who { font-weight: 600; }
+.stat [data-tone="late"], .rows__r[data-tone="late"] { color: var(--accent-ink); }
+.stat [data-tone="early"], .rows__r[data-tone="early"] { color: var(--agent-ink); }
+.heard > summary { cursor: pointer; list-style: none; -webkit-tap-highlight-color: transparent; }
+.heard > summary::-webkit-details-marker { display: none; }
+.heard:not([open]) > summary { border-block-end: 0; }
+@media (hover: hover) and (pointer: fine) { .heard > summary:hover { background: var(--hover); } }
+.heard__chev { color: var(--muted); transition: rotate 150ms var(--ease-out); }
+.heard[open] .heard__chev { rotate: 90deg; }
+@media (prefers-reduced-motion: reduce) { .heard__chev { transition: none; } }
+.report__act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+/* "Saved ✓ · producer-report-2026-11-09.md" may wrap on a phone rather than push the page sideways. */
+#saveBtn { white-space: normal; text-align: center; }
+@media (max-width: 720px) {
+  .rep-grid { grid-template-columns: 1fr; }
+  .report { padding-inline: max(0.6rem, env(safe-area-inset-left)) max(0.6rem, env(safe-area-inset-right)); }
+}
+
 /* A row of choices, one pressed (filled) at a time. */
 .seg { display: inline-flex; flex-wrap: wrap; padding: 2px; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
 .seg button {
@@ -242,7 +288,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* On a narrow window the bar keeps the name and the icon; the words move to the tooltip. */
 @media (max-width: 680px) {
   .brand small { display: none; }
-  .chip .long, .listen .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
+  .chip .long, .listen .long, #endBtn .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
+  #endBtn .short { display: inline; }
   .top { padding-inline: max(0.6rem, env(safe-area-inset-left)) max(0.6rem, env(safe-area-inset-right)); }
 }
 
