@@ -1,7 +1,7 @@
 // Browser checks for `kit specs load`: step 3's "Let my agent load it" (card 14, TOOLS-174), in Chromium through the real
 // Worker. Desktop 1366x900 and phone 390x844, light and dark. The microphone, the studio tab and the relay are stand-ins
 // (as in the other suites); the relay stand-in plays the agent (window.__relay.call(tool, args)). Time is Playwright's
-// clock, so the 90 seconds the agent has to answer pass at once.
+// clock, so the 3 minutes the agent has to answer pass at once.
 // Checks: the button is switched off with its reason until an agent is connected, then ready; a press sends the load cue
 // to the agent's wait and the button says it is loading; the agent's load_show puts the show in the plan box, the top bar
 // and the run order and the button reads "Loaded by Claude Code · 4 questions · 2 parts" with the show in its tooltip;
@@ -9,7 +9,7 @@
 // goes back; a broken or too big plan and every extra field (guest consent, the microphone, the tab) is refused with a
 // plain reason while the page stays as it was; "Guest agreed" is never ticked and no microphone or tab sharing starts;
 // a plan the host typed is not overwritten unless the host pressed the button; a fixed plan (the show has started) is
-// not changed; with no answer in 90 seconds the button says so and can be pressed again; nothing is stored.
+// not changed; with no answer in 3 minutes the button says so and can be pressed again; nothing is stored.
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
@@ -174,6 +174,15 @@ export async function run({ browser, base, out }) {
     await guestUntouched("after the refusals");
     ok(`${name}: broken, too big and extra fields (consent, microphone, tab) are refused with a plain reason; nothing moves`);
 
+    // The biggest allowed plan: the longest label the button can get must still fit the screen.
+    const most = { show: "s".repeat(200), guest: "g".repeat(80), questions: Array.from({ length: 100 }, (_, i) => `Question ${i + 1}?`), parts: Array.from({ length: 50 }, (_, i) => ({ name: `Part ${i + 1}`, minutes: 1 })) };
+    assert.deepEqual((await page.evaluate((m) => window.__relay.call("load_show", m), most)).result, { loaded: true, questions: 100, parts: 50 }, `${name}: the biggest allowed plan loads`);
+    assert.equal(await text("#loadBtn"), "Loaded by Claude Code · 100 questions · 50 parts", `${name}: the longest label`);
+    const fits = await page.evaluate(() => { const b = document.querySelector("#loadBtn").getBoundingClientRect(); const c = document.querySelector("#sPlan").getBoundingClientRect(); return { sideways: document.documentElement.scrollWidth > window.innerWidth, inside: b.right <= c.right + 0.5 && b.left >= c.left - 0.5 }; });
+    assert.deepEqual(fits, { sideways: false, inside: true }, `${name}: the longest label fits the screen and the step`);
+    await shot("longest");
+    ok(`${name}: the biggest allowed plan loads and its label fits the screen`);
+
     // The host can still edit: the button goes back; a plan the host typed is theirs.
     await page.locator("#planBtn").click();
     await page.locator("#planIn").fill(HOST_PLAN);
@@ -190,30 +199,66 @@ export async function run({ browser, base, out }) {
     assert.equal((await button()).text, "Loaded by Claude Code · 4 questions · 2 parts", `${name}: loaded again`);
     ok(`${name}: the host can edit (the button goes back); the agent loads over a typed plan only after the host's press`);
 
+    // A refused first try does not use up the host's go-ahead: the agent's next try over their typed plan still loads.
+    await page.locator("#planIn").fill(HOST_PLAN);
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000 }); });
+    await press(load);
+    assert.equal(await page.evaluate(async () => (await window.__wait).result.cue), "load_show", `${name}: pressed again`);
+    assert.match(await refused({ ...SHOW, parts: [{ name: "Intro", minutes: 0 }] }), /whole minutes/, `${name}: a first try with a bad part is refused`);
+    assert.deepEqual([(await button()).text, (await button()).state], ["Not loaded · try again", "error"], `${name}: the button says so`);
+    assert.match((await button()).tip, /^Claude Code could not load the show: .*whole minutes/, `${name}: with the reason in its tooltip`);
+    assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the corrected plan loads over the typed one: the host had pressed`);
+    assert.equal((await button()).state, "ok", `${name}: loaded`);
+    ok(`${name}: a refused first try keeps the host's go-ahead; the corrected plan loads`);
+
+    // The agent goes quiet while it works on the outline (it may ask the host in the chat): the request stays shown, and a
+    // show that comes late still lands.
+    await page.locator("#planIn").fill(HOST_PLAN);
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 3, holdMs: 25000 }); });
+    await press(load);
+    assert.equal(await page.evaluate(async () => (await window.__wait).result.cue), "load_show", `${name}: pressed once more`);
+    await page.clock.fastForward(61_000);
+    assert.equal(await text("#connectBtn"), "Waiting for Claude Code…", `${name}: the page now sees the agent's loop as quiet`);
+    assert.deepEqual([(await button()).text, (await button()).state, (await button()).off], ["Agent is loading…", "busy", null], `${name}: the request stays shown while the agent is busy`);
+    assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the late show lands`);
+    assert.equal((await button()).text, "Loaded by Claude Code · 4 questions · 2 parts", `${name}: loaded after a quiet spell`);
+    ok(`${name}: a quiet agent leaves the request shown, and a late show still lands`);
+
+    // The agent's notes go with its show: a small edit keeps them, another show takes them away.
+    await page.locator("#planIn").fill(SHOW_TEXT.replace("Who paid first?", "Who paid first now?"));
+    assert.equal((await page.evaluate(() => window.__relay.call("get_context"))).result.notes, "Ask about the early days.", `${name}: a small edit keeps the notes`);
+    await page.locator("#planIn").fill(HOST_PLAN);
+    assert.equal("notes" in (await page.evaluate(() => window.__relay.call("get_context"))).result, false, `${name}: another show in the box takes the notes away`);
+    ok(`${name}: the notes stay through a small edit and go with another show`);
+
     // A fixed plan (the show has started) is not changed.
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 4, holdMs: 25000 }); });
+    await press(load);
+    await page.evaluate(() => window.__wait);
+    assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the show is loaded again before it is fixed`);
     await page.evaluate(() => { document.querySelector("#planIn").readOnly = true; });
     assert.match(await refused({ ...SHOW, show: "Another" }), /The show has started, so the plan stays as it is\./, `${name}: a started show's plan is not changed`);
     assert.equal(await page.locator("#planIn").inputValue(), SHOW_TEXT, `${name}: and stays as it was`);
     await page.evaluate(() => { document.querySelector("#planIn").readOnly = false; });
     ok(`${name}: a fixed plan is not changed`);
 
-    // No answer in 90 seconds: the button says so and can be pressed again. (The agent keeps calling, so it stays connected.)
+    // No answer in 3 minutes: the button says so and can be pressed again. (The agent keeps calling, so it stays connected.)
     await page.locator("#planIn").fill(HOST_PLAN);
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000 }); });
     await press(load);
     assert.equal((await button()).state, "busy", `${name}: asking again`);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 8; i++) {
       await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 25000 }); }, 3 + i);
       await page.clock.fastForward(23_000);
     }
-    assert.deepEqual(await button(), { text: "Not loaded · try again", state: "error", off: null, tip: "No show came back from Claude Code in 90 seconds. Check Claude Code, then press again." }, `${name}: with no answer the button says so`);
+    assert.deepEqual(await button(), { text: "Not loaded · try again", state: "error", off: null, tip: "No show came back from Claude Code in 3 minutes. Check Claude Code, then press again." }, `${name}: with no answer the button says so`);
     const failedContrast = await paintedContrast(load);
     assert.ok(failedContrast >= 4.5, `${name}: the failed state reads at ${failedContrast.toFixed(2)}:1`);
     await shot("failed");
-    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 7, holdMs: 25000 }); });
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 11, holdMs: 25000 }); });
     await press(load);
     assert.equal((await button()).state, "busy", `${name}: a press tries again`);
-    ok(`${name}: no answer in 90 seconds: "Not loaded · try again" with its reason, a press tries again`);
+    ok(`${name}: no answer in 3 minutes: "Not loaded · try again" with its reason, a press tries again`);
 
     // Nothing is stored, nothing but the page and its token was asked for, and the layout holds.
     assert.deepEqual(await page.evaluate(() => [localStorage.length, sessionStorage.length]), [0, 0], `${name}: nothing is stored in the browser`);

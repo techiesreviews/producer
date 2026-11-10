@@ -143,6 +143,9 @@ test("the button: asking, loaded (as in the mock-up), and failed", () => {
   assert.equal(asking.state, "busy");
   assert.equal(asking.text, "Agent is loading…");
   assert.equal(asking.primary, false, "orange is for the button ready to press");
+  // A quiet link is an agent busy with the host's outline: the request stays shown. A gone agent ends it.
+  assert.equal(loadButton({ agent: "waiting", load: { phase: "asking", name: "Claude Code" } }).text, "Agent is loading…");
+  for (const agent of ["off", "elsewhere"]) assert.notEqual(loadButton({ agent, load: { phase: "asking", name: "Claude Code" } }).off, "", agent);
   const plan = readLoad({ ...GOOD, questions: Array.from({ length: 12 }, (_, i) => `Question ${i + 1}?`), parts: Array.from({ length: 5 }, (_, i) => ({ name: `Part ${i + 1}`, minutes: 5 })) }).plan;
   const loaded = loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan } });
   assert.equal(loaded.state, "ok");

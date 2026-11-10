@@ -8,8 +8,8 @@
 
 /** The cue that asks the agent to call load_show (the host pressed the button). */
 export const LOAD_CUE = "load_show";
-/** The agent has this long to answer the button; then the button says so. */
-export const LOAD_WAIT_MS = 90_000;
+/** The agent has this long to answer the button (it may ask the host in the chat first); then the button says so. A show that comes later still lands. */
+export const LOAD_WAIT_MS = 180_000;
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */
 export const LOAD_MAX_BYTES = 200 * 1024;
 export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000 };
@@ -27,6 +27,7 @@ const loadLine = (v) => v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g
 export function readLoad(args) {
   const no = (reason) => ({ ok: false, reason });
   if (!args || typeof args !== "object" || Array.isArray(args)) return no("Send the show as an object with show, guest, questions, parts and notes.");
+  // The Worker's own 200 KB request limit refuses first, so here this guards the page; a plan this big never gets past the Worker.
   if (new TextEncoder().encode(JSON.stringify(args)).length > LOAD_MAX_BYTES) return no(`The plan is too big. Limit: ${LOAD_MAX_BYTES / 1024} KB.`);
   const extra = Object.keys(args).find((k) => !LOAD_FIELDS.includes(k));
   if (extra !== undefined) return no(`Unknown field "${extra.slice(0, 40)}". This tool loads the show only: show, guest, questions, parts and notes. Guest consent, the microphone and tab sharing are the host's own clicks.`);
@@ -99,8 +100,9 @@ export function loadButton({ agent, load, locked = false }) {
     return { state: "ok", text: `Loaded by ${load.name} · ${counts.join(" · ")}`, tip, off: "", primary: false };
   }
   if (locked) return { state: null, text: label, tip: "", off: "The show has started, so the plan stays as it is.", primary: true };
+  // A request on its way stays shown while the link is only quiet (the agent is busy with the host's outline), but not once the agent is gone.
+  if (load.phase === "asking" && (agent === "on" || agent === "waiting")) return { state: "busy", text: "Agent is loading…", tip: `Waiting for ${load.name} to send the show.`, off: "", primary: false };
   if (agent !== "on") return { state: null, text: label, tip: "", off: agent === "elsewhere" ? "Your agent is connected in another tab." : "Connect your agent first (step 2).", primary: true };
-  if (load.phase === "asking") return { state: "busy", text: "Agent is loading…", tip: `Waiting for ${load.name} to send the show.`, off: "", primary: false };
   if (load.phase === "failed") return { state: "error", text: "Not loaded · try again", tip: load.reason, off: "", primary: false };
   return { state: null, text: label, tip: `${load.name} sends the show name, guest, questions and run order. You can still change them.`, off: "", primary: true };
 }

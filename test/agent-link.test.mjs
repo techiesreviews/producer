@@ -584,3 +584,20 @@ test("the load cue goes alone, is not a question for the agent to answer, and ne
   await flush();
   link.disconnect();
 });
+
+test("the load cue is the host's request: the 20,000-character cap lets it stay while old show cues go", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 1
+  for (let i = 0; i < 5; i++) link.send({ cue: "pause", transcript: [{ speaker: "guest", text: `${i}${"x".repeat(5_999)}` }] });
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.cue, first.seq, first.transcript], [LOAD_CUE, 1, []], "the load request is still the first thing the agent gets");
+  const next = (await call("wait_for_cue", { seq: 1 })).body.result.structuredContent;
+  assert.deepEqual(next.transcript.map((l) => l.text[0]), ["2", "3", "4"], "the show cues were trimmed as before");
+  link.disconnect();
+});
+
+test("the cue name the page sends is the one the Worker and the link know", () => {
+  assert.equal(LOAD_CUE, "load_show", "src/agent-link.mjs spells it out: an inlined file imports nothing");
+});
