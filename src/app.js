@@ -1,6 +1,6 @@
 // The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
 // src/questions.mjs, src/report.mjs,
-// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs and src/agent-link.mjs above this file.
+// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs, src/demo.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -214,7 +214,7 @@ const planBtn = $("planBtn");
 const planBox = $("planBox");
 const planIn = $("planIn");
 /** The plan as last read clearly (null before), and its run order with the show clock. */
-const show = { plan: null, run: null, parts: "", notes: "" };
+const show = { plan: null, run: null, parts: "", notes: "", notesFor: null };
 // The example's lines, a space apart in the text (a screen reader and a copy keep them apart; the layout ignores it).
 for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
 
@@ -244,7 +244,9 @@ planIn.addEventListener("input", () => {
   Object.assign(loadState, { byAgent: false, hostAsked: false });
   readPasted();
   // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
-  if (show.notes && (show.plan ? show.plan.show !== loadState.plan?.show || show.plan.guest !== loadState.plan?.guest : !planIn.value.trim())) show.notes = "";
+  if (show.notes && (show.plan ? show.plan.show !== show.notesFor?.show || show.plan.guest !== show.notesFor?.guest : !planIn.value.trim())) show.notes = "";
+  demoLoaded = false;
+  renderDemo();
 });
 planBtn.addEventListener("click", () => {
   const open = planBox.hidden;
@@ -252,6 +254,35 @@ planBtn.addEventListener("click", () => {
   planBtn.setAttribute("aria-expanded", String(open));
   if (open) planIn.focus();
 });
+
+// ---- Load demo show (src/demo.mjs): one click puts the built-in made-up show in the plan box, as the host's own text, with
+// its notes. The host can still edit it; the button says Demo loaded until they do. In this page's memory only. ----
+const demoBtn = $("demoBtn");
+/** The demo is in the box and has not been edited since. */
+let demoLoaded = false;
+
+function renderDemo() {
+  const said = demoButton({ loaded: demoLoaded, locked: planIn.readOnly });
+  label(demoBtn, said.state, said.off || said.tip, ...(said.off ? [offMark(), " "] : []), said.text);
+  switchOff(demoBtn, said.off);
+}
+
+demoBtn.addEventListener("click", () => {
+  if (demoBtn.getAttribute("aria-disabled") === "true" || planIn.readOnly) return;
+  planIn.value = planText(DEMO_SHOW);
+  // What the agent loaded is no longer what is in the box; the host's own go-ahead for the agent is used up.
+  // A request still on its way is given up too: the agent's answer would be refused, so nothing is left waiting.
+  if (loadState.phase !== "idle") { clearTimeout(loadState.timer); loadState.phase = "idle"; }
+  Object.assign(loadState, { byAgent: false, hostAsked: false });
+  readPasted();
+  show.notes = DEMO_SHOW.notes;
+  show.notesFor = DEMO_SHOW;
+  demoLoaded = true;
+  renderDemo();
+  renderLoad();
+  renderCard();
+});
+renderDemo();
 
 // ---- Let my agent load it (src/agent-load.mjs): the button asks the agent with a cue; the agent answers with its
 // load_show tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show
@@ -297,6 +328,9 @@ function loadFromAgent(args) {
   planIn.value = text;
   readPasted();
   show.notes = read.plan.notes;
+  show.notesFor = read.plan;
+  demoLoaded = false;
+  renderDemo();
   clearTimeout(loadState.timer);
   Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true, hostAsked: false });
   renderLoad();
@@ -401,6 +435,7 @@ function lockPlan(now) {
   planIn.readOnly = true;
   label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
   renderLoad();
+  renderDemo();
 }
 
 // ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
