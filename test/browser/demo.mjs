@@ -22,13 +22,14 @@ const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
 
 // The demo as the host's own plan text (what the plan box holds), and its words on the screen.
 const DEMO_TEXT = [
-  "Show: Demo show: A small app's first year", "Guest: Demo Guest", "3 min Intro", "8 min The first year", "4 min Wrap-up",
+  "Show: Demo – A small app's first year", "Guest: Demo Guest", "3 min Intro", "8 min The first year", "4 min Wrap-up",
   "1. What made you start building the app?", "2. What did the very first version do?", "3. Who was your first real user?", "4. What went wrong in the first month?",
   "5. How did you decide on the price?", "6. What did you try that nobody wanted?", "7. What would you do differently today?", "8. What is the next big step?",
 ].join("\n");
 const DEMO_NOTES = "Demo notes, made up for trying the screen: the guest is a placeholder. Ask about the early days, the price, and the one thing that went wrong.";
 const IDLE = { text: "Load demo show", state: null, off: null, tip: "Fills in a sample show to try the whole screen. Nothing is stored. You can still change it." };
 const LOADED = { text: "Demo loaded ✓", state: "ok", off: null, tip: "A sample show, not a real one. Change it in the box, or load your own." };
+const CONFIRM = { text: "Replace your plan? · press again", state: "error", off: null, tip: "The plan in the box is replaced by the demo. Press again to do it, or leave it as it is." };
 const REPORT = { topics: ["Why the app got built"], asked: [], clips: [{ at: "0:12", note: "The very first version" }] };
 
 // Stand-ins: the microphone and the studio tab (quiet tones), the speech worker (ready at once), the relay
@@ -151,10 +152,10 @@ export async function run({ browser, base, out }) {
 
     // One click: the demo is in the box, the plan button, the top bar and step 3; it asks nobody and stores nothing.
     await press(demo);
-    assert.deepEqual(await button(), LOADED, `${name}: the button says Demo loaded with the counts`);
+    assert.deepEqual(await button(), LOADED, `${name}: the button says Demo loaded`);
     assert.equal(await page.locator("#planIn").inputValue(), DEMO_TEXT, `${name}: the demo is in the plan box, in the host's own format`);
     assert.equal(await text("#planBtn"), "8 questions · 3 parts ✓", `${name}: the plan button reads it back`);
-    assert.equal(await text("#showLine"), "· Demo show: A small app's first year · guest Demo Guest", `${name}: the top bar names the demo show and its placeholder guest`);
+    assert.equal(await text("#showLine"), "· Demo – A small app's first year · guest Demo Guest", `${name}: the top bar names the demo show and its placeholder guest`);
     assert.equal(await page.locator("#sPlan").getAttribute("data-done"), "", `${name}: step 3 is done`);
     assert.equal(await page.locator("#planIn").isEditable(), true, `${name}: the box can still be edited`);
     const contrast = await paintedContrast(demo);
@@ -173,7 +174,7 @@ export async function run({ browser, base, out }) {
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     const back = await context_();
-    assert.deepEqual([back.showTitle, back.guestName, back.questions.length, back.segments.map((s) => [s.title, s.plannedMinutes]), back.notes], ["Demo show: A small app's first year", "Demo Guest", 8, [["Intro", 3], ["The first year", 8], ["Wrap-up", 4]], DEMO_NOTES], `${name}: get_context gives the demo with its notes`);
+    assert.deepEqual([back.showTitle, back.guestName, back.questions.length, back.segments.map((s) => [s.title, s.plannedMinutes]), back.notes], ["Demo – A small app's first year", "Demo Guest", 8, [["Intro", 3], ["The first year", 8], ["Wrap-up", 4]], DEMO_NOTES], `${name}: get_context gives the demo with its notes`);
     ok(`${name}: get_context gives the demo back, notes included`);
 
     // The host can still edit: the button goes back, a small edit keeps the notes, another show takes them away, and the demo loads again.
@@ -181,10 +182,26 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(await button(), IDLE, `${name}: after the host's edit the button goes back`);
     assert.equal(await text("#planBtn"), "8 questions · 3 parts ✓", `${name}: the edited plan still reads`);
     assert.equal((await context_()).notes, DEMO_NOTES, `${name}: a small edit keeps the notes`);
-    await page.locator("#planIn").fill("Show: My Own\n5 Only part\n1. Typed by the host?");
+    const HOST = "Show: My Own\n5 Only part\n1. Typed by the host?";
+    await page.locator("#planIn").fill(HOST);
     assert.equal("notes" in (await context_()), false, `${name}: another show in the box takes the notes away`);
+    // A plan of the host's own is not replaced by one stray press: the button asks, on itself.
     await press(demo);
-    assert.deepEqual(await button(), LOADED, `${name}: the demo loads again`);
+    assert.deepEqual(await button(), CONFIRM, `${name}: over the host's plan the first press only asks, on the button`);
+    assert.equal(await page.locator("#planIn").inputValue(), HOST, `${name}: the host's plan is still there`);
+    assert.equal(await demo.getAttribute("data-state"), "error", `${name}: in the warning look`);
+    const askContrast = await paintedContrast(demo);
+    assert.ok(askContrast >= 4.5, `${name}: the question reads at ${askContrast.toFixed(2)}:1`);
+    await shot("confirm");
+    await page.clock.fastForward(6000);
+    assert.deepEqual(await button(), IDLE, `${name}: a few seconds without a press and the question goes away`);
+    assert.equal(await page.locator("#planIn").inputValue(), HOST, `${name}: the plan is still the host's`);
+    await press(demo);
+    await page.locator("#planIn").fill(HOST + "\n");
+    assert.deepEqual(await button(), IDLE, `${name}: an edit resets the question`);
+    await press(demo);
+    await press(demo);
+    assert.deepEqual(await button(), LOADED, `${name}: the second press loads the demo`);
     assert.equal(await page.locator("#planIn").inputValue(), DEMO_TEXT, `${name}: and the box holds the demo again`);
     assert.equal((await context_()).notes, DEMO_NOTES, `${name}: with its notes`);
     ok(`${name}: the host can edit (the button goes back; notes stay through a small edit, go with another show) and load the demo again`);
@@ -199,16 +216,29 @@ export async function run({ browser, base, out }) {
     await page.evaluate(() => window.__wait);
     assert.equal(await loadText(), "Agent is loading…", `${name}: the agent is asked`);
     await press(demo);
+    assert.deepEqual([await button(), await loadText()], [CONFIRM, "Agent is loading…"], `${name}: the first press only asks; the agent is still being waited for`);
+    await press(demo);
     assert.equal(await loadText(), "Let my agent load it", `${name}: loading the demo gives up the request, nothing is left waiting`);
     assert.deepEqual([await button(), (await context_()).notes], [LOADED, DEMO_NOTES], `${name}: the demo and its notes are in`);
-    assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).error?.length > 0, true, `${name}: a late answer to the given-up request is refused, the demo stays`);
+    assert.equal((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).error, "The host loaded the demo show instead. Nothing to do.", `${name}: a late answer to the given-up request is refused with that reason, the demo stays`);
+    assert.equal(await page.locator("#planIn").inputValue(), DEMO_TEXT, `${name}: the box still holds the demo`);
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000 }); });
     await press(load);
     await page.evaluate(() => window.__wait);
     assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).result, { loaded: true, questions: 1, parts: 1 }, `${name}: after a new press the agent's show loads over the demo`);
     assert.deepEqual([await button(), (await context_()).notes, (await loadText()).startsWith("Loaded by Claude Code")], [IDLE, "Ask about the early days.", true], `${name}: the demo button goes back and the agent's notes replace the demo's`);
     await press(demo);
+    assert.deepEqual(await button(), CONFIRM, `${name}: the agent's show is not replaced by one press either`);
+    await press(demo);
     assert.deepEqual([await button(), (await loadText()).startsWith("Loaded by"), (await context_()).notes], [LOADED, false, DEMO_NOTES], `${name}: the demo over the agent's show: its button goes back, the demo's notes return`);
+    // A failed try of the agent: loading the demo clears the failure.
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000 }); });
+    await press(load);
+    await page.evaluate(() => window.__wait);
+    await page.evaluate(() => window.__relay.call("load_show", { parts: [{ name: "Intro", minutes: 0 }] }));
+    assert.deepEqual([await loadText(), await load.getAttribute("data-state")], ["Not loaded · try again", "error"], `${name}: the agent's try failed`);
+    await press(demo);
+    assert.deepEqual([await loadText(), await load.getAttribute("data-state"), await load.getAttribute("data-tip")], ["Let my agent load it", null, "Claude Code sends the show name, guest, questions and run order. You can still change them."], `${name}: loading the demo clears the failure`);
     ok(`${name}: the agent's load and the demo replace each other, with their own notes; a request on its way is given up`);
 
     // A fixed plan (the show has started) is not replaced.
@@ -217,9 +247,14 @@ export async function run({ browser, base, out }) {
     await press(demo);
     assert.equal(await page.locator("#planIn").inputValue(), "Show: My Own\n5 Only part\n1. Typed by the host?", `${name}: a fixed plan stays as it is`);
     await page.evaluate(() => { document.querySelector("#planIn").readOnly = false; });
-    await press(demo);
-    assert.deepEqual(await button(), LOADED, `${name}: loaded again once the plan is free`);
-    ok(`${name}: a fixed plan is not replaced`);
+    // From the keyboard: Enter asks, Space replaces, and the focus stays on the button.
+    await demo.focus();
+    await page.keyboard.press("Enter");
+    assert.equal((await button()).text, CONFIRM.text, `${name}: Enter asks`);
+    await page.keyboard.press("Space");
+    assert.deepEqual(await button(), LOADED, `${name}: Space loads the demo`);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "demoBtn", `${name}: the focus stays on the button`);
+    ok(`${name}: a fixed plan is not replaced; the keyboard works the same`);
 
     // The producer screen: the demo's first question on the card, its run order; then the report.
     await press(page.locator("#guestSeg button").first());
@@ -257,7 +292,7 @@ export async function run({ browser, base, out }) {
     await page.clock.resume();
     const screen = await page.evaluate(SCREEN);
     assert.deepEqual(screen.stats.slice(0, 2), ["12:00 show time · +1:00 over", "1 / 8 list questions asked"], `${name}: the report's numbers come from the demo show`);
-    assert.equal(screen.title, "End report Demo show: A small app's first year · guest Demo Guest · 10 Nov 2026", `${name}: the report names the demo show and guest`);
+    assert.equal(screen.title, "End report Demo – A small app's first year · guest Demo Guest · 10 Nov 2026", `${name}: the report names the demo show and guest`);
     assert.deepEqual(screen.real, ["3:00 | Intro | 0:00", "8:00 | The first year | +1:00", "4:00 | Wrap-up | not reached"], `${name}: plan against real for the demo's three parts`);
     assert.deepEqual([screen.notAsked.length, screen.notAsked[0], screen.notAsked[1]], [7, "Q2 | What did the very first version do? | skipped", "Q3 | Who was your first real user? | no time"], `${name}: the demo's questions not asked`);
     assert.deepEqual((await page.evaluate((r) => window.__relay.call("post_report", r), REPORT)).result, { shown: true }, `${name}: the agent's report is taken`);

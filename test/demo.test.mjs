@@ -30,9 +30,11 @@ test("the demo says plainly that it is a demo and names nobody real", () => {
   assert.doesNotMatch(JSON.stringify(DEMO_SHOW), /@|https?:|www\.|\d{5,}/i);
 });
 
-test("the demo button: ready, loaded with the counts, off while the show clock runs", () => {
+test("the demo button: ready, asking before it replaces a plan, loaded, off while the show clock runs", () => {
   assert.deepEqual(demoButton({ loaded: false, locked: false }), { state: null, text: "Load demo show", tip: "Fills in a sample show to try the whole screen. Nothing is stored. You can still change it.", off: "" });
   assert.deepEqual(demoButton({ loaded: true, locked: false }), { state: "ok", text: "Demo loaded ✓", tip: "A sample show, not a real one. Change it in the box, or load your own.", off: "" });
+  assert.deepEqual(demoButton({ loaded: false, locked: false, confirm: true }), { state: "error", text: "Replace your plan? · press again", tip: "The plan in the box is replaced by the demo. Press again to do it, or leave it as it is.", off: "" });
+  assert.equal(demoButton({ loaded: false, locked: true, confirm: true }).text, "Load demo show", "a fixed plan is never asked about: the button is simply off");
   assert.equal(demoButton({ loaded: false, locked: true }).off, "The show has started, so the plan stays as it is.");
   assert.equal(demoButton({ loaded: true, locked: true }).state, "ok", "a loaded demo still says so once the show runs");
 });
