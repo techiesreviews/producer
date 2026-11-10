@@ -95,6 +95,14 @@ Each entry:
 - Spec: `test/browser/load.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-setup-11 Step 3 "Load demo show": a made-up show to try the whole screen
+- Try: In step 3 press Load demo show; look at the plan box, the plan button and the top bar; change a line in the box; press Load demo show again; then fill the other steps, open the producer screen, press Start, Asked, Skip and Next part, and press End & report.
+- Good: One click fills the plan box with a short made-up show ("Demo show: A small app's first year", the guest "Demo Guest", 8 questions, 3 parts of 3, 8 and 4 minutes, and notes the agent gets with get_context), in the host's own format. The button reads "Demo loaded ✓" in green; the plan button reads "8 questions · 3 parts ✓" and the top bar names the demo show and its guest, so it is marked as a demo. It needs no agent and sends and stores nothing. The host can still edit the box: the button then goes back to "Load demo show" (a small edit keeps the notes, another show takes them away). It is switched off with its reason once the show clock runs. The Next question card, the run order and the end report fill from it like from any plan. No toast, no explainer text. The demo names nobody real (the repository is public).
+- Files: `src/page.html`, `src/app.js`, `src/demo.mjs`
+- Phone: yes
+- Spec: `test/browser/demo.mjs`, `test/demo.test.mjs`
+- Steps: none yet (no kit shots command)
+
 ### F-setup-08 Tab sound: hear the guest through the studio's tab
 - Try: In Chrome or Edge on a computer, pick Yes at Guest agreed, turn on the Microphone, then press "Share the studio tab with sound", pick the studio's browser tab and tick "Also share tab audio". Press the button again to stop sharing. Pick No or Solo show while it is shared. Open the page in Firefox, Safari or a phone browser and hover or tap the button. Share a window instead of a tab, or leave out the sound.
 - Good: A second button beside Microphone, with its own small level meter that moves with the tab's sound and not the microphone's. Once shared it turns green and reads "Restream Studio tab" (or "Wave.video tab", else "Studio tab"). Its tooltip asks the host to wear headphones. A browser that cannot do it (Firefox, Safari, a phone) shows it switched off with the round "i" and the plain reason; so do OBS (it has no studio tab), No and Solo show, which also stop a share that is already running. A closed picker, a tab without sound or a window says so on the button itself ("Tab not shared", "No tab sound", "Share a browser tab", each "· try again"), with the way out in the tooltip. The Sound step turns green only when the microphone is on and the tab is shared or switched off, and "Open producer screen" waits for it ("Share the studio tab with sound first."). The page never plays the tab's sound.
