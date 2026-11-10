@@ -123,7 +123,7 @@ export async function run({ browser, base, out }) {
     const text = (id) => page.locator(`#${id}`).evaluate((el) => el.textContent.replace(/\s+/g, " ").trim());
     const shot = async (file, clip) => { const path = join(out, `runorder-${name}-${file}.png`); await page.screenshot({ path, ...(clip ? { clip } : {}) }); screenshots.push(path); };
 
-    // Step 3 sits between the agent and the guest steps, with its button only; the box is closed.
+    // Step 3 sits between the agent and the guest steps, with its two buttons; the box is closed.
     assert.deepEqual(await page.locator(".step .step__label").allInnerTexts(), ["I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Sound", "Speech to text"], `${name}: step 3 is the show plan`);
     assert.deepEqual(await page.locator(".step__n").allInnerTexts(), ["1", "2", "3", "4", "5", "6"], `${name}: the steps are numbered in order`);
     const planBtn = page.locator("#planBtn");

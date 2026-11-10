@@ -1,6 +1,6 @@
 // The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
 // src/questions.mjs,
-// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs and src/agent-link.mjs above this file.
+// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs and src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -138,8 +138,9 @@ const agent = createAgentLink({
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: (view) => { renderAgent(view); renderCard(); },
+  onChange: (view) => { renderAgent(view); renderLoad(); renderCard(); },
   show: agentShow,
+  load: loadFromAgent,
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();
@@ -212,7 +213,7 @@ const planBtn = $("planBtn");
 const planBox = $("planBox");
 const planIn = $("planIn");
 /** The plan as last read clearly (null before), and its run order with the show clock. */
-const show = { plan: null, run: null, parts: "" };
+const show = { plan: null, run: null, parts: "", notes: "" };
 // The example's lines, a space apart in the text (a screen reader and a copy keep them apart; the layout ignores it).
 for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
 
@@ -224,6 +225,7 @@ function readPasted() {
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   show.plan = plan.ok ? plan : null;
+  if (plan.empty) show.notes = ""; // the notes came with a loaded show: with the plan gone they go too
   // A new run order only when the parts change.
   const parts = plan.ok ? JSON.stringify(plan.parts) : "";
   if (parts !== show.parts) {
@@ -236,13 +238,77 @@ function readPasted() {
   questions.setPlan(show.plan?.questions ?? []);
   renderCard();
 }
-planIn.addEventListener("input", readPasted);
+planIn.addEventListener("input", () => {
+  // The host's own edit: what the agent loaded is no longer what is there.
+  if (loadState.phase === "loaded") { loadState.phase = "idle"; renderLoad(); }
+  loadState.byAgent = false;
+  readPasted();
+});
 planBtn.addEventListener("click", () => {
   const open = planBox.hidden;
   planBox.hidden = !open;
   planBtn.setAttribute("aria-expanded", String(open));
   if (open) planIn.focus();
 });
+
+// ---- Let my agent load it (src/agent-load.mjs): the button asks the agent with a cue; the agent answers with its
+// load_show tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show
+// only: nothing here reads or sets "Guest agreed", the microphone or the tab sharing. In this page's memory only. ----
+const loadBtn = $("loadBtn");
+/** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show. */
+const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, timer: 0 };
+
+function renderLoad() {
+  const link = agent.view().state;
+  // The agent went while the page waited for the show (or after a failed try): nothing is on its way any more.
+  if (link !== "on" && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); loadState.phase = "idle"; }
+  const said = loadButton({ agent: link, locked: planIn.readOnly, load: { ...loadState, name: loadState.name || AGENT_WAYS[agentKey()].name } });
+  label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
+  switchOff(loadBtn, said.off);
+  loadBtn.className = said.primary ? "tb tb--primary" : "tb";
+}
+
+function loadFailed(reason) {
+  clearTimeout(loadState.timer);
+  Object.assign(loadState, { phase: "failed", reason });
+  renderLoad();
+}
+
+/** The agent's load_show: checked again here (the Worker checked it first), then the show goes into the plan box as the host's own format. */
+function loadFromAgent(args) {
+  const refuse = (reason) => {
+    if (loadState.phase === "asking") loadFailed(`${loadState.name} could not load the show: ${reason[0].toLowerCase()}${reason.slice(1)}`);
+    return { error: reason };
+  };
+  const read = readLoad(args);
+  if (!read.ok) return refuse(read.reason);
+  if (planIn.readOnly) return refuse("The show has started, so the plan stays as it is.");
+  // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
+  if (loadState.phase !== "asking" && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
+  const text = planText(read.plan);
+  const back = readPlan(text);
+  const same = back.ok && back.show === read.plan.show && back.guest === read.plan.guest && JSON.stringify(back.parts) === JSON.stringify(read.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(read.plan.questions);
+  if (!same) return refuse("That show could not be read back clearly. Use plain names and questions.");
+  planIn.value = text;
+  readPasted();
+  show.notes = read.plan.notes;
+  clearTimeout(loadState.timer);
+  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true });
+  renderLoad();
+  renderCard();
+  return { result: { loaded: true, questions: read.plan.questions.length, parts: read.plan.parts.length } };
+}
+
+loadBtn.addEventListener("click", () => {
+  if (loadBtn.getAttribute("aria-disabled") === "true" || loadBtn.dataset.state === "busy" || planIn.readOnly) return;
+  const name = AGENT_WAYS[agentKey()].name;
+  if (!agent.send({ cue: "load_show", transcript: [] })) return renderLoad();
+  clearTimeout(loadState.timer);
+  Object.assign(loadState, { phase: "asking", name });
+  loadState.timer = setTimeout(() => { if (loadState.phase === "asking") loadFailed(`No show came back from ${name} in ${LOAD_WAIT_MS / 1000} seconds. Check ${name}, then press again.`); }, LOAD_WAIT_MS);
+  renderLoad();
+});
+renderLoad();
 
 // ---- The run order and the show clock on the producer screen. Start starts the clock with the first part; Next
 // part ends the current part at that moment and starts the next. Shown only when a plan is loaded. ----
@@ -329,6 +395,7 @@ function lockPlan(now) {
   show.run.start(now);
   planIn.readOnly = true;
   label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
+  renderLoad();
 }
 
 // ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
@@ -346,7 +413,7 @@ function cueContext() {
   return context;
 }
 
-/** What get_context gives the agent: the plan the host pasted, with the part that is on now. */
+/** What get_context gives the agent: the plan the host pasted or the agent loaded (with its notes), with the part that is on now. */
 function agentShow() {
   if (!show.plan) return null;
   const rows = show.run?.view(Date.now()).rows ?? [];
@@ -355,6 +422,7 @@ function agentShow() {
     guestName: show.plan.guest,
     questions: show.plan.questions.map((text, i) => ({ n: i + 1, text })),
     segments: show.plan.parts.map((part, i) => ({ title: part.name, plannedMinutes: part.minutes, ...(rows[i]?.state === "now" ? { live: true } : {}) })),
+    ...(show.notes ? { notes: show.notes } : {}),
   };
 }
 

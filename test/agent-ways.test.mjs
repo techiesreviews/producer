@@ -87,7 +87,8 @@ test("the MCP line: one line, the token only in an export, never in the agent's 
 test("the start words are plain, safe inside single quotes, and ask for nothing but the producer", () => {
   assert.doesNotMatch(START, /['"`$\\\n]/, "nothing the shell would read");
   assert.match(START, /producer/i);
-  assert.ok(START.length < 120);
+  assert.match(START, /load_show/, "the MCP line names the tool that loads the show (card 14)");
+  assert.ok(START.length < 160);
 });
 
 /** Stand-in programs for `claude` and `codex`: each logs its arguments and the token it was given. */

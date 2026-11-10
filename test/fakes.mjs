@@ -88,6 +88,11 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
     if (msg.tool === "get_new_transcript") return reply(msg.id, { result: { seq: page.seq, transcript: page.items.flatMap((i) => i.seq > (msg.args.seq ?? 0) ? i.transcript ?? [] : []) } });
     if (msg.tool === "post_suggestions") { show(page.seq, msg.args.suggestions); return reply(msg.id, { result: { shown: Math.min(msg.args.suggestions.length, page.maxShown ?? 3) } }); }
     if (msg.tool === "post_report") return reply(msg.id, { result: { saved: true } });
+    if (msg.tool === "load_show") {
+      if (page.loadError) return reply(msg.id, { error: page.loadError });
+      page.loaded = msg.args;
+      return reply(msg.id, { result: { loaded: true, questions: (msg.args.questions ?? []).length, parts: msg.args.parts.length } });
+    }
     if (msg.tool === "wait_for_cue") {
       page.waits.push(msg.args);
       if (msg.args.suggestions) show(msg.args.seq ?? 0, msg.args.suggestions);
