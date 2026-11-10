@@ -52,6 +52,9 @@ export function readReport(args) {
 
 /** One line of text, as the screen and the file show it. */
 const oneLine = (text) => String(text).replace(/\s+/g, " ").trim();
+/** The host's, the guest's and the agent's words in the file: one line, with the marks that would make a link, an image
+ * or code in a Markdown viewer escaped (they read the same there; a viewer fetches nothing). */
+const mdText = (text) => oneLine(text).replace(/[\\`[\]!<]/g, "\\$&");
 
 /** The agent's part (topics or clip moments): waiting with its name, in with its rows, or off with the reason. */
 function agentPart(agent, rows) {
@@ -64,7 +67,7 @@ function agentPart(agent, rows) {
  * The report's model. plan: the show plan (src/runorder.mjs readPlan) or null; run: the run order's view at the end
  * (createRunOrder().view) or null; marks: the host's own presses ({ asked, skipped, newAsked }, src/questions.mjs);
  * agent: { phase: "waiting" | "in" | "off", name, reason?, report? }; heard: the final lines ({ source, text, at? });
- * date: when the show ended. Gives { chip, stats, clips, runs, topics, notAsked, heard }.
+ * date: when the show ended. Gives { chip, chipParts, stats, clips, runs, topics, notAsked, noQuestions, heard }.
  */
 export function buildReport({ plan, run, marks, agent, heard, date }) {
   const total = plan?.questions.length ?? 0;
@@ -101,9 +104,10 @@ export function buildReport({ plan, run, marks, agent, heard, date }) {
   const notAsked = [];
   for (let n = 1; n <= total; n++) if (!asked.has(n)) notAsked.push({ n: `Q${n}`, text: plan.questions[n - 1], why: skipped.has(n) ? "skipped" : "no time" });
 
-  const chip = [plan?.show, plan?.guest && `guest ${plan.guest}`, reportDate(date)].filter(Boolean).join(" · ");
+  const chipParts = [plan?.show, plan?.guest && `guest ${plan.guest}`, reportDate(date)].filter(Boolean);
   return {
-    chip,
+    chip: chipParts.join(" · "),
+    chipParts,
     stats,
     clips: agentPart(agent, (agent.report?.clips ?? []).map((c) => ({ at: c.at, text: c.note }))),
     runs,
@@ -119,15 +123,15 @@ export const REPORT_EMPTY = { clips: "None.", runs: "No run order.", topics: "No
 
 /** The Markdown file: the screen's parts in the screen's order, each line as the screen shows it. */
 export function reportMarkdown(model) {
-  const out = [`# End report · ${model.chip}`, ""];
+  const out = [`# End report · ${mdText(model.chip)}`, ""];
   for (const s of model.stats) out.push(`- ${s.label[0].toUpperCase()}${s.label.slice(1)}: ${s.value}${s.note ? ` (${s.note})` : ""}`);
   const part = (title, lines, empty) => out.push("", `## ${title}`, "", ...(lines.length ? lines : [empty]));
-  const agentLines = (p, rows) => (p.state === "off" ? [`Off: ${p.reason}`] : p.state === "waiting" ? [p.reason] : rows);
-  part("Clip moments", agentLines(model.clips, model.clips.rows.map((c) => `- ${oneLine(c.at)} · ${oneLine(c.text)}`)), REPORT_EMPTY.clips);
-  part("Run order · plan vs real", model.runs.map((r) => `- ${r.planned} · ${oneLine(r.name)} · ${r.real}`), REPORT_EMPTY.runs);
-  part("Topics covered", agentLines(model.topics, model.topics.rows.map((t) => `- ${oneLine(t)}`)), REPORT_EMPTY.topics);
-  part("Questions not asked", model.notAsked.map((q) => `- ${q.n} · ${oneLine(q.text)} · ${q.why}`), model.noQuestions ? REPORT_EMPTY.noQuestions : REPORT_EMPTY.notAsked);
-  part("What was heard", model.heard.map((l) => `- ${l.at ? `${l.at} · ` : ""}${oneLine(l.who)}: ${l.text}`), REPORT_EMPTY.heard);
+  const agentLines = (p, rows) => (p.state === "off" ? [`Off: ${mdText(p.reason)}`] : p.state === "waiting" ? [mdText(p.reason)] : rows);
+  part("Clip moments", agentLines(model.clips, model.clips.rows.map((c) => `- ${mdText(c.at)} · ${mdText(c.text)}`)), REPORT_EMPTY.clips);
+  part("Run order · plan vs real", model.runs.map((r) => `- ${r.planned} · ${mdText(r.name)} · ${r.real}`), REPORT_EMPTY.runs);
+  part("Topics covered", agentLines(model.topics, model.topics.rows.map((t) => `- ${mdText(t)}`)), REPORT_EMPTY.topics);
+  part("Questions not asked", model.notAsked.map((q) => `- ${q.n} · ${mdText(q.text)} · ${q.why}`), model.noQuestions ? REPORT_EMPTY.noQuestions : REPORT_EMPTY.notAsked);
+  part("What was heard", model.heard.map((l) => `- ${l.at ? `${l.at} · ` : ""}${mdText(l.who)}: ${mdText(l.text)}`), REPORT_EMPTY.heard);
   out.push("");
   return out.join("\n");
 }

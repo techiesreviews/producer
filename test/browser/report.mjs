@@ -231,6 +231,12 @@ export async function run({ browser, base, out }) {
     ok(`${name}: while the agent works the page shows the numbers, plan against real and questions not asked; topics and clips say they wait`);
 
     // The agent's report fills in its parts; its word on Q4 joins the numbers.
+    // The speech worker's last piece comes a moment after End & report: it joins What was heard at the frozen show time.
+    await page.clock.fastForward(5000);
+    await page.evaluate(() => window.__speech.emit({ type: "text", source: "host", piece: 4, final: true, text: "Bye for now.", start: 8, end: 9 }));
+    assert.deepEqual((await screen()).heard.at(-1), "12:20 | Host: Bye for now.", `${name}: a line after End joins at once, at the show time where it stopped`);
+    ok(`${name}: the last words after End & report join the report at the frozen show time`);
+
     const posted = await page.evaluate((r) => window.__relay.call("post_report", r), REPORT);
     assert.deepEqual(posted.result, { shown: true }, `${name}: the page took the report`);
     const full = await screen();
@@ -352,7 +358,13 @@ export async function run({ browser, base, out }) {
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
     await openScreen(page, (l) => l.tap(), { agent: true });
+    // A long show name and a guest's name in another script must not push the phone sideways.
+    await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));
     await page.locator("#endBtn").tap();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "long names: no sideways scroll on a phone");
+    const chip = await page.locator("#reportChip bdi").allTextContents();
+    assert.deepEqual(chip.slice(0, 2), ["The Long-Running Weekly Founder Interview Series With Very Long Names", "guest سارة عبد الرحمن الهاشمية"], "each part of the title chip keeps its own direction");
+    assert.match(chip[2], /^\d{1,2} [A-Z][a-z]{2} \d{4}$/, "the date in its own part");
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));
     await page.waitForFunction(() => document.querySelector("#clipList").textContent.includes("disconnected"));
     const s = await page.evaluate(SCREEN);

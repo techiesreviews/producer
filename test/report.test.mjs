@@ -183,3 +183,17 @@ test("the report's show times follow the run order's own rule", () => {
     assert.equal(reportClock(s, true), clockText(s, true), `${s} signed`);
   }
 });
+
+test("the file escapes the marks that would make a link, an image or code in a Markdown viewer", () => {
+  const report = { topics: ["![x](https://example.com/a.png) and [link](https://example.com)"], clips: [{ at: "1:00", note: "<img src=x> `code`" }] };
+  const md = reportMarkdown(buildReport(base({ agent: { phase: "in", name: "Codex", report }, heard: [{ source: "host", text: "a \\ b" }] })));
+  assert.match(md, /^- \\!\\\[x\\\]\(https:\/\/example\.com\/a\.png\) and \\\[link\\\]\(https:\/\/example\.com\)$/m);
+  assert.match(md, /^- 1:00 · \\<img src=x> \\`code\\`$/m);
+  assert.match(md, /^- Host: a \\\\ b$/m);
+});
+
+test("readReport takes what the Worker takes: the same limits as post_report in src/mcp.mjs", () => {
+  assert.equal(readReport({ topics: ["x".repeat(200)] }).ok, true);
+  assert.equal(readReport({ topics: Array(20).fill("t"), clips: Array(20).fill({ at: "x".repeat(20), note: "n".repeat(200) }), asked: Array(100).fill(1) }).ok, true);
+  assert.equal(readReport({ topics: [], asked: Array(101).fill(1) }).ok, false);
+});
