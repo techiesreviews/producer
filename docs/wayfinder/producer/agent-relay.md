@@ -24,7 +24,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 | `get_context` | nothing | `{ showTitle, guestName?, questions: [{ n, text }], segments: [{ title, plannedMinutes, live }], notes, seq }` |
 | `wait_for_cue` | `{ seq, suggestions? }` | At once if there is something after `seq`, else it holds and answers idle. See below. |
 | `post_suggestions` | `{ suggestions }` (1 to 3) | `{ shown }` |
-| `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text }] }` |
+| `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text, at? }] }` |
 | `post_report` | `{ topics, asked?, skipped?, clips? }` | `{ saved: true }` |
 | `load_show` | `{ show?, guest?, questions?, parts: [{ name, minutes }], notes? }` | `{ loaded: true, questions, parts }`, or a plain refusal |
 
@@ -38,7 +38,7 @@ A suggestion is `{ question }` (a prepared question number), `{ text }` (a short
 
 - The page answers within `holdMs` (25 seconds): either a cue or idle. A cue is `{ idle: false, cue, seq, guestName?, transcript, chat, position }`; idle is `{ idle: true, seq }`.
 - `cue` is `suggest_now`, `pause`, `chat` or `end_report`. Anything else reaches the agent as `cue`.
-- Each entry in `transcript` is `{ speaker: "host" | "guest", text }`. The agent sees the labels `HOST:` and `GUEST:` with the text. Chat is `[{ text }]`. `guestName` is optional: only when the host typed it or the agent loaded it (Lex's choice, 2026-11-09); it is one short line of plain text, passed through memory and never stored or logged. Text is capped (20,000 characters of transcript, 500 per chat question) and always marked as data, not instructions.
+- Each entry in `transcript` is `{ speaker: "host" | "guest", text, at? }`. The agent sees the labels `HOST:` and `GUEST:` with the text; `at` is the show time the line was heard at (`12:03`, once the host pressed Start), shown as `[12:03]` in front, so the end report's clip moments carry their time (card 12). Chat is `[{ text }]`. `guestName` is optional: only when the host typed it or the agent loaded it (Lex's choice, 2026-11-09); it is one short line of plain text, passed through memory and never stored or logged. Text is capped (20,000 characters of transcript, 500 per chat question) and always marked as data, not instructions.
 - `seq` is the page's own counter. The agent sends back the last `seq` it saw and the page returns everything after it. Asking again with the same `seq` returns the same material, so a repeat after a lost answer loses nothing. The page must not treat a cue as delivered until the agent comes back with a higher `seq`.
 - A loop sends the same body again after each idle answer, so the same answer can reach the page several times: the page shows an answer to a cue once (the same `seq` with the same suggestions changes nothing).
 - A `wait_for_cue` that was sent to a page that has since closed or been replaced (a reload, "Use this tab") ends at once as an ordinary idle answer; the other tools answer "The producer page was reloaded or moved to another tab. Try again." The agent's next call, if no page is connected yet, waits up to 5 seconds for one (a reload closes the old page before the new one connects), so the loop reaches the reloaded page instead of stopping. Only after those 5 seconds does it hear "the page is not open".

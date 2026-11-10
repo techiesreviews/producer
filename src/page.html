@@ -24,6 +24,7 @@
       <span class="chip" id="guestChip" data-tip="" hidden></span>
       <button class="tb" type="button" id="stopBtn">Stop</button>
     </span>
+    <button class="tb tb--ink" type="button" id="endBtn"><span class="long">End &amp; report</span><span class="short" aria-hidden="true">End</span></button>
   </div>
 </header>
 
@@ -127,6 +128,26 @@
       </div>
       <ol class="runs__list" id="runList"></ol>
     </section>
+  </section>
+  <section class="report" id="report" aria-labelledby="reportTitle" hidden>
+    <div class="report__col">
+      <h1 id="reportTitle" tabindex="-1">End report <span class="chip" id="reportChip"></span></h1>
+      <ul class="stats" id="reportStats"></ul>
+      <div class="rep-grid">
+        <section class="panel" aria-labelledby="clipsTitle"><div class="panel__head"><h2 id="clipsTitle">Clip moments</h2></div><ul class="rows" id="clipList"></ul></section>
+        <section class="panel" aria-labelledby="realTitle"><div class="panel__head"><h2 id="realTitle">Run order · plan vs real</h2></div><ul class="rows" id="realList"></ul></section>
+        <section class="panel" aria-labelledby="topicsTitle"><div class="panel__head"><h2 id="topicsTitle">Topics covered</h2></div><ul class="rows" id="topicList"></ul></section>
+        <section class="panel" aria-labelledby="notAskedTitle"><div class="panel__head"><h2 id="notAskedTitle">Questions not asked</h2></div><ul class="rows" id="notAskedList"></ul></section>
+      </div>
+      <details class="panel heard" id="heardBox">
+        <summary class="panel__head"><svg class="i heard__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><h2>What was heard</h2><span class="end chip num" id="heardCount"></span></summary>
+        <ul class="rows" id="heardList"></ul>
+      </details>
+      <div class="report__act">
+        <button class="tb" type="button" id="copyBtn">Copy</button>
+        <button class="tb tb--big tb--primary" type="button" id="saveBtn" data-tip="Saves a file on your computer. Nothing is kept anywhere else.">Save report</button>
+      </div>
+    </div>
   </section>
 </main>
 

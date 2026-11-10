@@ -13,7 +13,8 @@ const ALTS = 2;
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; view() gives
  * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
- * open. A question is { n?, text, why?, from: "list" | "agent" }.
+ * open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
+ * newAsked (new questions asked). A question is { n?, text, why?, from: "list" | "agent" }.
  */
 export function createQuestions() {
   let plan = [];
@@ -22,6 +23,7 @@ export function createQuestions() {
   let main = null;
   let alts = [];
   let seen = 0; // the newest answer's seq: each answer is shown once
+  let newAsked = 0; // new questions (not on the list) the host pressed Asked on
 
   const key = (q) => (q.n ? `#${q.n}` : `t:${q.text.toLowerCase()}`);
   const open = (q) => (q.n ? !done.has(q.n) : !gone.has(key(q)));
@@ -45,6 +47,7 @@ export function createQuestions() {
   function move(kind) {
     if (!main) return false;
     if (main.n) done.set(main.n, kind); else gone.add(key(main));
+    if (!main.n && kind === "asked") newAsked += 1;
     main = null;
     fill();
     return true;
@@ -85,6 +88,11 @@ export function createQuestions() {
       if (!main || !alts[i]) return false;
       [main, alts[i]] = [alts[i], main];
       return true;
+    },
+
+    marked() {
+      const of = (kind) => [...done].filter(([n, k]) => k === kind && n <= plan.length).map(([n]) => n).sort((a, b) => a - b);
+      return { asked: of("asked"), skipped: of("skipped"), newAsked };
     },
 
     view() {

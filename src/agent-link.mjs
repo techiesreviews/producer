@@ -7,7 +7,8 @@
 // the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()). asking() says whether
 // the newest show cue still waits for the agent's turn (the question card's thinking light). The agent's load_show
 // call goes to load() (card 14): the page checks and takes the show, the link only passes it on and answers. The load
-// cue (the host pressed Let my agent load it) goes alone and is not a question on the card.
+// cue (the host pressed Let my agent load it) goes alone and is not a question on the card. The agent's post_report
+// goes to report() the same way (card 12).
 // Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
 // The inlined page script keeps this file's code as it is (the build only drops `export`).
@@ -34,9 +35,10 @@ const UNCONFIRMED_CHARS = 20_000;
 /**
  * show() gives what get_context hands the agent: { showTitle?, guestName?, questions: [{ n, text }],
  * segments: [{ title, plannedMinutes, live? }], notes? }, or nothing before a plan is loaded. load(args) takes what the
- * agent's load_show sent and gives { result } or { error } (a plain line) for the agent.
+ * agent's load_show sent and gives { result } or { error } (a plain line) for the agent; report(args) the same for
+ * post_report.
  */
-export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), now = () => Date.now(), timers = globalThis }) {
+export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
@@ -174,12 +176,13 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     // The seq to wait from: just before the oldest cue the agent has not confirmed, so none is skipped.
     if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } });
     if (tool === "load_show") return reply(id, load(a));
+    if (tool === "post_report") return reply(id, report(a));
     if (tool === "get_new_transcript") {
       // The show's own lines only: the Test's made-up talk never joins them.
       const after = Number(a.seq) || 0;
       return reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after && !c.test).flatMap((c) => c.transcript) } });
     }
-    reply(id, { error: tool === "post_report" ? "There is no show to report on yet." : `Unknown tool: ${tool}` });
+    reply(id, { error: `Unknown tool: ${tool}` });
   }
 
   function open() {

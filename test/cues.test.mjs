@@ -205,3 +205,22 @@ test("with no plan and no clock running, a cue carries no run position and no gu
     assert.deepEqual(Object.keys(sent[0]), ["cue", "transcript"]);
   }
 });
+
+test("End report sends one last cue at once, whatever the spacing, with what was heard since the last cue and its show times", () => {
+  const { sent, cues, say, agent } = setup();
+  cues.heard({ source: "host", text: "So how did it start?", start: 0, end: 2, at: "0:12" });
+  say("guest", "With a van.", 3);
+  assert.equal(cues.suggestNow().ok, true);
+  cues.heard({ source: "guest", text: "And a lot of luck.", start: 5, end: 7, at: "0:20" });
+  cues.heard({ source: "guest", text: "Odd time", start: 7, end: 8, at: 20 });
+  assert.equal(cues.end(), true, "no spacing for the end");
+  assert.deepEqual(sent[0].transcript, [{ speaker: "host", text: "So how did it start?", at: "0:12" }, { speaker: "guest", text: "With a van." }], "a line keeps its show time");
+  assert.deepEqual(sent[1], {
+    cue: "end_report",
+    transcript: [{ speaker: "guest", text: "And a lot of luck.", at: "0:20" }, { speaker: "guest", text: "Odd time" }],
+    position: { segment: 2, title: "Her story", minutesLeft: 7 },
+    guestName: "Sam",
+  });
+  agent.away = true;
+  assert.equal(cues.end(), false, "with no agent to take it, the end cue says so");
+});

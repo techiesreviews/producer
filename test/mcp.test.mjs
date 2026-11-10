@@ -637,3 +637,13 @@ test("the server's instructions and the tool list name load_show", async () => {
   assert.match(body.result.instructions, /load_show/);
   assert.match(body.result.instructions, /never.*(consent|guest agreed)|host's own clicks/i);
 });
+
+test("wait_for_cue: a line's show time rides along in brackets, so the agent can give clip moments their time", async () => {
+  const s = await setup();
+  s.page.cue({ cue: "end_report", transcript: [{ speaker: "host", text: "So how did it start?", at: "0:12" }, { speaker: "guest", text: "With a van.", at: "125:03" }, { speaker: "guest", text: "No time", at: "soon" }, { speaker: "guest", text: "Odd", at: 12 }] });
+  const r = await s.call("wait_for_cue", { seq: 0 });
+  assert.match(r.content[0].text, /\[0:12\] HOST: So how did it start\?\n\[125:03\] GUEST: With a van\.\nGUEST: No time\nGUEST: Odd/);
+  assert.deepEqual(r.structuredContent.transcript, [{ speaker: "host", text: "So how did it start?", at: "0:12" }, { speaker: "guest", text: "With a van.", at: "125:03" }, { speaker: "guest", text: "No time" }, { speaker: "guest", text: "Odd" }]);
+  const tools = (await s.rpc("tools/list")).body.result.tools;
+  assert.match(tools.find((t) => t.name === "post_report").description, /show time/);
+});
