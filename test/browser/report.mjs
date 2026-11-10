@@ -144,7 +144,7 @@ const SCREEN = `(() => {
 
 /** Every part the screen shows is a line of the file, in the screen's order. */
 function sameAsScreen(md, screen, name) {
-  const lines = md.split("\n");
+  const lines = md.replace(/[\u2068\u2069]/g, "").split("\n"); // the title's direction marks are invisible
   let at = 0;
   const expect = [
     `# ${screen.title.replace(/^End report /, "End report · ")}`,
@@ -347,8 +347,23 @@ export async function run({ browser, base, out }) {
     const reason = "No report came back from Claude Code in 2 minutes.";
     assert.deepEqual([(await page.evaluate(SCREEN)).topics, (await page.evaluate(SCREEN)).clips], [[`i | ${reason}`], [`i | ${reason}`]], "after two minutes: off with the reason");
     assert.equal(await page.locator("#saveBtn").textContent(), "Save report", "the saved file is older than the screen: Save report again");
+    // A report that comes while the save window is open: the button does not claim the older file is saved; a second
+    // press while the window is open does nothing.
+    await page.evaluate(() => {
+      window.__saved = undefined;
+      window.__pickers = 0;
+      const real = window.showSaveFilePicker;
+      window.showSaveFilePicker = (options) => { window.__pickers += 1; return new Promise((resolve) => { window.__pick = () => resolve(real(options)); }); };
+    });
+    await page.locator("#saveBtn").click();
+    await page.locator("#saveBtn").click({ force: true });
+    assert.deepEqual([await page.evaluate(() => window.__pickers), await page.locator("#saveBtn").getAttribute("data-state")], [1, "busy"], "one save window; the button busy");
     await page.evaluate((r) => window.__relay.call("post_report", r), REPORT);
     assert.deepEqual((await page.evaluate(SCREEN)).topics, REPORT.topics, "a late report still fills in");
+    await page.evaluate(() => window.__pick());
+    await page.waitForFunction(() => typeof window.__saved === "string");
+    await page.waitForFunction(() => document.querySelector("#saveBtn").dataset.state !== "busy");
+    assert.deepEqual([await page.locator("#saveBtn").textContent(), await page.evaluate(() => window.__saved.includes("Pricing the first version"))], ["Save report", false], "the file holds the older report, so the button offers Save report again");
     ok("a slow agent: off with the reason after two minutes; a late report fills in; a report before End is refused");
     await context.close();
   }
@@ -359,11 +374,11 @@ export async function run({ browser, base, out }) {
     await page.goto(`${base}/`);
     await openScreen(page, (l) => l.tap(), { agent: true });
     // A long show name and a guest's name in another script must not push the phone sideways.
-    await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));
+    await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/a-very-long-address-with-no-spaces-at-all-that-runs-on-and-on").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));
     await page.locator("#endBtn").tap();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "long names: no sideways scroll on a phone");
     const chip = await page.locator("#reportChip bdi").allTextContents();
-    assert.deepEqual(chip.slice(0, 2), ["The Long-Running Weekly Founder Interview Series With Very Long Names", "guest سارة عبد الرحمن الهاشمية"], "each part of the title chip keeps its own direction");
+    assert.deepEqual(chip.slice(0, 2), ["The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/a-very-long-address-with-no-spaces-at-all-that-runs-on-and-on", "guest سارة عبد الرحمن الهاشمية"], "each part of the title chip keeps its own direction");
     assert.match(chip[2], /^\d{1,2} [A-Z][a-z]{2} \d{4}$/, "the date in its own part");
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));
     await page.waitForFunction(() => document.querySelector("#clipList").textContent.includes("disconnected"));
