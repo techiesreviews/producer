@@ -219,7 +219,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .rows { padding: 0; list-style: none; }
 .rows > li { display: grid; grid-template-columns: 4rem 1fr auto; align-items: baseline; gap: 0.6rem; padding: 0.5rem 0.85rem; border-block-end: 1px solid var(--line); }
 .rows > li:last-child { border-block-end: 0; }
-.rows__t { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); }
+.rows__t { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+/* A long show or guest name wraps in the title's chip rather than push a phone sideways. */
+#reportChip { display: inline-block; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
 .rows__x { overflow-wrap: anywhere; }
 .rows__r { font: 500 0.82rem/1.3 var(--mono); color: var(--muted); text-align: end; white-space: nowrap; }
 .rows__r--words { font-family: inherit; }

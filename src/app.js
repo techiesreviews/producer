@@ -805,10 +805,12 @@ const heard = { lines: [], drafts: {}, pauses: {} };
 function hear(data) {
   if (data.final) {
     // The show time it was heard at (once the clock runs): for the end report's transcript and the agent's clip moments.
-    const view = show.run?.view(Date.now());
+    // After End & report (the speech worker's last piece can come a moment later) the show time stays where it stopped.
+    const view = ending.at ? ending.run : show.run?.view(Date.now());
     const at = view?.started ? clockText(view.clock) : "";
     heard.lines.push({ source: data.source, text: data.text, start: data.start, end: data.end, at });
     cues.heard({ source: data.source, text: data.text, start: data.start, end: data.end, at });
+    if (ending.at) renderReport();
     if (heard.drafts[data.source]?.piece === data.piece) delete heard.drafts[data.source];
   } else {
     heard.drafts[data.source] = { piece: data.piece, text: data.text };
@@ -1011,6 +1013,8 @@ stopBtn.addEventListener("click", async () => {
   const sharing = tabWanted && tabPhase !== "busy" && !tabUi().off ? shareTab() : null;
   try {
     await micOn();
+    // End & report came while the browser asked for the microphone: it is let go at once.
+    if (ending.at) { micOff(); return; }
     state.mic = true;
     stopBtn.removeAttribute("data-state");
     showMic();
@@ -1117,10 +1121,11 @@ function renderReport() {
   const md = reportMarkdown(model);
   if (md === ending.md) return;
   // A saved or copied file no longer holds what the screen shows: the buttons go back to offering it again.
-  if (ending.md) { resetSave(); resetCopy(); }
+  if (ending.md) { if (saveBtn.dataset.state !== "busy") resetSave(); resetCopy(); }
   ending.md = md;
 
-  $("reportChip").textContent = model.chip;
+  // Each part in its own direction, so a name in a right-to-left script never moves the date around it.
+  $("reportChip").replaceChildren(...model.chipParts.flatMap((part, i) => [...(i ? [" · "] : []), Object.assign(document.createElement("bdi"), { textContent: part })]));
   $("reportStats").replaceChildren(...model.stats.map((stat) => {
     const words = make("span", "", stat.label);
     if (stat.note) {
@@ -1143,9 +1148,8 @@ function renderReport() {
   $("heardList").replaceChildren(...(model.heard.length ? model.heard.map((l) => {
     const words = userText("rows__x", "");
     words.append(make("span", "rows__who", l.who), `: ${l.text}`);
-    const row = reportRow(make("span", "rows__t num", l.at), words);
-    if (!l.at) row.className = "rows__one";
-    return row;
+    if (l.at) return reportRow(make("span", "rows__t num", l.at), words);
+    return Object.assign(reportRow(words), { className: "rows__one" });
   }) : [oneRow(REPORT_EMPTY.heard)]));
 }
 
@@ -1168,7 +1172,9 @@ function resetSave() {
   label(saveBtn, null, SAVE_TIP, "Save report");
   saveBtn.className = "tb tb--big tb--primary";
 }
-function saved(file) {
+/** Saved, unless the report changed while the file was being written (the agent's report came meanwhile). */
+function saved(file, text) {
+  if (text !== ending.md) return resetSave();
   label(saveBtn, "ok", "Saved on your computer. Nothing is kept anywhere else.", `Saved ✓ · ${file}`);
   saveBtn.className = "tb tb--big";
 }
@@ -1184,22 +1190,23 @@ saveBtn.addEventListener("click", async () => {
   if (saveBtn.dataset.state === "busy") return;
   const file = reportFileName(ending.at);
   const text = ending.md;
-  if (typeof window.showSaveFilePicker !== "function") { download(file, text); saved(file); return; }
+  if (typeof window.showSaveFilePicker !== "function") { download(file, text); saved(file, text); return; }
+  // Busy from the press on, so a second press while the picker is open does nothing.
+  label(saveBtn, "busy", null, dot("think"), "Saving…");
   let handle;
   try {
     handle = await window.showSaveFilePicker({ suggestedName: file, types: [{ description: "Markdown", accept: { "text/markdown": [".md"] } }] });
   } catch (error) {
-    if (error?.name === "AbortError") return; // the host closed the picker: nothing saved, nothing to say
+    if (error?.name === "AbortError") { resetSave(); return; } // the host closed the picker: nothing saved, nothing to say
     download(file, text); // a browser that refuses the picker here still downloads
-    saved(file);
+    saved(file, text);
     return;
   }
-  label(saveBtn, "busy", null, dot("think"), "Saving…");
   try {
     const out = await handle.createWritable();
     await out.write(text);
     await out.close();
-    saved(handle.name);
+    saved(handle.name, text);
   } catch {
     label(saveBtn, "error", "The file could not be written. Press again to pick another place.", "Not saved · try again");
   }

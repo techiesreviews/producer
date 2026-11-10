@@ -25,7 +25,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 | `wait_for_cue` | `{ seq, suggestions? }` | At once if there is something after `seq`, else it holds and answers idle. See below. |
 | `post_suggestions` | `{ suggestions }` (1 to 3) | `{ shown }` |
 | `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text, at? }] }` |
-| `post_report` | `{ topics, asked?, skipped?, clips? }` | `{ saved: true }` |
+| `post_report` | `{ topics, asked?, skipped?, clips? }` | `{ ok: true }` |
 | `load_show` | `{ show?, guest?, questions?, parts: [{ name, minutes }], notes? }` | `{ loaded: true, questions, parts }`, or a plain refusal |
 
 A suggestion is `{ question }` (a prepared question number), `{ text }` (a short new question, 160 characters at most) or both, and optionally `{ why }` (120 characters at most). The Worker checks every call from the agent before the page hears it and passes on only these fields.
