@@ -123,7 +123,8 @@ export const REPORT_EMPTY = { clips: "None.", runs: "No run order.", topics: "No
 
 /** The Markdown file: the screen's parts in the screen's order, each line as the screen shows it. */
 export function reportMarkdown(model) {
-  const out = [`# End report · ${mdText(model.chip)}`, ""];
+  // Each part of the title in its own direction (Unicode isolates), as the screen's chip does with bdi.
+  const out = [`# End report · ${model.chipParts.map((p) => `\u2068${mdText(p)}\u2069`).join(" · ")}`, ""];
   for (const s of model.stats) out.push(`- ${s.label[0].toUpperCase()}${s.label.slice(1)}: ${s.value}${s.note ? ` (${s.note})` : ""}`);
   const part = (title, lines, empty) => out.push("", `## ${title}`, "", ...(lines.length ? lines : [empty]));
   const agentLines = (p, rows) => (p.state === "off" ? [`Off: ${mdText(p.reason)}`] : p.state === "waiting" ? [mdText(p.reason)] : rows);

@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clockText, createRunOrder } from "../src/runorder.mjs";
+import { TOOLS } from "../src/mcp.mjs";
 import { buildReport, readReport, reportClock, reportDate, reportFileName, reportMarkdown, REPORT_WAIT_MS } from "../src/report.mjs";
 
 const PLAN = {
@@ -120,7 +121,7 @@ test("the Markdown file holds exactly what the screen shows, in the same order",
   const report = { topics: ["Leaving her job"], clips: [{ at: "7:42", note: "The van story" }] };
   const md = reportMarkdown(buildReport(base({ agent: { phase: "in", name: "Claude Code", report } })));
   assert.equal(md, [
-    "# End report · Techies Live · guest Jane Doe · 9 Nov 2026",
+    "# End report · \u2068Techies Live\u2069 · \u2068guest Jane Doe\u2069 · \u20689 Nov 2026\u2069",
     "",
     "- Show time: 12:20 (+1:20 over)",
     "- List questions asked: 2 / 4",
@@ -162,7 +163,7 @@ test("the Markdown file: switched-off and waiting parts carry their reason; empt
   const waiting = reportMarkdown(buildReport(base({ agent: { phase: "waiting", name: "Codex" } })));
   assert.match(waiting, /## Clip moments\n\nWaiting for Codex…\n/);
   const bare = reportMarkdown(buildReport(base({ plan: null, run: null, heard: [], agent: { phase: "in", name: "Codex", report: { topics: [] } } })));
-  assert.match(bare, /^# End report · 9 Nov 2026\n/);
+  assert.match(bare, /^# End report · \u20689 Nov 2026\u2069\n/);
   for (const line of ["## Clip moments\n\nNone.", "## Run order · plan vs real\n\nNo run order.", "## Topics covered\n\nNone.", "## Questions not asked\n\nNo question list.", "## What was heard\n\nNothing was heard."]) assert.ok(bare.includes(line), line);
   const allAsked = reportMarkdown(buildReport(base({ marks: { asked: [1, 2, 3, 4], skipped: [], newAsked: 0 } })));
   assert.match(allAsked, /## Questions not asked\n\nNone\.\n/);
@@ -192,8 +193,15 @@ test("the file escapes the marks that would make a link, an image or code in a M
   assert.match(md, /^- Host: a \\\\ b$/m);
 });
 
-test("readReport takes what the Worker takes: the same limits as post_report in src/mcp.mjs", () => {
-  assert.equal(readReport({ topics: ["x".repeat(200)] }).ok, true);
-  assert.equal(readReport({ topics: Array(20).fill("t"), clips: Array(20).fill({ at: "x".repeat(20), note: "n".repeat(200) }), asked: Array(100).fill(1) }).ok, true);
-  assert.equal(readReport({ topics: [], asked: Array(101).fill(1) }).ok, false);
+test("readReport takes what the Worker takes: a report at every limit of post_report's schema in src/mcp.mjs", () => {
+  const { properties: p } = TOOLS.find((t) => t.name === "post_report").inputSchema;
+  const clip = p.clips.items.properties;
+  const full = {
+    topics: Array(p.topics.maxItems).fill("t".repeat(p.topics.items.maxLength)),
+    asked: Array(p.asked.maxItems).fill(1),
+    skipped: Array(p.skipped.maxItems).fill(2),
+    clips: Array(p.clips.maxItems).fill({ at: "a".repeat(clip.at.maxLength), note: "n".repeat(clip.note.maxLength) }),
+  };
+  assert.equal(readReport(full).ok, true);
+  for (const [key, over] of [["topics", [...full.topics, "t"]], ["asked", [...full.asked, 1]], ["clips", [...full.clips, full.clips[0]]]]) assert.equal(readReport({ ...full, [key]: over }).ok, false, `${key} past its limit`);
 });
