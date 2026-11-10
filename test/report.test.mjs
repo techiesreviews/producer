@@ -121,7 +121,7 @@ test("the Markdown file holds exactly what the screen shows, in the same order",
   const report = { topics: ["Leaving her job"], clips: [{ at: "7:42", note: "The van story" }] };
   const md = reportMarkdown(buildReport(base({ agent: { phase: "in", name: "Claude Code", report } })));
   assert.equal(md, [
-    "# End report · \u2068Techies Live\u2069 · \u2068guest Jane Doe\u2069 · \u20689 Nov 2026\u2069",
+    "# End report · Techies Live · guest Jane Doe · 9 Nov 2026",
     "",
     "- Show time: 12:20 (+1:20 over)",
     "- List questions asked: 2 / 4",
@@ -163,7 +163,9 @@ test("the Markdown file: switched-off and waiting parts carry their reason; empt
   const waiting = reportMarkdown(buildReport(base({ agent: { phase: "waiting", name: "Codex" } })));
   assert.match(waiting, /## Clip moments\n\nWaiting for Codex…\n/);
   const bare = reportMarkdown(buildReport(base({ plan: null, run: null, heard: [], agent: { phase: "in", name: "Codex", report: { topics: [] } } })));
-  assert.match(bare, /^# End report · \u20689 Nov 2026\u2069\n/);
+  assert.match(bare, /^# End report · 9 Nov 2026\n/);
+  const rtl = reportMarkdown(buildReport(base({ plan: { ...PLAN, guest: "سارة" } })));
+  assert.match(rtl, /^# End report · Techies Live · \u2068guest سارة\u2069 · 9 Nov 2026\n/, "a right-to-left part keeps its own direction");
   for (const line of ["## Clip moments\n\nNone.", "## Run order · plan vs real\n\nNo run order.", "## Topics covered\n\nNone.", "## Questions not asked\n\nNo question list.", "## What was heard\n\nNothing was heard."]) assert.ok(bare.includes(line), line);
   const allAsked = reportMarkdown(buildReport(base({ marks: { asked: [1, 2, 3, 4], skipped: [], newAsked: 0 } })));
   assert.match(allAsked, /## Questions not asked\n\nNone\.\n/);

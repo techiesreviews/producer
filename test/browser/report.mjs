@@ -278,6 +278,9 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await page.locator("#saveBtn").textContent(), await page.locator("#saveBtn").getAttribute("data-state")], ["Saved ✓ · producer-report-2026-11-09.md", "ok"], `${name}: Saved on the button`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}: the saved button does not push the page sideways`);
     await shot("saved");
+    // A line heard after the save: the file is older than the screen, so Save report offers it again.
+    await page.evaluate(() => window.__speech.emit({ type: "text", source: "host", piece: 5, final: true, text: "One more thing.", start: 10, end: 11 }));
+    assert.deepEqual([await page.locator("#saveBtn").textContent(), await page.locator("#saveBtn").getAttribute("data-state"), await page.locator("#copyBtn").textContent()], ["Save report", null, "Copy"], `${name}: a newer screen: Save report again`);
     ok(`${name}: Copy and Save report write exactly what the screen shows (producer-report-2026-11-09.md)`);
 
     // Nothing of the show in browser storage, then or after the tab closes; a fresh tab starts at setup.
@@ -374,11 +377,11 @@ export async function run({ browser, base, out }) {
     await page.goto(`${base}/`);
     await openScreen(page, (l) => l.tap(), { agent: true });
     // A long show name and a guest's name in another script must not push the phone sideways.
-    await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/a-very-long-address-with-no-spaces-at-all-that-runs-on-and-on").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));
+    await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));
     await page.locator("#endBtn").tap();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "long names: no sideways scroll on a phone");
     const chip = await page.locator("#reportChip bdi").allTextContents();
-    assert.deepEqual(chip.slice(0, 2), ["The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/a-very-long-address-with-no-spaces-at-all-that-runs-on-and-on", "guest سارة عبد الرحمن الهاشمية"], "each part of the title chip keeps its own direction");
+    assert.deepEqual(chip.slice(0, 2), ["The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", "guest سارة عبد الرحمن الهاشمية"], "each part of the title chip keeps its own direction");
     assert.match(chip[2], /^\d{1,2} [A-Z][a-z]{2} \d{4}$/, "the date in its own part");
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));
     await page.waitForFunction(() => document.querySelector("#clipList").textContent.includes("disconnected"));
