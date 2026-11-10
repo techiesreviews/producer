@@ -59,3 +59,18 @@ A temporary copy of the site running only on this computer (Cloudflare's own loc
 - Cost seen: about 0.49 dollars (MCP) and 0.63 dollars (message) for the Test plus 10 cues on Opus.
 - Not run: Codex with MCP (the third fast way; TOOLS-154 measured 3.3 s middle, 4.5 s slowest), the slow ways (T3 Code and Codex with the message stay labelled "slower"), a whole hour, a deployed Worker.
 - Speech to text is not in these numbers: the pause comes 1.5 s after the last word, and the last piece is turned into text in that time in the middle case (TOOLS-150: 0.8 s middle, 2.1 s slowest), so the slowest case can add up to about 0.6 s.
+
+### The shortened message (card 186, TOOLS-186, 2026-11-10)
+
+The card-10 run showed that the copied message missed the target because the agent typed a long command after every cue. The message now gives a short command (two lines, about 240 characters with the token instead of about 450, before the answer) and the Worker answers plain text on a short route (`agent-relay.md`). The example answer points to a prepared question by its number.
+
+Measured again with real Claude Code (Opus 5.5), the page's own modules, a local copy of the real Worker (`wrangler dev`, nothing deployed), 10 real transcript pieces, one Test first, a cue about every 25 s, the 10 prepared questions loaded. The old message was run the same way, the same hour, for the comparison. Seconds from the pause to the answer on the page; add the 1.5 s pause for "after the speech ends". One machine, 10 cues: the slowest is just the worst of 10.
+
+| Message | Test | Middle | Slowest | From speech end: middle / slowest |
+|---|---|---|---|---|
+| Old (long command) | 4.6 s | 5.3 s | 11.0 s | 6.8 s / 12.5 s |
+| New (short command) | 4.0 s | 4.3 s | 6.5 s | 5.8 s / 8.0 s |
+
+- Against the target (5 s middle, 10 s slowest, after the speech ends) the copied message now meets the slowest figure and misses the middle one by about 0.8 s. Connect with MCP stays the faster way (4.0 s / 4.7 s in card 10), which is why it is the recommended one and the message is labelled "slower".
+- Where the saving comes from: a first pair of runs with no prepared questions loaded gave 5.2 s (new) against 5.2 s (old) in the middle, so the shorter command alone saved almost nothing there (new: 5.2 s middle, 10.3 s slowest; old: 5.2 s middle, 6.3 s slowest: each run had one slow cue, the worst of 10, and these two happened to differ): the answer itself is most of what is typed. With the prepared questions loaded the agent answers with their numbers (the new example and rule ask for it), which is short. Both runs use the same harness; the old message's first cue was the slow one (11.0 s). A change of about a second between two runs of 10 is within what one run can vary.
+- Every cue was answered in both runs, with one to three suggestions, and the agent never wrote a file or a loop script.

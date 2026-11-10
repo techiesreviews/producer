@@ -106,6 +106,11 @@ function json(body, status = 200, extra = {}) {
 }
 const toolError = (message) => ({ content: [text(message)], isError: true });
 
+/** A plain-text answer for the short route (/mcp/<tool>, card 186): a line of text, never JSON. */
+function plainText(body, status = 200, extra = {}) {
+  return new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...extra } });
+}
+
 /* ---------- What the agent sends (checked before the page hears it) ---------- */
 const isInt = (v, min = 0) => Number.isSafeInteger(v) && v >= min;
 const trimmed = (v, max) => (typeof v === "string" && v.trim() && v.trim().length <= max ? v.trim() : null);
@@ -424,20 +429,37 @@ export function bearer(header, now = Date.now()) {
   return t?.ok ? { token: m[1], born: t.born } : null;
 }
 
-function unauthorized() {
-  return json(rpcError(null, -32001, "Unauthorized: this connection was ended with Disconnect, has expired, or the token is not a producer token. Ask the host to press Connect my agent in the producer and paste the new message."), 401, { "WWW-Authenticate": "Bearer" });
+const UNAUTHORIZED_TEXT = "Unauthorized: this connection was ended with Disconnect, has expired, or the token is not a producer token. Ask the host to press Connect my agent in the producer and paste the new message.";
+const unauthorized = (short) => (short
+  ? plainText(UNAUTHORIZED_TEXT, 401, { "WWW-Authenticate": "Bearer" })
+  : json(rpcError(null, -32001, UNAUTHORIZED_TEXT), 401, { "WWW-Authenticate": "Bearer" }));
+
+/**
+ * The short route's answer for a tool's result: the text the agent would read, as plain text. A wait with nothing new
+ * is the one word "idle" (so a loop can compare the whole answer), a tool error is a 400 with its message.
+ */
+function shortAnswer(result) {
+  if (result.structuredContent?.idle === true) return plainText("idle");
+  return plainText(result.content.map((c) => c.text).join("\n"), result.isError ? 400 : 200);
 }
 
 /**
- * Handle one HTTP request to /mcp. The per-isolate guard runs first and stops bursts that land on one instance
+ * Handle one HTTP request to /mcp, or to the short route /mcp/<tool> (`tool` is the part after /mcp/). The short route
+ * is for an agent that runs curl: the body is the tool's arguments (a JSON object, or nothing) and the answer is plain
+ * text, so the command the agent types after every cue stays short. It has the same limits, the same token check and
+ * the same relay as /mcp. The per-isolate guard runs first and stops bursts that land on one instance
  * without any extra call. `limiter` is the per-client Durable Object limiter (see limiter.mjs), the one that holds
  * across instances; both use the `limit({ key })` shape and a request must pass both. The request must carry a
  * live producer token; `relayFor(token)` gives that token's relay ({ op(message) }). The body is read only after
  * the token looked right.
  */
-export async function handleMcp(request, { limiter, guard = instanceGuard, relayFor, now = Date.now } = {}) {
+export async function handleMcp(request, { limiter, guard = instanceGuard, relayFor, now = Date.now, tool } = {}) {
+  const short = tool !== undefined;
+  // One refusal, in the shape of the route: a JSON-RPC error on /mcp, a line of text on the short route.
+  const refuse = (code, message, status, extra = {}) => (short ? plainText(message, status, extra) : json(rpcError(null, code, message), status, extra));
+
   if (request.method !== "POST") {
-    return json(rpcError(null, -32000, "Method not allowed. This MCP server only accepts POST (no SSE stream)."), 405, { Allow: "POST" });
+    return refuse(-32000, `Method not allowed. This MCP server only accepts POST${short ? "" : " (no SSE stream)"}.`, 405, { Allow: "POST" });
   }
 
   const key = request.headers.get("cf-connecting-ip") || "local";
@@ -445,26 +467,34 @@ export async function handleMcp(request, { limiter, guard = instanceGuard, relay
   if (verdict.success && limiter) verdict = await limiter.limit({ key });
   if (!verdict.success) {
     const wait = verdict.retryAfter || 60;
-    return json(rpcError(null, -32000, `Too many requests.${describeLimit(verdict)} Try again in ${wait} seconds.`), 429, { "Retry-After": String(wait) });
+    return refuse(-32000, `Too many requests.${describeLimit(verdict)} Try again in ${wait} seconds.`, 429, { "Retry-After": String(wait) });
   }
 
   // A token is for the host's own agent, never for another website's page.
   const origin = new URL(request.url).origin;
   const from = request.headers.get("origin");
-  if (from && from !== origin) return json(rpcError(null, -32600, "Requests from other websites are refused."), 403);
+  if (from && from !== origin) return refuse(-32600, "Requests from other websites are refused.", 403);
+  // The short route names its tool in the path: an unknown one is refused before the token is looked at (the names are public).
+  const named = short ? TOOLS.find((t) => t.name === tool) : null;
+  if (short && !named) return plainText(`Unknown tool: ${tool}`, 404);
   const auth = bearer(request.headers.get("authorization"), now());
-  if (!auth || !relayFor) return unauthorized();
+  if (!auth || !relayFor) return unauthorized(short);
 
   const raw = await readCapped(request);
-  if (raw === null) return json(rpcError(null, -32000, `Request too large. Limit: ${MAX_BODY_BYTES / 1024} KB.`), 413);
+  if (raw === null) return refuse(-32000, `Request too large. Limit: ${MAX_BODY_BYTES / 1024} KB.`, 413);
   let body;
-  try { body = JSON.parse(raw); } catch { return json(rpcError(null, -32700, "Parse error"), 400); }
+  if (short && !raw.trim()) body = {};
+  else {
+    try { body = JSON.parse(raw); } catch { return refuse(-32700, short ? "Parse error: the body must be a JSON object, for example {}." : "Parse error", 400); }
+  }
+  if (short && (!body || typeof body !== "object" || Array.isArray(body))) return plainText("The body must be a JSON object, for example {}.", 400);
 
   const stub = relayFor(auth.token);
   const relay = { op: (message) => stub.op({ ...message, born: auth.born }) };
-  if ((await relay.op({ op: "auth" })).status === "unauthorized") return unauthorized();
+  if ((await relay.op({ op: "auth" })).status === "unauthorized") return unauthorized(short);
 
   try {
+    if (short) return shortAnswer(await callTool(named.name, body, { relay }));
     if (Array.isArray(body)) {
       if (!body.length) return json(rpcError(null, -32600, "Invalid request"), 400);
       if (body.length > 20) return json(rpcError(null, -32600, "Batch too large"), 400);
@@ -476,7 +506,7 @@ export async function handleMcp(request, { limiter, guard = instanceGuard, relay
     const reply = await handleMessage(body, { relay });
     return reply ? json(reply) : new Response(null, { status: 202 });
   } catch (error) {
-    if (error === UNAUTHORIZED) return unauthorized();
+    if (error === UNAUTHORIZED) return unauthorized(short);
     throw error;
   }
 }

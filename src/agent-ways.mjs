@@ -25,12 +25,14 @@ const CODEX_NOTE = "Codex blocks the network in safe mode: allow network or use 
 
 /**
  * Per agent: its name, the note on its chip (null: none), a label on the chip (T3 Code has no fast way at all), whether
- * its paste way is the slow one (Codex 7.8 s, T3 Code 6.1 s; Claude Code 2.5 s), a note on its paste way's tooltip
- * (null: none) and its MCP way (null: none). The page labels the paste button "slower" only where a faster way sits
- * beside it (Codex); T3 Code's chip already says it.
+ * its paste way is the slow one (Claude Code, real runs over 10 cues: card 186 gave 4.3 s a cue with the shortened
+ * message, 5.3 s with the first long one (TOOLS-170: 7.0 s from the end of the speech), MCP 2.5 s; Codex 7.8 s against
+ * 3.3 s; T3 Code 6.1 s), a note on its paste way's tooltip (null: none) and its MCP way (null: none).
+ * The page labels the paste button "slower" and the MCP button "recommended" wherever an agent has both ways (Claude
+ * Code and Codex, card 186); T3 Code's chip already says slower and it has no MCP way.
  */
 export const AGENT_WAYS = {
-  claude: { name: "Claude Code", chipTip: null, tag: null, pasteSlow: false, pasteNote: null, mcp: mcpTips("Claude Code", "claude mcp remove producer", " (in the same folder)") },
+  claude: { name: "Claude Code", chipTip: null, tag: null, pasteSlow: true, pasteNote: null, mcp: mcpTips("Claude Code", "claude mcp remove producer", " (in the same folder)") },
   codex: { name: "Codex", chipTip: CODEX_NOTE, tag: null, pasteSlow: true, pasteNote: CODEX_NOTE, mcp: mcpTips("Codex", "codex mcp remove producer") },
   t3: { name: "T3 Code", chipTip: "Slower: about 6 seconds an answer. T3 Code cannot take a private MCP line, so it uses the connect message.", tag: "slower", pasteSlow: true, pasteNote: null, mcp: null },
 };

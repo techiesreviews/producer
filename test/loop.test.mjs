@@ -1,5 +1,6 @@
 // The ready-made foreground curl loop (no sleep, no helper file) must work against this relay: it repeats while the
-// answer is idle and ends on the first real answer or any error. Run for real: bash and curl against the Worker.
+// answer is exactly "idle" and ends on the first real answer or any error. Run for real: bash and curl against the
+// Worker's short route /mcp/<tool> (card 186).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -23,7 +24,7 @@ async function serve(now, relay) {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const url = `http://${req.headers.host}${req.url}`;
-    requests.push(JSON.parse(Buffer.concat(chunks).toString() || "null")?.params?.name ?? "other");
+    requests.push(req.url.replace(/^\/mcp\//, ""));
     const headers = { ...req.headers, "cf-connecting-ip": "203.0.113.77" };
     const out = await worker.fetch(new Request(url, { method: req.method, headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks) }), env);
     res.writeHead(out.status, Object.fromEntries(out.headers));
@@ -33,6 +34,8 @@ async function serve(now, relay) {
   return { url: `http://127.0.0.1:${server.address().port}`, requests, close: () => new Promise((r) => { server.closeAllConnections(); server.close(r); }) };
 }
 
+/** Run the loop as the agent would: T, U and P set, B the tool's arguments. */
+const loop = (s, token, P, B) => run({ T: token, U: `${s.url}/mcp`, P, B: JSON.stringify(B) });
 const run = (env) => new Promise((resolve) => {
   const child = spawn("bash", ["-c", LOOP], { env: { PATH: process.env.PATH, ...env } });
   let stdout = "";
@@ -51,14 +54,13 @@ test("the foreground curl loop waits through idle answers with no sleep and ends
   const s = await serve(now, kit.relay);
   try {
     setTimeout(() => page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: 'quote "idle":true if you like' }] }), 380);
-    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 0 } } });
-    const r = await run({ TOKEN: token, BODY, URL: s.url });
+    const r = await loop(s, token, "wait_for_cue", { seq: 0 });
     assert.equal(r.code, 0, r.stderr);
-    const reply = JSON.parse(r.stdout);
-    assert.equal(reply.result.structuredContent.cue, "pause");
-    assert.equal(reply.result.structuredContent.idle, false);
+    assert.match(r.stdout, /^Cue: pause \(seq 1\)/);
+    assert.match(r.stdout, /quote "idle":true if you like/, "a cue that mentions idle is not mistaken for one");
     assert.ok(s.requests.length >= 3 && s.requests.length <= 6, `${s.requests.length} requests: it looped through idle answers`);
     assert.ok(s.requests.every((n) => n === "wait_for_cue"));
+    assert.ok(r.stdout.endsWith("Next: call wait_for_cue with seq 1 and your suggestions."), "nothing is added after the answer");
     assert.ok(s.requests.length < 10, "well under the burst limit of 10 per 10 seconds");
   } finally {
     await s.close();
@@ -75,10 +77,9 @@ test("a loop that carries an answer repeats it on each idle round; the page show
   const s = await serve(now, kit.relay);
   try {
     setTimeout(() => page.cue({ cue: "suggest_now", transcript: [] }), 330);
-    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 1, suggestions: [{ question: 2, why: "next in the list" }] } } });
-    const r = await run({ TOKEN: token, BODY, URL: s.url });
+    const r = await loop(s, token, "wait_for_cue", { seq: 1, suggestions: [{ question: 2, why: "next in the list" }] });
     assert.equal(r.code, 0, r.stderr);
-    assert.equal(JSON.parse(r.stdout).result.structuredContent.seq, 2);
+    assert.match(r.stdout, /^Cue: suggest_now \(seq 2\)/);
     assert.ok(page.waits.length >= 3, `${page.waits.length} rounds`);
     assert.ok(page.waits.every((w) => w.suggestions?.length === 1), "every round carried the answer");
     assert.deepEqual(page.shown, [{ question: 2, why: "next in the list" }], "shown once");
@@ -105,12 +106,10 @@ test("a host who reloads the page while the loop waits: the loop reaches the new
       await kit.tab(born, (ws) => { freshPage = fakePage(kit.relay, ws, { hold: 10_000 }); });
       freshPage.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "after the reload" }] });
     })();
-    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 0 } } });
-    const r = await run({ TOKEN: token, BODY, URL: s.url });
+    const r = await loop(s, token, "wait_for_cue", { seq: 0 });
     assert.equal(r.code, 0, r.stderr);
-    const reply = JSON.parse(r.stdout);
-    assert.equal(reply.result.isError, undefined, "not \"the page is not open\"");
-    assert.equal(reply.result.structuredContent.cue, "pause");
+    assert.doesNotMatch(r.stdout, /not open/, "not \"the page is not open\"");
+    assert.match(r.stdout, /^Cue: pause \(seq 1\)/);
     assert.equal(oldPage.waits.length, 1, "the old page had the first wait");
     assert.ok(freshPage.waits.length >= 1, "the new page got the next one");
   } finally {
@@ -124,12 +123,11 @@ test("the loop ends at once when no page is open or the token is refused (it mus
   const kit = relayWith(now);
   const s = await serve(now, kit.relay);
   try {
-    const BODY = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "wait_for_cue", arguments: { seq: 0 } } });
-    const noTab = await run({ TOKEN: token, BODY, URL: s.url });
+    const noTab = await loop(s, token, "wait_for_cue", { seq: 0 });
     assert.equal(noTab.code, 0, noTab.stderr);
-    assert.equal(JSON.parse(noTab.stdout).result.isError, true);
+    assert.match(noTab.stdout, /The producer page is not open/);
     assert.equal(s.requests.length, 1);
-    const refused = await run({ TOKEN: "pr1-nope", BODY, URL: s.url });
+    const refused = await loop(s, "pr1-nope", "wait_for_cue", { seq: 0 });
     assert.equal(refused.code, 0, refused.stderr);
     assert.match(refused.stdout, /Unauthorized/);
     assert.equal(s.requests.length, 2);

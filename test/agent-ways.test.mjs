@@ -29,8 +29,10 @@ test("the chips: Claude Code says nothing, Codex warns about safe mode, T3 Code 
   assert.match(t3.chipTip, /cannot take a private MCP line/, "its tooltip says it has no MCP line");
   assert.equal(t3.mcp, null, "T3 Code has no MCP way");
   assert.ok(claude.mcp && codex.mcp, "Claude Code and Codex have one");
-  // The paste way is the slow one for Codex (7.8 s in TOOLS-154) and T3 Code (6.1 s); Claude Code's is fast (2.5 s).
-  assert.deepEqual([claude.pasteSlow, codex.pasteSlow, t3.pasteSlow], [false, true, true]);
+  // The paste way is the slower one for all three: Claude Code (4.3 s a cue with the shortened message, card 186; 5.3 s
+  // with the first long one, TOOLS-170; MCP 2.5 s),
+  // Codex (7.8 s against 3.3 s) and T3 Code (6.1 s). Claude Code and Codex have the faster MCP way beside it.
+  assert.deepEqual([claude.pasteSlow, codex.pasteSlow, t3.pasteSlow], [true, true, true]);
   // The paste way's own note: only Codex has one (the same words as its chip).
   assert.deepEqual([claude.pasteNote, codex.pasteNote, t3.pasteNote], [null, codex.chipTip, null]);
 });

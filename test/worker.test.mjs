@@ -138,6 +138,28 @@ test("/mcp: a token passes its birth time to its relay; an old, foreign or revok
   assert.equal((await worker.fetch(new Request(`${SITE}/mcp/`, { method: "POST", body: "{}" }), env())).status, 401, "also with the trailing slash");
 });
 
+test("/mcp/<tool>: the short route shares the token check and the relay; a wrong path is a plain 404", async () => {
+  const short = (tool, token, body = "{}") => new Request(`${SITE}/mcp/${tool}`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body });
+  const none = env();
+  const refused = await worker.fetch(short("get_context", null), none);
+  assert.equal(refused.status, 401, "no token, no tools");
+  assert.match(refused.headers.get("Content-Type"), /^text\/plain/);
+  assert.equal(none.calls.idFromName.length, 0);
+  const { token, born } = newToken();
+  const good = env();
+  const res = await worker.fetch(short("get_context", token), good);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /Prepared questions: none yet\./, "the fake relay's page answered with no questions");
+  assert.deepEqual(good.calls.op.map((o) => [o.op, o.born]), [["auth", born], ["call", born]]);
+  assert.equal(good.calls.idFromName.length, 1, "one relay object, the token's own");
+  for (const path of ["/mcp/a/b", "/mcp/get_context/", "/mcp/GET_CONTEXT", "/mcp/wait_for_cue%00"]) {
+    const e = env();
+    const out = await worker.fetch(new Request(`${SITE}${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: "{}" }), e);
+    assert.equal(out.status, 404, path);
+    assert.equal(e.calls.idFromName.length, 0, `${path} touched no relay`);
+  }
+});
+
 test("/mcp: the per-client limit counts in a Durable Object, which the Worker reaches by a hash of the address", async () => {
   const e = env();
   const names = [];

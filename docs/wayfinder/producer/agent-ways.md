@@ -1,23 +1,23 @@
 # The ways to connect each agent (card 09)
 
-Written 2026-11-09. Step 2 "AI agent" offers up to two ways per agent. This is what each one is, what was measured in TOOLS-154 and what the page shows for it.
+Written 2026-11-09, updated 2026-11-10 (card 186). Step 2 "AI agent" offers up to two ways per agent. This is what each one is, what was measured in TOOLS-154 and what the page shows for it.
 
 ## The two ways
 
-- **Copy connect message**: the host pastes a message into the agent. The agent runs one ready-made foreground curl loop (see [the relay](agent-relay.md)). Nothing in the agent's settings changes.
-- **Connect with MCP**: the host pastes one line into a terminal. It adds a `producer` entry to the agent's own MCP settings and opens a fresh chat that is told to start. The agent then calls the producer's tools directly, without curl. The server's own instructions (`initialize`) carry the standing rules.
+- **Copy connect message**: the host pastes a message into the agent. The agent runs one ready-made foreground curl loop (see [the relay](agent-relay.md)). Nothing in the agent's settings changes. It is the slower way for every agent, so its button says "slower" where Connect with MCP sits beside it (Claude Code and Codex); T3 Code's chip says it instead (card 186).
+- **Connect with MCP**: the host pastes one line into a terminal. It is the recommended way for Claude Code and Codex, so its button says "recommended" (card 186). It adds a `producer` entry to the agent's own MCP settings and opens a fresh chat that is told to start. The agent then calls the producer's tools directly, without curl. The server's own instructions (`initialize`) carry the standing rules.
 
 ## Per agent
 
-Middle and slowest are the seconds from a cue handed over to the suggestion on the page, from the TOOLS-154 test (10 pieces, one machine; the slowest is just the worst of 10). They leave out speech to text and the internet.
+Middle and slowest are the seconds from a cue handed over to the suggestion on the page, from the TOOLS-154 test (10 pieces, one machine; the slowest is just the worst of 10), except where a cell says it comes from a later real run over 10 cues (card 186). They leave out speech to text and the internet.
 
 | Agent | Way | Middle | Slowest | What the page shows |
 |---|---|---|---|---|
-| Claude Code | Connect with MCP | 2.2 s | 5.9 s | no label |
-| Claude Code | Copy connect message | 2.5 s | 3.9 s | no label |
-| Codex | Connect with MCP | 3.3 s | 4.5 s | no label |
+| Claude Code | Connect with MCP | 2.2 s | 5.9 s | label "recommended" on the button |
+| Claude Code | Copy connect message | 4.3 s (TOOLS-154: 2.5 s) | 6.5 s (TOOLS-154: 3.9 s) | label "slower" on the button. The shortened message in a real run over 10 cues (card 186, [the cues](cues.md)); the first long message gave 5.3 s and 11.0 s in the same kind of run, and MCP 2.5 s in the card 10 run |
+| Codex | Connect with MCP | 3.3 s | 4.5 s | label "recommended" on the button |
 | Codex | Copy connect message | 7.8 s | 9.7 s | label "slower" on the button; the chip and the button tooltips say "Codex blocks the network in safe mode: allow network or use the MCP line" |
-| T3 Code | Copy connect message | 6.1 s (background run) | 7.8 s | the chip says "slower" (the button does not say it twice); its tooltip says T3 Code cannot take a private MCP line |
+| T3 Code | Copy connect message | 6.1 s (background run) | 7.8 s | the chip says "slower" (the button does not say it twice; there is no MCP way to recommend); its tooltip says T3 Code cannot take a private MCP line |
 | T3 Code | Connect with MCP | not possible | | switched off, with the reason |
 
 The T3 Code figure comes from a background run (T3 Code wakes the agent when the command ends); the message the page gives it asks for the foreground loop, which was not measured for T3 Code. The tooltip's "about 6 seconds" is therefore an estimate.

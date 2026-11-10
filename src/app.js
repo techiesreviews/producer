@@ -118,7 +118,7 @@ function renderAgent({ state, failed, test, passed }) {
       label(button, "busy", tip, dot("think"), `Waiting for ${name}…`);
     } else if (mine) label(button, null, `${name} is connected in another tab. Click to use this tab.`, "Use this tab");
     else if (kind === "paste") label(button, null, `Copies a message. Paste it into ${name}.${pasteNote ? ` ${pasteNote}.` : ""}`, failure("paste") ?? "Copy connect message", ...(!failure("paste") && pasteSlow && mcp ? [" ", tag("slower")] : []));
-    else if (mcp) label(button, null, mcp.idleTip, failure("mcp") ?? "Connect with MCP");
+    else if (mcp) label(button, null, mcp.idleTip, failure("mcp") ?? "Connect with MCP", ...(!failure("mcp") ? [" ", tag("recommended")] : []));
     else {
       label(button, null, NO_MCP_TIP, offMark(), " Connect with MCP");
       button.setAttribute("aria-disabled", "true");
