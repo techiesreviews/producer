@@ -265,7 +265,7 @@ function renderLoad() {
   const link = agent.view().state;
   // The agent went (Disconnect, or another tab took it) while the page waited for the show, or after a failed try: nothing is
   // on its way any more. A quiet link ("waiting") is an agent busy with the host's outline, so the wait goes on.
-  if ((link === "off" || link === "elsewhere") && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); loadState.phase = "idle"; }
+  if ((link === "off" || link === "elsewhere") && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); Object.assign(loadState, { phase: "idle", hostAsked: false }); }
   const said = loadButton({ agent: link, locked: planIn.readOnly, load: { ...loadState, name: loadState.name || AGENT_WAYS[agentKey()].name } });
   label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
   switchOff(loadBtn, said.off);
