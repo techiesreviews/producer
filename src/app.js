@@ -246,6 +246,8 @@ planIn.addEventListener("input", () => {
   // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
   if (show.notes && (show.plan ? show.plan.show !== show.notesFor?.show || show.plan.guest !== show.notesFor?.guest : !planIn.value.trim())) show.notes = "";
   demoLoaded = false;
+  clearTimeout(demoTimer);
+  demoConfirm = false;
   renderDemo();
 });
 planBtn.addEventListener("click", () => {
@@ -260,18 +262,31 @@ planBtn.addEventListener("click", () => {
 const demoBtn = $("demoBtn");
 /** The demo is in the box and has not been edited since. */
 let demoLoaded = false;
+/** The first press over a plan of the host's own only asks (on the button); the second press, within 5 seconds, replaces it. */
+let demoConfirm = false;
+let demoTimer = 0;
 
 function renderDemo() {
-  const said = demoButton({ loaded: demoLoaded, locked: planIn.readOnly });
+  const said = demoButton({ loaded: demoLoaded, locked: planIn.readOnly, confirm: demoConfirm });
   label(demoBtn, said.state, said.off || said.tip, ...(said.off ? [offMark(), " "] : []), said.text);
   switchOff(demoBtn, said.off);
 }
 
 demoBtn.addEventListener("click", () => {
   if (demoBtn.getAttribute("aria-disabled") === "true" || planIn.readOnly) return;
+  clearTimeout(demoTimer);
+  // A plan in the box that is not the untouched demo is the host's (or the agent's): the button asks before it replaces it.
+  if (planIn.value.trim() && !demoLoaded && !demoConfirm) {
+    demoConfirm = true;
+    demoTimer = setTimeout(() => { demoConfirm = false; renderDemo(); }, 5000);
+    renderDemo();
+    return;
+  }
+  demoConfirm = false;
   planIn.value = planText(DEMO_SHOW);
-  // What the agent loaded is no longer what is in the box; the host's own go-ahead for the agent is used up.
-  // A request still on its way is given up too: the agent's answer would be refused, so nothing is left waiting.
+  // What the agent loaded is no longer what is in the box; the host's own go-ahead for the agent is used up. A request
+  // still on its way is given up too (its answer is refused with that reason), so nothing is left waiting.
+  if (loadState.phase === "asking") loadState.gaveUp = true;
   if (loadState.phase !== "idle") { clearTimeout(loadState.timer); loadState.phase = "idle"; }
   Object.assign(loadState, { byAgent: false, hostAsked: false });
   readPasted();
@@ -280,7 +295,6 @@ demoBtn.addEventListener("click", () => {
   demoLoaded = true;
   renderDemo();
   renderLoad();
-  renderCard();
 });
 renderDemo();
 
@@ -291,7 +305,7 @@ const loadBtn = $("loadBtn");
 /** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show;
  * hostAsked: the host pressed the button and has not edited the box since, so the agent may load over a plan they typed
  * (also after a refused try or a slow one: the agent's next try still counts). */
-const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, hostAsked: false, timer: 0 };
+const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, hostAsked: false, gaveUp: false, timer: 0 };
 
 function renderLoad() {
   const link = agent.view().state;
@@ -319,6 +333,7 @@ function loadFromAgent(args) {
   const read = readLoad(args);
   if (!read.ok) return refuse(read.reason);
   if (planIn.readOnly) return refuse("The show has started, so the plan stays as it is.");
+  if (loadState.gaveUp && !loadState.hostAsked) return refuse("The host loaded the demo show instead. Nothing to do.");
   // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
   if (!loadState.hostAsked && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
   const text = planText(read.plan);
@@ -330,9 +345,11 @@ function loadFromAgent(args) {
   show.notes = read.plan.notes;
   show.notesFor = read.plan;
   demoLoaded = false;
+  clearTimeout(demoTimer);
+  demoConfirm = false;
   renderDemo();
   clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true, hostAsked: false });
+  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true, hostAsked: false, gaveUp: false });
   renderLoad();
   renderCard();
   return { result: { loaded: true, questions: read.plan.questions.length, parts: read.plan.parts.length } };
@@ -343,7 +360,7 @@ loadBtn.addEventListener("click", () => {
   const name = AGENT_WAYS[agentKey()].name;
   if (!agent.send({ cue: "load_show", transcript: [] })) return renderLoad();
   clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "asking", name, hostAsked: true });
+  Object.assign(loadState, { phase: "asking", name, hostAsked: true, gaveUp: false });
   loadState.timer = setTimeout(() => { if (loadState.phase === "asking") loadFailed(`No show came back from ${name} in ${LOAD_WAIT_MS / 60_000} minutes. Check ${name}, then press again.`); }, LOAD_WAIT_MS);
   renderLoad();
 });

@@ -6,7 +6,7 @@
 
 /** The demo in the shape the agent's load_show takes (src/agent-load.mjs): show, guest, questions, parts, notes. */
 export const DEMO_SHOW = {
-  show: "Demo show: A small app's first year",
+  show: "Demo – A small app's first year",
   guest: "Demo Guest",
   questions: [
     "What made you start building the app?",
@@ -28,11 +28,13 @@ export const DEMO_SHOW = {
 
 /**
  * Step 3's "Load demo show" for the state it is in. loaded: the demo is in the plan box and has not been edited;
- * locked: the show clock runs, so the plan stays as it is. Gives { state, text, tip, off }: off is the reason the
- * button is switched off ("" when it is ready).
+ * locked: the show clock runs, so the plan stays as it is; confirm: the host pressed it over a plan of their own and the
+ * second press will replace it. Gives { state, text, tip, off }: off is the reason the button is switched off ("" when
+ * it is ready).
  */
-export function demoButton({ loaded, locked }) {
+export function demoButton({ loaded, locked, confirm = false }) {
   const off = locked ? "The show has started, so the plan stays as it is." : "";
+  if (confirm && !locked) return { state: "error", text: "Replace your plan? · press again", tip: "The plan in the box is replaced by the demo. Press again to do it, or leave it as it is.", off };
   if (loaded) return { state: "ok", text: "Demo loaded ✓", tip: "A sample show, not a real one. Change it in the box, or load your own.", off };
   return { state: null, text: "Load demo show", tip: "Fills in a sample show to try the whole screen. Nothing is stored. You can still change it.", off };
 }
