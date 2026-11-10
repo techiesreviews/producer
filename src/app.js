@@ -225,7 +225,6 @@ function readPasted() {
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   show.plan = plan.ok ? plan : null;
-  if (plan.empty) show.notes = ""; // the notes came with a loaded show: with the plan gone they go too
   // A new run order only when the parts change.
   const parts = plan.ok ? JSON.stringify(plan.parts) : "";
   if (parts !== show.parts) {
@@ -239,10 +238,12 @@ function readPasted() {
   renderCard();
 }
 planIn.addEventListener("input", () => {
-  // The host's own edit: what the agent loaded is no longer what is there.
+  // The host's own edit: what the agent loaded is no longer what is there, and the host's go-ahead for the agent is used up.
   if (loadState.phase === "loaded") { loadState.phase = "idle"; renderLoad(); }
-  loadState.byAgent = false;
+  Object.assign(loadState, { byAgent: false, hostAsked: false });
   readPasted();
+  // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
+  if (show.notes && (show.plan ? show.plan.show !== loadState.plan?.show || show.plan.guest !== loadState.plan?.guest : !planIn.value.trim())) show.notes = "";
 });
 planBtn.addEventListener("click", () => {
   const open = planBox.hidden;
@@ -255,13 +256,16 @@ planBtn.addEventListener("click", () => {
 // load_show tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show
 // only: nothing here reads or sets "Guest agreed", the microphone or the tab sharing. In this page's memory only. ----
 const loadBtn = $("loadBtn");
-/** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show. */
-const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, timer: 0 };
+/** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show;
+ * hostAsked: the host pressed the button and has not edited the box since, so the agent may load over a plan they typed
+ * (also after a refused try or a slow one: the agent's next try still counts). */
+const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, hostAsked: false, timer: 0 };
 
 function renderLoad() {
   const link = agent.view().state;
-  // The agent went while the page waited for the show (or after a failed try): nothing is on its way any more.
-  if (link !== "on" && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); loadState.phase = "idle"; }
+  // The agent went (Disconnect, or another tab took it) while the page waited for the show, or after a failed try: nothing is
+  // on its way any more. A quiet link ("waiting") is an agent busy with the host's outline, so the wait goes on.
+  if ((link === "off" || link === "elsewhere") && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); loadState.phase = "idle"; }
   const said = loadButton({ agent: link, locked: planIn.readOnly, load: { ...loadState, name: loadState.name || AGENT_WAYS[agentKey()].name } });
   label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
   switchOff(loadBtn, said.off);
@@ -284,7 +288,7 @@ function loadFromAgent(args) {
   if (!read.ok) return refuse(read.reason);
   if (planIn.readOnly) return refuse("The show has started, so the plan stays as it is.");
   // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
-  if (loadState.phase !== "asking" && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
+  if (!loadState.hostAsked && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
   const text = planText(read.plan);
   const back = readPlan(text);
   const same = back.ok && back.show === read.plan.show && back.guest === read.plan.guest && JSON.stringify(back.parts) === JSON.stringify(read.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(read.plan.questions);
@@ -293,7 +297,7 @@ function loadFromAgent(args) {
   readPasted();
   show.notes = read.plan.notes;
   clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true });
+  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true, hostAsked: false });
   renderLoad();
   renderCard();
   return { result: { loaded: true, questions: read.plan.questions.length, parts: read.plan.parts.length } };
@@ -304,8 +308,8 @@ loadBtn.addEventListener("click", () => {
   const name = AGENT_WAYS[agentKey()].name;
   if (!agent.send({ cue: "load_show", transcript: [] })) return renderLoad();
   clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "asking", name });
-  loadState.timer = setTimeout(() => { if (loadState.phase === "asking") loadFailed(`No show came back from ${name} in ${LOAD_WAIT_MS / 1000} seconds. Check ${name}, then press again.`); }, LOAD_WAIT_MS);
+  Object.assign(loadState, { phase: "asking", name, hostAsked: true });
+  loadState.timer = setTimeout(() => { if (loadState.phase === "asking") loadFailed(`No show came back from ${name} in ${LOAD_WAIT_MS / 60_000} minutes. Check ${name}, then press again.`); }, LOAD_WAIT_MS);
   renderLoad();
 });
 renderLoad();

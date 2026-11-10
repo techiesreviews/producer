@@ -109,9 +109,10 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (kind === "load") cues = cues.filter((c) => c.kind !== "load");
     cues.push({ ...item, seq, test, kind });
     let chars = cues.reduce((n, c) => n + c.transcript.reduce((m, l) => m + l.text.length, 0), 0);
-    // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it.
+    // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it, and so does a load cue,
+    // which holds no text and is the host's request.
     for (let i = 0; chars > UNCONFIRMED_CHARS && i < cues.length - 1;) {
-      if (cues[i].test) { i += 1; continue; }
+      if (cues[i].kind !== "show") { i += 1; continue; }
       chars -= cues.splice(i, 1)[0].transcript.reduce((m, l) => m + l.text.length, 0);
     }
     sent.set(seq, { cue: item.cue, sentAt: now(), test, kind });
