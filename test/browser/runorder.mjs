@@ -56,6 +56,7 @@ function standIns() {
     const fake = new EventTarget();
     fake.postMessage = (message) => { if (message?.type === "load") queueMicrotask(() => fake.dispatchEvent(new MessageEvent("message", { data: { type: "ready" } }))); };
     fake.terminate = () => {};
+    window.__speech = fake;
     return fake;
   };
 }
@@ -361,6 +362,52 @@ export async function run({ browser, base, out }) {
   assert.equal(await page.locator("#runsMore").isVisible(), false, "phone: now and next are the whole plan: no All");
   ok("phone: Start is finger-sized; no All when now and next are the whole plan");
   await context.close();
+
+  // The show clock is redrawn four times a second only while the producer screen shows it: not on the setup screen
+  // (where the producer screen comes back from when the speech model fails mid-show), and not after End & report. The
+  // page's own timers are counted here (no fake clock in this check): the ticker is the one repeating every 250 ms.
+  {
+    const context = await browser.newContext(VIEWS[0]);
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.addInitScript(() => {
+      const live = new Set();
+      const { setInterval: set, clearInterval: clear } = window;
+      window.setInterval = (fn, ms, ...rest) => { const id = set(fn, ms, ...rest); if (ms === 250) live.add(id); return id; };
+      window.clearInterval = (id) => { live.delete(id); clear(id); };
+      window.__tickers = () => live.size;
+    });
+    await page.goto(`${base}/`);
+    const tickers = () => page.evaluate(() => window.__tickers());
+    await page.locator("#planBtn").click();
+    await page.locator("#planIn").fill(PLAN);
+    await page.locator("#guestSeg button").first().click();
+    await page.locator("#micBtn").click();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await shareTab(page, (l) => l.click());
+    const loadModel = async () => {
+      await page.locator("#speechBtn").click();
+      await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    };
+    await loadModel();
+    await page.locator("#goBtn").click();
+    assert.equal(await tickers(), 0, "ticker: none on the producer screen before Start (the clock waits at 0:00)");
+    await page.locator("#runBtn").click();
+    assert.equal(await tickers(), 1, "ticker: one once the clock runs");
+    await page.evaluate(() => window.__speech.dispatchEvent(new MessageEvent("message", { data: { type: "error", reason: "the check broke the model" } })));
+    await page.waitForFunction(() => !document.querySelector("#setup").hidden);
+    assert.equal(await tickers(), 0, "ticker: none on the setup screen, though the clock has started");
+    await loadModel();
+    await page.locator("#goBtn").click();
+    assert.equal(await page.locator("#live").isVisible(), true, "ticker: back on the producer screen");
+    assert.equal(await tickers(), 1, "ticker: the clock is redrawn again there");
+    const shown = await page.locator("#clockTime").textContent();
+    await page.waitForFunction((t) => document.querySelector("#clockTime").textContent !== t, shown, { timeout: 3000 });
+    await page.locator("#endBtn").click();
+    assert.equal(await tickers(), 0, "ticker: none after End & report");
+    ok("ticker: the show clock redraws only on the producer screen once started; none on the setup screen or after End & report");
+    await context.close();
+  }
 
   return { checks, screenshots };
 }
