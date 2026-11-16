@@ -55,6 +55,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
   let held = null; // the agent's wait the page is holding: { id, timer, after }
   let cues = []; // cues the agent has not confirmed yet (it comes back with a higher seq): { seq, cue, transcript, test, ... }
   let handed = 0; // the newest cue handed to the agent: what a post_suggestions answer answers
+  let called = false; // the agent has called on this connection (a quiet loop may come back)
   const sent = new Map(); // seq -> { cue, sentAt, test }: what an answer to that seq answers
   let latest = null; // the agent's latest answer: { seq, cue, suggestions, ms }
   let suggested = () => {};
@@ -186,6 +187,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
 
   function onCall({ id, tool, args }) {
     const a = args && typeof args === "object" ? args : {};
+    called = true;
     set("on");
     watch();
     if (Object.hasOwn(answers, tool)) return answers[tool](id, a);
@@ -230,6 +232,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     cue = null;
     cues = [];
     handed = 0;
+    called = false;
     sent.clear();
     latest = null;
     answered.clear();
@@ -305,11 +308,13 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     },
 
     /**
-     * A cue from the cue rules: { cue, transcript, position?, guestName? }. Taken only while the agent's loop is
-     * alive (true); it goes to the wait held, or to the agent's next call.
+     * A cue from the cue rules: { cue, transcript, position?, guestName? }. Taken while the agent's loop is alive
+     * (true); it goes to the wait held, or to the agent's next call. The end cue is also taken while a loop that has
+     * called on this connection is quiet: the show ends once, so the loop hears End when it comes back.
      */
     send(item) {
-      if (link.state !== "on") return false;
+      const quiet = link.state === "waiting" && called && item.cue === CUE.endReport;
+      if (link.state !== "on" && !quiet) return false;
       queue(item);
       return true;
     },

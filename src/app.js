@@ -14,9 +14,12 @@ import { AGENT_WAYS, LOCK_TIP, mcpLine, NO_MCP_TIP, TEST_TIP } from "./agent-way
 import { connectMessage } from "./agent-message.mjs";
 import { createShowPlan } from "./showplan.mjs";
 import { AGENT_TEST_MS, createAgentLink } from "./agent-link.mjs";
+import { createShowPhase, endingAgent } from "./showphase.mjs";
 
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
+/** Which screen the show is on (src/showphase.mjs): setup, live or ended. It runs the show clock's ticker. */
+const phase = createShowPhase({ onTick: () => renderRun(), onChange: renderPhase });
 
 /** This browser and what it can do. A control the browser cannot run is switched off with its reason. */
 const browser = detectBrowser(window);
@@ -305,7 +308,6 @@ const runList = $("runList");
 const runBtn = $("runBtn");
 const runsMore = $("runsMore");
 const clock = $("clock");
-let ticker = null;
 let lastPress = 0;
 const make = (tag, className, text = "") => Object.assign(document.createElement(tag), { className, textContent: text });
 const setTone = (el, tone) => { if (tone) el.dataset.tone = tone; else el.removeAttribute("data-tone"); };
@@ -374,7 +376,7 @@ runBtn.addEventListener("click", () => {
   if (!show.run || now - lastPress < 1000) return;
   lastPress = now;
   if (show.run.view(now).started) show.run.next(now); else lockPlan(now);
-  ticker ??= setInterval(renderRun, 250);
+  phase.clockStarted();
   renderRun();
 });
 // Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
@@ -497,7 +499,7 @@ function renderCard() {
   // The next change on its own: the light going back after a minute, or the next second of the wait.
   clearTimeout(asking.timer);
   const wait = busy ? asking.since + THINK_MS - now : suggestInMs > 0 ? suggestInMs % 1000 || 1000 : 0;
-  if (wait > 0 && !$("live").hidden) asking.timer = setTimeout(renderCard, wait + 10);
+  if (wait > 0 && phase.live()) asking.timer = setTimeout(renderCard, wait + 10);
 }
 
 /** A cue went (a pause, or Suggest now): the light breathes until the agent's turn on it ends (answered, passed, or a minute). */
@@ -603,12 +605,12 @@ function paused(source, at) {
  * listening in vain; the failed control says why (the model's button, or the service's choice, which the session puts
  * back on the model). */
 function engineFailed(engine) {
-  const live = !$("live").hidden;
+  const live = phase.live();
   if (engine === "local") {
-    if (live && session.view().engine === "local") { session.stop(); showScreen(false); }
+    if (live && session.view().engine === "local") { session.stop(); phase.back(); }
     return;
   }
-  if (live) { session.stop(); showScreen(false); }
+  if (live) { session.stop(); phase.back(); }
   // The Stop button that had focus is gone with the producer screen: focus goes to the failed choice and its reason
   // opens, so a keyboard or screen-reader host hears why the setup came back. Once the session has put the choice back
   // on the model and the page has drawn it, the scroll to the choice comes first and is let settle (a scroll closes a
@@ -779,18 +781,19 @@ speechBtn.addEventListener("click", () => { if (pressed(speechBtn)) session.load
 choices(engineSeg, (engine) => session.pickEngine(engine));
 
 // ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
-/** The setup or the producer screen (with the listening sign in the top bar). */
-function showScreen(live) {
+/** The screen of the show's phase: the setup, the producer screen (with the listening sign and End & report in the
+ * top bar) or the end report. */
+function renderPhase(now) {
   tooltip.hide();
-  $("setup").hidden = live;
-  $("live").hidden = !live;
-  $("topLive").hidden = !live;
-  if (live) { renderRun(); renderCard(); }
+  $("setup").hidden = now !== "setup";
+  $("live").hidden = now !== "live";
+  $("topLive").hidden = now !== "live";
+  $("report").hidden = now !== "ended";
+  if (now === "live") { renderRun(); renderCard(); }
 }
 
 goBtn.addEventListener("click", () => {
-  if (!pressed(goBtn)) return;
-  showScreen(true);
+  if (!pressed(goBtn) || !phase.open()) return;
   session.open();
 });
 
@@ -812,27 +815,17 @@ const SAVE_TIP = saveBtn.dataset.tip;
 const ending = { at: null, run: null, agent: { phase: "off", name: "", reason: "" }, asked: false, timer: 0, md: "", copyTimer: 0 };
 
 endBtn.addEventListener("click", () => {
-  if (ending.at) return;
+  if (!phase.live()) return;
   const now = Date.now();
   ending.at = new Date(now);
   ending.run = show.run ? show.run.view(now) : null;
-  clearInterval(ticker);
-  ticker = null;
   session.end();
   const name = AGENT_WAYS[agentKey()].name;
-  const link = agent.view().state;
+  // A connected agent whose loop went quiet takes the end cue too, and is waited for the same time.
   ending.asked = cues.end();
-  if (ending.asked) {
-    ending.agent = { phase: "waiting", name };
-    ending.timer = setTimeout(() => agentGone(`No report came back from ${name} in ${REPORT_WAIT_MS / 60_000} minutes.`), REPORT_WAIT_MS);
-  } else {
-    ending.agent = { phase: "off", name, reason: link === "elsewhere" ? "Your agent is connected in another tab." : "No agent was connected when the show ended." };
-  }
-  tooltip.hide();
-  $("setup").hidden = true;
-  $("live").hidden = true;
-  $("topLive").hidden = true;
-  $("report").hidden = false;
+  ending.agent = endingAgent({ asked: ending.asked, link: agent.view().state, name });
+  if (ending.asked) ending.timer = setTimeout(() => agentGone(`No report came back from ${name} in ${REPORT_WAIT_MS / 60_000} minutes.`), REPORT_WAIT_MS);
+  phase.end();
   renderReport();
   $("reportTitle").focus();
 });

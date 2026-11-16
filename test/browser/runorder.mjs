@@ -397,6 +397,10 @@ export async function run({ browser, base, out }) {
     await page.evaluate(() => window.__speech.dispatchEvent(new MessageEvent("message", { data: { type: "error", reason: "the check broke the model" } })));
     await page.waitForFunction(() => !document.querySelector("#setup").hidden);
     assert.equal(await tickers(), 0, "ticker: none on the setup screen, though the clock has started");
+    // The failure let the microphone go: turn it on again, the tab sound too if it went, and the model.
+    await page.locator("#micBtn").click();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    if ((await page.locator("#tabBtn").getAttribute("data-state")) !== "ok") await shareTab(page, (l) => l.click());
     await loadModel();
     await page.locator("#goBtn").click();
     assert.equal(await page.locator("#live").isVisible(), true, "ticker: back on the producer screen");
