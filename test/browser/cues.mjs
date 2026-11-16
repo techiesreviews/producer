@@ -8,9 +8,10 @@
 import assert from "node:assert/strict";
 
 // The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
-// address itself, and here each browser context gets its own made-up one, so these checks never meet that limit.
+// address itself, and here each browser context gets its own made-up one (its own /64 in the documentation range), so
+// these checks never meet that limit.
 let nextClient = 0;
-const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `10.0.1.${++nextClient}` } });
+const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `2001:db8:1:${++nextClient}::1` } });
 
 const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
 const PAGE_BUDGET_MS = 300;

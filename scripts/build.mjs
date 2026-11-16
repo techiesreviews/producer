@@ -43,7 +43,7 @@ const EXPORTED = /^export (?:async )?(?:function|const|let|class) (\w+)/gm;
 
 /** A page file with its import lines dropped, once each one names exported names of a module inlined before it. */
 function dropImports(file, code, before, source) {
-  const kept = code.replace(/^import \{([^}]*)\} from "(\.\.?\/[^"]+)";[ \t]*\n/gm, (line, list, spec) => {
+  const kept = code.replace(/^import \{([^}]*)\} from "(\.\.?\/[^"]+)";[ \t]*\r?\n/gm, (line, list, spec) => {
     const from = posix.join(posix.dirname(file), spec);
     if (/\bas\b/.test(list)) throw new Error(`${file}: an aliased import (${line.trim()}) cannot be inlined`);
     if (!before.includes(from)) throw new Error(`${file} imports ${spec}, which is not inlined before it`);
