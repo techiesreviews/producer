@@ -4,7 +4,7 @@
 // live to ended, once. The show clock's ticker (a redraw every TICK_MS) runs only while the show is live and the
 // clock has started: never on the setup screen, never after the end. What End & report says about the agent is
 // decided by endingAgent(), so it is tested without a browser.
-// The inlined page script keeps this file's code as it is (the build drops only `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** The show clock is redrawn this often while it runs on the producer screen. */
 export const TICK_MS = 250;
