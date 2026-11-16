@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakePage, PROTOCOL, relayWith, settle, T0 } from "./fakes.mjs";
 import { FakeSocket } from "./runtime.mjs";
-import { MAX_AGE_MS } from "../src/token.mjs";
+import { TOKEN_MAX_AGE_MS } from "../src/protocol.mjs";
 
 const { ALARM_SLACK_MS, MAX_CALL_MS, TAB_GRACE_MS } = await import("../src/relay.mjs");
 const TRANSCRIPT = "a private sentence nobody may store";
@@ -17,10 +17,10 @@ test("relay: a tab's note lasts until birth + 8 h, with an alarm just after; pin
   assert.deepEqual([ctx.autoResponse.request, ctx.autoResponse.response], ['{"type":"ping"}', '{"type":"pong"}']);
   const ws = await tab();
   assert.deepEqual(ws.sent[0], { type: "ready", createdAt: T0 });
-  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + MAX_AGE_MS, revoked: false, agent: null });
-  assert.equal(ctx.alarm, T0 + MAX_AGE_MS + ALARM_SLACK_MS);
+  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + TOKEN_MAX_AGE_MS, revoked: false, agent: null });
+  assert.equal(ctx.alarm, T0 + TOKEN_MAX_AGE_MS + ALARM_SLACK_MS);
   assert.deepEqual(await relay.op({ op: "auth", born: T0 }), { status: "ok" });
-  now.t = T0 + MAX_AGE_MS;
+  now.t = T0 + TOKEN_MAX_AGE_MS;
   assert.deepEqual(await relay.op({ op: "auth", born: T0 }), { status: "unauthorized" }, "past expiresAt: refused before the alarm");
 });
 
@@ -236,7 +236,7 @@ test("relay: the alarm refuses what waits, closes the tab with 4003 and erases e
   const now = { t: T0 };
   const { ctx, relay, tab } = relayWith(now);
   const ws = await tab();
-  const due = T0 + MAX_AGE_MS + ALARM_SLACK_MS;
+  const due = T0 + TOKEN_MAX_AGE_MS + ALARM_SLACK_MS;
   now.t = due - 10;
   await relay.alarm();
   assert.equal(ctx.alarm, due, "early: set again");
@@ -254,7 +254,7 @@ test("relay: the alarm refuses what waits, closes the tab with 4003 and erases e
 });
 
 test("relay: a tab with a token past its time is refused with 4003 and nothing is written", async () => {
-  const now = { t: T0 + MAX_AGE_MS };
+  const now = { t: T0 + TOKEN_MAX_AGE_MS };
   const { ctx, tab } = relayWith(now);
   const ws = await tab(T0);
   assert.deepEqual([ws.accepted, ws.tags, ws.code, ws.reason], [true, undefined, 4003, "expired"]);
@@ -272,13 +272,13 @@ test("relay: Disconnect (revoke) refuses the token until its alarm, closes with 
   await relay.webSocketMessage(ws, JSON.stringify({ type: "revoke" }));
   assert.deepEqual(await waiting, { status: "unauthorized" });
   assert.deepEqual([ws.code, ws.reason], [4003, "revoked"]);
-  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + MAX_AGE_MS, revoked: true, agent: null });
-  assert.equal(ctx.alarm, T0 + MAX_AGE_MS + ALARM_SLACK_MS);
-  now.t = T0 + MAX_AGE_MS - 1;
+  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + TOKEN_MAX_AGE_MS, revoked: true, agent: null });
+  assert.equal(ctx.alarm, T0 + TOKEN_MAX_AGE_MS + ALARM_SLACK_MS);
+  now.t = T0 + TOKEN_MAX_AGE_MS - 1;
   assert.deepEqual(await relay.op({ op: "auth", born: T0 }), { status: "unauthorized" });
   const again = await tab();
   assert.deepEqual([again.code, again.reason], [4003, "revoked"], "a new tab does not bring it back");
-  now.t = T0 + MAX_AGE_MS + ALARM_SLACK_MS;
+  now.t = T0 + TOKEN_MAX_AGE_MS + ALARM_SLACK_MS;
   await relay.alarm();
   assert.equal(ctx.storage.data.size, 0);
 });
@@ -289,8 +289,8 @@ test("relay: a revoke with no note keeps one for a token's whole life, with an a
   const ws = new FakeSocket();
   ctx.acceptWebSocket(ws, ["tab"]);
   await relay.webSocketMessage(ws, JSON.stringify({ type: "revoke" }));
-  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + MAX_AGE_MS, revoked: true, agent: null });
-  assert.equal(ctx.alarm, T0 + MAX_AGE_MS + ALARM_SLACK_MS);
+  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + TOKEN_MAX_AGE_MS, revoked: true, agent: null });
+  assert.equal(ctx.alarm, T0 + TOKEN_MAX_AGE_MS + ALARM_SLACK_MS);
 });
 
 test("relay: an agent that calls before the tab has connected waits for it, instead of a 401", async () => {
@@ -302,16 +302,16 @@ test("relay: an agent that calls before the tab has connected waits for it, inst
   assert.equal(ctx.storage.data.size, 0, "nothing is written before a tab connects (tokens are not signed)");
   assert.ok(!ctx.alarm, "and no alarm is set");
   const ws = await tab();
-  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + MAX_AGE_MS, revoked: false, agent: { name: "codex", version: "1" } });
+  assert.deepEqual(ctx.storage.data.get("meta"), { createdAt: T0, expiresAt: T0 + TOKEN_MAX_AGE_MS, revoked: false, agent: { name: "codex", version: "1" } });
   assert.deepEqual(ws.sent.map((m) => m.type), ["ready", "agent"]);
-  assert.deepEqual(await relay.op({ op: "auth", born: T0 - MAX_AGE_MS }), { status: "unauthorized" }, "an old token is still refused");
+  assert.deepEqual(await relay.op({ op: "auth", born: T0 - TOKEN_MAX_AGE_MS }), { status: "unauthorized" }, "an old token is still refused");
 });
 
 test("relay: a call from a token past its time is refused, whatever the note says", async () => {
   const now = { t: T0 };
   const { relay, tab } = relayWith(now);
   await tab();
-  now.t = T0 + MAX_AGE_MS + 1;
+  now.t = T0 + TOKEN_MAX_AGE_MS + 1;
   assert.deepEqual(await relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: T0 }), { status: "unauthorized" });
   assert.deepEqual(await relay.op({ op: "call", tool: "wait_for_cue", args: {}, born: 0 }), { status: "unauthorized" });
 });

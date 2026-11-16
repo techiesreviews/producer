@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { lastServer, PROTOCOL, relayWith, settle, T0 } from "./fakes.mjs";
 import { McpLimiter } from "../src/limiter.mjs";
-import { FUTURE_SLACK_MS, MAX_AGE_MS, newToken, relayName, TOKEN_RE } from "../src/token.mjs";
+import { TOKEN_MAX_AGE_MS } from "../src/protocol.mjs";
+import { FUTURE_SLACK_MS, newToken, relayName, TOKEN_RE } from "../src/token.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.techies.tools";
@@ -71,16 +72,32 @@ test("/api/agent-token: a fresh token with the Worker's time, POST from this sit
   assert.equal(e.calls.assets.length, 0, "/api never falls through to the page");
 });
 
-test("/api/agent-token and /api/relay: an in-memory guard per client", async () => {
+test("/api/agent-token and /api/relay: an in-memory guard per client, 10 tokens and 20 relay opens a minute (S2)", async () => {
   const e = env();
   const statuses = [];
-  for (let i = 0; i < 21; i++) statuses.push((await worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": "198.51.100.77" } }), e)).status);
-  assert.deepEqual([statuses.slice(0, 20).every((s) => s === 200), statuses[20]], [true, 429], "20 tokens a minute per client");
+  for (let i = 0; i < 11; i++) statuses.push((await worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": "198.51.100.77" } }), e)).status);
+  assert.deepEqual([statuses.slice(0, 10).every((s) => s === 200), statuses[10]], [true, 429], "10 tokens a minute per client");
   const { token } = newToken();
   const relayed = [];
-  for (let i = 0; i < 31; i++) relayed.push((await worker.fetch(relayRequest(token, { ip: "198.51.100.78" }), e)).status);
-  assert.equal(relayed.at(-1), 429, "30 relay connects a minute per client");
+  for (let i = 0; i < 21; i++) relayed.push((await worker.fetch(relayRequest(token, { ip: "198.51.100.78" }), e)).status);
+  assert.deepEqual([relayed.slice(0, 20).includes(429), relayed[20]], [false, 429], "20 relay opens a minute per client");
   assert.equal((await worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": "198.51.100.79" } }), e)).status, 200, "another client is not affected");
+});
+
+test("S2: the page routes count one IPv6 /64 as one client, and an IPv4-mapped address as its IPv4 one", async () => {
+  const e = env();
+  const mint = (ip) => worker.fetch(new Request(`${SITE}/api/agent-token`, { method: "POST", headers: { "cf-connecting-ip": ip } }), e).then((r) => r.status);
+  const codes = [];
+  for (let i = 0; i < 11; i++) codes.push(await mint(`2001:db8:77:1:${i.toString(16)}::${i + 1}`));
+  assert.deepEqual([codes.slice(0, 10).includes(429), codes[10]], [false, 429], "rotating addresses inside one /64 shares the token limit");
+  assert.equal(await mint("2001:db8:77:2::1"), 200, "the next /64 is another client");
+  const { token } = newToken();
+  const relayed = [];
+  for (let i = 0; i < 21; i++) relayed.push((await worker.fetch(relayRequest(token, { ip: `2001:db8:78:0:${i.toString(16)}::1` }), e)).status);
+  assert.equal(relayed.at(-1), 429, "and the relay limit");
+  const mapped = [];
+  for (let i = 0; i < 6; i++) mapped.push(await mint("198.51.100.80"), await mint("::ffff:198.51.100.80"));
+  assert.equal(mapped.filter((c) => c === 429).length, 2, "198.51.100.80 and ::ffff:198.51.100.80 share one count");
 });
 
 const relayRequest = (token, { origin, protocol = PROTOCOL, ip = "203.0.113.5" } = {}) => {
@@ -97,7 +114,7 @@ test("/api/relay: a good token reaches its relay (by hash) with its birth time; 
   assert.deepEqual(good.calls.idFromName, [await relayName(token)]);
   assert.equal(good.calls.fetch[0].init.headers["X-Token-Born"], String(born));
   const now = Date.now();
-  for (const [bad, reason] of [[newToken(now - MAX_AGE_MS - 1000).token, "expired"], [newToken(now + 3600_000).token, "invalid"]]) {
+  for (const [bad, reason] of [[newToken(now - TOKEN_MAX_AGE_MS - 1000).token, "expired"], [newToken(now + 3600_000).token, "invalid"]]) {
     const e = env();
     const closed = await worker.fetch(relayRequest(bad), e);
     assert.equal(closed.status, 101);
@@ -118,7 +135,7 @@ test("/api/relay: a good token reaches its relay (by hash) with its birth time; 
 test("/mcp: a token passes its birth time to its relay; an old, foreign or revoked one gets 401", async () => {
   const mcp = (token, body = { jsonrpc: "2.0", id: 1, method: "tools/list" }) => new Request(`${SITE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   const old = env();
-  const res = await worker.fetch(mcp(newToken(Date.now() - MAX_AGE_MS - FUTURE_SLACK_MS).token), old);
+  const res = await worker.fetch(mcp(newToken(Date.now() - TOKEN_MAX_AGE_MS - FUTURE_SLACK_MS).token), old);
   assert.equal(res.status, 401);
   assert.equal(res.headers.get("WWW-Authenticate"), "Bearer");
   assert.equal(old.calls.idFromName.length, 0, "no relay touched for an expired token");

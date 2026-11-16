@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkToken, FUTURE_SLACK_MS, MAX_AGE_MS, newToken, relayName, TOKEN_RE } from "../src/token.mjs";
+import { TOKEN_MAX_AGE_MS } from "../src/protocol.mjs";
+import { checkToken, FUTURE_SLACK_MS, newToken, relayName, TOKEN_RE } from "../src/token.mjs";
 
 const T0 = Date.UTC(2026, 10, 9, 20);
 // The random part of a token, which may itself hold "-" (base64url).
@@ -12,11 +13,11 @@ test("token: pr1-<birth time>-<32 random bytes>, made and checked by the Worker'
   assert.ok(token.startsWith("pr1-"));
   assert.equal(parseInt(token.split("-")[1], 36), T0);
   assert.equal(born, T0);
-  assert.equal(MAX_AGE_MS, 8 * 60 * 60 * 1000);
+  assert.equal(TOKEN_MAX_AGE_MS, 8 * 60 * 60 * 1000);
   assert.notEqual(newToken(T0).token, token, "random part");
   assert.deepEqual(checkToken(token, T0 + 1000), { ok: true, born: T0 });
-  assert.deepEqual(checkToken(token, T0 + MAX_AGE_MS - 1), { ok: true, born: T0 });
-  assert.deepEqual(checkToken(token, T0 + MAX_AGE_MS), { ok: false, reason: "expired" });
+  assert.deepEqual(checkToken(token, T0 + TOKEN_MAX_AGE_MS - 1), { ok: true, born: T0 });
+  assert.deepEqual(checkToken(token, T0 + TOKEN_MAX_AGE_MS), { ok: false, reason: "expired" });
   assert.deepEqual(checkToken(token, T0 - FUTURE_SLACK_MS - 1), { ok: false, reason: "invalid" }, "from the future");
   assert.deepEqual(checkToken(token, T0 - FUTURE_SLACK_MS), { ok: true, born: T0 }, "a minute of slack");
   for (const bad of ["", "pr1-abc", `tp1-${T0.toString(36)}-${"A".repeat(43)}`, `${token}x`, null, undefined]) {

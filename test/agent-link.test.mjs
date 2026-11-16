@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeTimers, pageSockets, relayWith, settle } from "./fakes.mjs";
 import { checkToken, newToken } from "../src/token.mjs";
-import { LOAD_CUE } from "../src/agent-load.mjs";
-import { AGENT_HOLD_MS, AGENT_QUIET_MS, AGENT_SAMPLE, AGENT_TEST_MS, createAgentLink } from "../src/agent-link.mjs";
+import { AGENT_QUIET_MS, AGENT_SAMPLE, AGENT_TEST_MS, ANSWERS_KEPT, createAgentLink } from "../src/agent-link.mjs";
+import { CUE, WAIT_HOLD_MS } from "../src/protocol.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.test";
@@ -75,14 +75,14 @@ test("the loop stays connected through idle answers, and the page waits again on
   const wait = call("wait_for_cue", { seq: 0 });
   await flush();
   assert.equal(link.view().state, "on");
-  await timers.tick(AGENT_HOLD_MS);
+  await timers.tick(WAIT_HOLD_MS);
   const idle = await wait;
   assert.deepEqual(idle.body.result.structuredContent, { idle: true, seq: 0 }, "the page answers idle after its hold");
   // The curl loop asks again at once, so the page stays connected round after round.
   for (let round = 0; round < 4; round++) {
     const again = call("wait_for_cue", { seq: 0 });
     await flush();
-    await timers.tick(AGENT_HOLD_MS);
+    await timers.tick(WAIT_HOLD_MS);
     assert.equal((await again).body.result.structuredContent.idle, true);
     assert.equal(link.view().state, "on", `round ${round + 1}: still connected`);
   }
@@ -246,7 +246,7 @@ test("the loop going quiet during a Test: the page waits again, and the Test sho
   await flush();
   assert.equal(link.view().test.state, "ok");
   assert.equal(link.view().passed, true);
-  await timers.tick(AGENT_HOLD_MS + AGENT_QUIET_MS);
+  await timers.tick(WAIT_HOLD_MS + AGENT_QUIET_MS);
   assert.deepEqual([link.view().state, link.view().passed], ["waiting", true], "passed stays for the connection; the page shows done only while connected");
   link.disconnect();
 });
@@ -569,7 +569,7 @@ test("the load cue goes alone, is not a question for the agent to answer, and ne
   link.onSuggestions(() => assert.fail("a load cue has no suggestions"));
   await connect();
   await call("get_context");
-  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 1
+  link.send({ cue: CUE.load, transcript: [] }); // seq 1
   assert.equal(link.asking(), false, "loading is not a question on the card");
   link.send(CUE); // seq 2
   const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
@@ -578,8 +578,8 @@ test("the load cue goes alone, is not a question for the agent to answer, and ne
   assert.deepEqual([second.cue, second.seq], ["pause", 2], "the next wait gets the pause cue");
   assert.equal(link.suggestion(), null, "an answer to the load cue is not a suggestion");
   // A second press while the first still waits replaces it.
-  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 3
-  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 4
+  link.send({ cue: CUE.load, transcript: [] }); // seq 3
+  link.send({ cue: CUE.load, transcript: [] }); // seq 4
   const again = (await call("wait_for_cue", { seq: 2 })).body.result.structuredContent;
   assert.deepEqual([again.cue, again.seq], ["load_show", 4]);
   await flush();
@@ -590,17 +590,17 @@ test("the load cue is the host's request: the 20,000-character cap lets it stay 
   const { link, call, connect } = setup();
   await connect();
   await call("get_context");
-  link.send({ cue: LOAD_CUE, transcript: [] }); // seq 1
+  link.send({ cue: CUE.load, transcript: [] }); // seq 1
   for (let i = 0; i < 5; i++) link.send({ cue: "pause", transcript: [{ speaker: "guest", text: `${i}${"x".repeat(5_999)}` }] });
   const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
-  assert.deepEqual([first.cue, first.seq, first.transcript], [LOAD_CUE, 1, []], "the load request is still the first thing the agent gets");
+  assert.deepEqual([first.cue, first.seq, first.transcript], [CUE.load, 1, []], "the load request is still the first thing the agent gets");
   const next = (await call("wait_for_cue", { seq: 1 })).body.result.structuredContent;
   assert.deepEqual(next.transcript.map((l) => l.text[0]), ["2", "3", "4"], "the show cues were trimmed as before");
   link.disconnect();
 });
 
 test("the cue name the page sends is the one the Worker and the link know", () => {
-  assert.equal(LOAD_CUE, "load_show", "src/agent-link.mjs spells it out: an inlined file imports nothing");
+  assert.equal(CUE.load, "load_show", "src/agent-link.mjs spells it out: an inlined file imports nothing");
 });
 
 test("post_report: the page's own report() takes what the agent sent, and its answer goes back to the agent", async () => {
@@ -616,4 +616,33 @@ test("post_report: the page's own report() takes what the agent sent, and its an
   assert.equal(refused.body.result.isError, true);
   assert.match(refused.body.result.content[0].text, /no show to report on yet/);
   link.disconnect();
+});
+
+test("B5: the answers already taken are bounded: the newest ANSWERS_KEPT stay, a repeat of one of them still counts once", async () => {
+  const now = { t: 1_000_000 };
+  const timers = fakeTimers(now);
+  let sock;
+  const net = {
+    token: async () => Response.json({ token: newToken(now.t).token }),
+    socket(protocols) {
+      sock = new EventTarget();
+      Object.assign(sock, { protocols, readyState: 1, sent: [], send: (d) => sock.sent.push(JSON.parse(d)), close: () => { sock.readyState = 3; } });
+      return sock;
+    },
+  };
+  const link = createAgentLink({ net, now: () => now.t, timers });
+  await link.connect();
+  let n = 0;
+  const post = (text) => sock.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "call", id: `c${++n}`, tool: "post_suggestions", args: { suggestions: [{ text }] } }) }));
+  const answers = [];
+  link.onSuggestions((a) => answers.push(a));
+  for (let i = 0; i < ANSWERS_KEPT * 3; i++) post(`Question number ${i}?`);
+  assert.equal(link.answersHeld(), ANSWERS_KEPT, "an eight-hour link with many answers keeps only the newest");
+  const before = sock.sent.length;
+  post(`Question number ${ANSWERS_KEPT * 3 - 1}?`);
+  assert.equal(sock.sent.at(-1).result.shown, 1, "a repeat is still answered");
+  assert.equal(sock.sent.length, before + 1);
+  assert.equal(link.answersHeld(), ANSWERS_KEPT);
+  link.disconnect();
+  assert.equal(link.answersHeld(), 0, "Disconnect lets them all go");
 });

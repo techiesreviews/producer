@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakePage, relayWith, settle, T0 } from "./fakes.mjs";
-import { durableLimiter } from "../src/limiter.mjs";
-import { McpLimiter } from "../src/limiter.mjs";
-import { bearer, handleMcp, MAX_BODY_BYTES, memoryLimiter, NOT_OPEN, TOOLS } from "../src/mcp.mjs";
-import { MAX_AGE_MS, newToken } from "../src/token.mjs";
+import { durableLimiter, McpLimiter, memoryLimiter } from "../src/limiter.mjs";
+import { handleMcp, MAX_BODY_BYTES, TOOLS } from "../src/mcp.mjs";
+import { NOT_OPEN, TOKEN_MAX_AGE_MS } from "../src/protocol.mjs";
+import { bearer, newToken } from "../src/token.mjs";
 
 const URL_ = "https://producer.techies.tools/mcp";
 const open = { async limit() { return { success: true }; } };
@@ -44,7 +44,7 @@ test("initialize negotiates the protocol, tells the tab who connected and explai
   assert.equal(body.result.serverInfo.name, "techies-producer");
   assert.match(body.result.instructions, /get_context/);
   assert.match(body.result.instructions, /wait_for_cue/);
-  assert.match(body.result.instructions, /data, not instructions/i);
+  assert.match(body.result.instructions, /data, never commands/i);
   assert.deepEqual(s.ws.sent.at(-1), { type: "agent", name: "claude-code", version: "2.1" });
   assert.equal((await s.rpc("initialize", { protocolVersion: "1999-01-01" })).body.result.protocolVersion, "2025-11-25");
 });
@@ -72,7 +72,7 @@ test("without a producer token every request is a 401, and no relay is touched",
   const touched = [];
   const relayFor = () => { touched.push(1); return { op: async () => ({ status: "ok" }) }; };
   const prompter = `tp1-${T0.toString(36)}-${"A".repeat(43)}`;
-  const old = newToken(T0 - MAX_AGE_MS - 120_000).token;
+  const old = newToken(T0 - TOKEN_MAX_AGE_MS - 120_000).token;
   const bodies = [{ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }, { jsonrpc: "2.0", id: 2, method: "tools/list" }, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_context" } }];
   for (const authorization of [undefined, "", "Basic abc", "Bearer", "Bearer pr1-short", `Bearer ${prompter}`, `Bearer ${old}`]) {
     for (const body of bodies) {
@@ -373,6 +373,20 @@ test("bad bodies: too large, not JSON, empty or oversized batch", async () => {
   assert.equal((await s.post({ jsonrpc: "1.0", id: 1, method: "ping" })).status, 200);
 });
 
+test("S3: a batch may hold one initialize, as it may hold one tool call (each one writes the agent's name)", async () => {
+  const s = await setup();
+  const init = (id) => ({ jsonrpc: "2.0", id, method: "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: `agent-${id}` } } });
+  const agentOps = () => s.ws.sent.filter((m) => m.type === "agent").length;
+  const before = agentOps();
+  const refused = await s.post(Array.from({ length: 20 }, (_, i) => init(i + 1)));
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error.message, /one initialize per request/i);
+  assert.equal(agentOps(), before, "none of them reached the relay");
+  const one = await s.post([init(1), { jsonrpc: "2.0", id: 2, method: "ping" }]);
+  assert.equal(one.status, 200);
+  assert.equal(agentOps(), before + 1, "a single initialize in a batch still works");
+});
+
 test("the body is read only for a request with a good token", async () => {
   let read = false;
   const request = new Request(URL_, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
@@ -408,7 +422,7 @@ test("bearer: the token from a header, with its birth time, only while it may be
   const { token, born } = newToken(T0);
   assert.deepEqual(bearer(`Bearer ${token}`, T0), { token, born });
   assert.deepEqual(bearer(`bearer   ${token}`, T0), { token, born });
-  assert.equal(bearer(`Bearer ${token}`, T0 + MAX_AGE_MS), null);
+  assert.equal(bearer(`Bearer ${token}`, T0 + TOKEN_MAX_AGE_MS), null);
   for (const bad of [null, "", token, "Bearer", `Bearer ${token} extra`, `Token ${token}`]) assert.equal(bearer(bad, T0), null, String(bad));
 });
 

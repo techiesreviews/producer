@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import vm from "node:vm";
 import { join, resolve } from "node:path";
-import { build, LIVE_HOST, PREVIEW_HOST, SPEECH_WORKER } from "../scripts/build.mjs";
+import { build, INLINED, LIVE_HOST, pageScript, PREVIEW_HOST, SPEECH_WORKER } from "../scripts/build.mjs";
 import { SPEECH_BYTES } from "../scripts/speech-files.mjs";
 
 const scratch = (name) => resolve(import.meta.dirname, "../.scratch", name);
@@ -134,4 +134,36 @@ test("the command line: --host and --host=, and a bad flag stops it instead of b
     assert.equal(run(...args).status, 2, args.join(" "));
     assert.throws(() => readdirSync(out), "nothing is written");
   }
+});
+
+test("page files import what they use; the build inlines them in order and drops each import line", () => {
+  const files = {
+    "src/a.mjs": "export const A = 1;\n",
+    "src/b.mjs": 'import { A } from "./a.mjs";\nexport const B = A + 1;\n',
+    "src/ui/c.mjs": 'import { B } from "../b.mjs";\nexport function c() { return B; }\n',
+    "src/app.js": 'import { A } from "./a.mjs";\nimport { c } from "./ui/c.mjs";\nreturn c() + A;\n',
+  };
+  const read = (file) => files[file];
+  const out = pageScript(["src/a.mjs", "src/b.mjs", "src/ui/c.mjs"], read);
+  assert.doesNotMatch(out, /\bimport\b/);
+  assert.equal(new Function(out.replace(/^\n\(\(\) => \{\n/, "").replace(/\n\}\)\(\);\n$/, ""))(), 3, "the names resolve in the one scope");
+  assert.throws(() => pageScript(["src/b.mjs", "src/a.mjs"], read), /src\/b\.mjs imports \.\/a\.mjs, which is not inlined before it/);
+  assert.throws(() => pageScript(["src/a.mjs"], () => 'import { X } from "./x.mjs";\n'), /not inlined before it/);
+  assert.throws(() => pageScript(["src/a.mjs", "src/b.mjs"], (f) => (f === "src/b.mjs" ? 'import { A as Z } from "./a.mjs";\n' : files[f])), /aliased import/);
+  assert.throws(() => pageScript(["src/a.mjs", "src/b.mjs"], (f) => (f === "src/b.mjs" ? 'import { Nope } from "./a.mjs";\n' : files[f])), /imports Nope from \.\/a\.mjs, which does not export it/);
+  assert.throws(() => pageScript(["src/a.mjs"], (f) => (f === "src/app.js" ? 'import * as all from "./a.mjs";\n' : files[f])), /must not import anything/, "only the plain named form");
+});
+
+test("the real page files say where each name comes from: every name one takes from another page file is imported", () => {
+  const exported = new Map();
+  for (const file of INLINED) for (const [, name] of readFileSync(resolve(import.meta.dirname, "..", file), "utf8").matchAll(/^export (?:async )?(?:function|const|let|class) (\w+)/gm)) exported.set(name, file);
+  const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""');
+  const missing = [];
+  for (const file of [...INLINED, "src/app.js"]) {
+    const text = readFileSync(resolve(import.meta.dirname, "..", file), "utf8");
+    const imported = new Set([...text.matchAll(/^import \{([^}]*)\} from "[^"]+";/gm)].flatMap((m) => m[1].split(",").map((n) => n.trim())));
+    const body = strip(text.replace(/^import .*$/gm, ""));
+    for (const [name, from] of exported) if (from !== file && !imported.has(name) && new RegExp(`(?<![\\w.$])${name}\\b(?!\\s*:)`).test(body)) missing.push(`${file} uses ${name} from ${from}`);
+  }
+  assert.deepEqual(missing, []);
 });
