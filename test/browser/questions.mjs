@@ -10,6 +10,11 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
+// The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
+// address itself, and here each browser context gets its own made-up one, so these checks never meet that limit.
+let nextClient = 0;
+const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `10.0.4.${++nextClient}` } });
+
 const ANDROID = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36";
 const VIEWS = [
   { name: "desktop-light", colorScheme: "light", viewport: { width: 1366, height: 900 } },
@@ -120,7 +125,7 @@ export async function run({ browser, base, out }) {
   for (const view of VIEWS) {
     const { name, ...options } = view;
     const phone = Boolean(options.isMobile);
-    const context = await browser.newContext(options);
+    const context = await browser.newContext(ownAddress(options));
     const page = await context.newPage();
     await page.clock.install({ time: new Date("2026-11-09T19:00:00Z") });
     await page.addInitScript(standIns);
@@ -304,7 +309,7 @@ export async function run({ browser, base, out }) {
 
   // No agent at all: the list question shows and Suggest now is off with "no agent".
   {
-    const context = await browser.newContext(VIEWS[0]);
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
@@ -324,7 +329,7 @@ export async function run({ browser, base, out }) {
   // A pause cue lights the thinking light; then another tab takes the relay mid-show: the card keeps its question,
   // Suggest now and the light say "other tab".
   {
-    const context = await browser.newContext(VIEWS[0]);
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
@@ -349,7 +354,7 @@ export async function run({ browser, base, out }) {
 
   // No plan and no agent: the card says there is no question, and Asked and Skip are off.
   {
-    const context = await browser.newContext(VIEWS[2]);
+    const context = await browser.newContext(ownAddress(VIEWS[2]));
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);

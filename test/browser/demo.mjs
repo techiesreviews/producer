@@ -11,6 +11,11 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
+// The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
+// address itself, and here each browser context gets its own made-up one, so these checks never meet that limit.
+let nextClient = 0;
+const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `10.0.2.${++nextClient}` } });
+
 const ANDROID = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36";
 const VIEWS = [
   { name: "desktop-light", colorScheme: "light", viewport: { width: 1366, height: 900 } },
@@ -126,7 +131,7 @@ export async function run({ browser, base, out }) {
   for (const view of VIEWS) {
     const { name, ...options } = view;
     const phone = Boolean(options.isMobile);
-    const context = await browser.newContext(options);
+    const context = await browser.newContext(ownAddress(options));
     const page = await context.newPage();
     await page.clock.install({ time: new Date("2026-11-10T09:00:00") });
     await page.addInitScript(standIns);
