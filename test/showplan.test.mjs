@@ -4,7 +4,7 @@
 // change it.
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { createShowPlan } from "../src/showplan.mjs";
+import { createShowPlan, DEMO_CONFIRM_MS } from "../src/showplan.mjs";
 import { DEMO_SHOW, demoButton } from "../src/demo.mjs";
 import { LOAD_WAIT_MS, loadButton, planText, readLoad } from "../src/agent-load.mjs";
 import { createRunOrder, readPlan } from "../src/runorder.mjs";
@@ -184,11 +184,11 @@ test("demo over the host's plan: the first press asks for 8 seconds, the second 
     assert.equal(show.pressDemo(), "asked");
     assert.equal(show.demoView().text, "Replace your plan? · press again");
     assert.equal(show.text, HOST, "nothing replaced yet");
-    mock.timers.tick(8000);
+    mock.timers.tick(DEMO_CONFIRM_MS);
     assert.equal(changes.length, 1, "the page hears the question run out");
     assert.equal(show.demoView().text, "Load demo show");
     assert.equal(show.pressDemo(), "asked");
-    mock.timers.tick(7999);
+    mock.timers.tick(DEMO_CONFIRM_MS - 1);
     assert.equal(show.pressDemo(), "loaded");
     assert.equal(show.text, planText(DEMO_SHOW));
     mock.timers.tick(10_000);
@@ -231,6 +231,17 @@ test("the host's edit: what the agent loaded is the host's now; its notes stay f
   assert.equal(show.notes, "", "another show takes the notes away");
 });
 
+test("the host's edit while the agent is asked: the go-ahead is used up, and the agent's show is refused on the button", () => {
+  const { show } = make();
+  show.edit(HOST);
+  show.askAgent("Claude Code", () => true);
+  show.edit(`${HOST}\n2. More?`);
+  assert.equal(show.loadView("on", "Claude Code").state, "busy", "the request is still on its way");
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again." });
+  assert.equal(show.loadView("on", "Claude Code").tip, "Claude Code could not load the show: the host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
+  assert.equal(show.text, `${HOST}\n2. More?`);
+});
+
 test("the host's edit: an emptied box takes the notes away, an unclear one keeps them", () => {
   const { show } = make();
   show.agentLoad(GOOD, "Claude Code");
@@ -250,7 +261,7 @@ test("the host's edit ends the demo and its question", () => {
     assert.equal(show.pressDemo(), "asked", "the edited demo is the host's plan");
     show.edit(HOST);
     assert.equal(show.demoView().text, "Load demo show", "an edit ends the question");
-    mock.timers.tick(8000);
+    mock.timers.tick(DEMO_CONFIRM_MS);
     assert.equal(changes.length, 0, "and its timer");
   } finally {
     mock.timers.reset();
