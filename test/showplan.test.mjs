@@ -1,0 +1,258 @@
+// The show plan (src/showplan.mjs): one owner for step 3's plan box. There is one way in for each of the three ways a
+// show arrives (the host's own text, the demo show, the agent's load_show), and every way leaves the plan, its notes,
+// who wrote it and the agent-load exchange in the same clear state. The views only describe that state: they never
+// change it.
+import { mock, test } from "node:test";
+import assert from "node:assert/strict";
+import { createShowPlan } from "../src/showplan.mjs";
+import { DEMO_SHOW, demoButton } from "../src/demo.mjs";
+import { LOAD_WAIT_MS, loadButton, planText, readLoad } from "../src/agent-load.mjs";
+import { createRunOrder, readPlan } from "../src/runorder.mjs";
+
+const GOOD = {
+  show: "Sample Show",
+  guest: "Sample Guest",
+  questions: ["How did it start?", "What went wrong first?"],
+  parts: [{ name: "Intro", minutes: 5 }, { name: "Main talk", minutes: 30 }],
+  notes: "Ask about the early days.",
+};
+const HOST = "Show: My Show\nGuest: My Guest\n10 Intro\n20 Story\n1. Why?";
+
+function make(over = {}) {
+  const changes = [];
+  const show = createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs: LOAD_WAIT_MS, demo: DEMO_SHOW, demoButton, onChange: () => changes.push(true), ...over });
+  return { show, changes };
+}
+
+test("pasted by hand: the text is read at once, a clear plan gets a run order, an unclear one gets none", () => {
+  const { show } = make();
+  assert.equal(show.plan, null);
+  assert.equal(show.run, null);
+  show.edit(HOST);
+  assert.equal(show.text, HOST);
+  assert.deepEqual({ show: show.plan.show, guest: show.plan.guest, parts: show.plan.parts, questions: show.plan.questions }, { show: "My Show", guest: "My Guest", parts: [{ name: "Intro", minutes: 10 }, { name: "Story", minutes: 20 }], questions: ["Why?"] });
+  assert.ok(show.run, "a run order for the parts");
+  assert.equal(show.read.ok, true, "the last read, for the plan button");
+  show.edit("10 Intro\nnot a line");
+  assert.equal(show.plan, null);
+  assert.equal(show.run, null);
+  assert.deepEqual(show.read, { ok: false, line: 2, text: "not a line" });
+});
+
+test("pasted by hand: the run order is made again only when the parts change", () => {
+  const { show } = make();
+  show.edit(HOST);
+  const first = show.run;
+  show.edit(`${HOST}\n2. And then?`);
+  assert.equal(show.run, first, "a new question keeps the run order");
+  show.edit(HOST.replace("20 Story", "25 Story"));
+  assert.notEqual(show.run, first, "new minutes make a new run order");
+});
+
+test("load_show: the agent's show lands in the box as the host's own text, with its notes, and the button says who loaded it", () => {
+  const { show } = make();
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { result: { loaded: true, questions: 2, parts: 2 } });
+  assert.equal(show.text, planText(GOOD));
+  assert.equal(show.plan.show, "Sample Show");
+  assert.equal(show.notes, "Ask about the early days.");
+  assert.ok(show.run);
+  const said = show.loadView("on", "Codex");
+  assert.equal(said.state, "ok");
+  assert.equal(said.text, "Loaded by Claude Code · 2 questions · 2 parts", "the agent that loaded it, not the one picked now");
+  assert.equal(show.demoView().text, "Load demo show");
+});
+
+test("load_show after the button: the agent named on the button loads over the host's plan, and the wait ends", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const { show, changes } = make();
+    show.edit(HOST);
+    assert.equal(show.askAgent("Claude Code", () => true), true);
+    assert.equal(show.loadView("on", "Codex").text, "Agent is loading…");
+    assert.equal(show.agentLoad(GOOD, "Codex").result.loaded, true);
+    assert.equal(show.loadView("on", "Codex").text, "Loaded by Claude Code · 2 questions · 2 parts");
+    mock.timers.tick(LOAD_WAIT_MS);
+    assert.equal(show.loadView("on", "Codex").state, "ok", "the old wait no longer fires");
+    assert.equal(changes.length, 0);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("the load button: a cue that cannot go changes nothing; a slow agent fails the wait with the same words as before", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const { show, changes } = make();
+    assert.equal(show.askAgent("Claude Code", () => false), false);
+    assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+    assert.equal(show.askAgent("Claude Code", () => true), true);
+    mock.timers.tick(LOAD_WAIT_MS - 1);
+    assert.equal(show.loadView("on", "Claude Code").state, "busy");
+    mock.timers.tick(1);
+    assert.equal(changes.length, 1, "the page hears the change");
+    assert.deepEqual(show.loadView("on", "Claude Code"), { state: "error", text: "Not loaded · try again", tip: "No show came back from Claude Code in 3 minutes. Check Claude Code, then press again.", off: "", primary: false });
+    // A show that comes later still lands, also over a plan the host typed: the host's go-ahead still counts.
+    assert.equal(show.agentLoad(GOOD, "Claude Code").result.loaded, true);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("the view never changes state: only the agent going away ends a wait", () => {
+  const { show } = make();
+  show.edit(HOST);
+  show.askAgent("Claude Code", () => true);
+  assert.equal(show.loadView("off", "Claude Code").text, "Let my agent load it", "drawn as off");
+  assert.equal(show.loadView("on", "Claude Code").state, "busy", "drawing it did not end the wait");
+  show.agentLink("waiting");
+  assert.equal(show.loadView("waiting", "Claude Code").state, "busy", "a quiet agent is busy, the wait goes on");
+  show.agentLink("off");
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it", "gone: nothing is on its way any more");
+  // The host's go-ahead went with it: the agent may not load over the host's plan now.
+  assert.match(show.agentLoad(GOOD, "Claude Code").error, /already has a plan/);
+});
+
+test("the agent going away also ends a failed try", () => {
+  const { show } = make();
+  show.askAgent("Claude Code", () => true);
+  show.agentLoad({ parts: [] }, "Claude Code");
+  assert.equal(show.loadView("on", "Claude Code").state, "error");
+  show.agentLink("elsewhere");
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+});
+
+test("a bad show is refused with the same words as today, and the box stays as it was", () => {
+  const { show } = make();
+  show.edit(HOST);
+  const before = { text: show.text, plan: show.plan, run: show.run };
+  const keep = () => assert.deepEqual({ text: show.text, plan: show.plan, run: show.run }, before, "the box is untouched");
+
+  assert.deepEqual(show.agentLoad({ parts: [] }, "Claude Code"), { error: readLoad({ parts: [] }).reason });
+  assert.deepEqual(show.agentLoad({ ...GOOD, consent: true }, "Claude Code"), { error: readLoad({ ...GOOD, consent: true }).reason });
+  keep();
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again." });
+  keep();
+
+  // After the button, a refusal is on the button too, in the agent's name.
+  show.askAgent("Claude Code", () => true);
+  assert.deepEqual(show.agentLoad({ parts: [] }, "Claude Code"), { error: "\"parts\" is needed: the run order, one part for each stretch of the show, with its name and planned minutes." });
+  assert.equal(show.loadView("on", "Claude Code").tip, "Claude Code could not load the show: \"parts\" is needed: the run order, one part for each stretch of the show, with its name and planned minutes.");
+  keep();
+});
+
+test("a show that does not read back the same is refused", () => {
+  // The page's own reader drops the questions: what the box would hold is not what the agent sent.
+  const { show } = make({ readPlan: (text) => ({ ...readPlan(text), questions: [] }) });
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "That show could not be read back clearly. Use plain names and questions." });
+  assert.equal(show.text, "");
+  assert.equal(show.plan, null);
+});
+
+test("once the show clock runs, the plan stays as it is: no edit, no demo, no agent load", () => {
+  const { show } = make();
+  show.edit(HOST);
+  show.lock(1000);
+  assert.equal(show.locked, true);
+  assert.equal(show.run.view(1000).started, true, "Start started the clock");
+  const plan = show.plan;
+  show.edit("5 Other");
+  assert.equal(show.plan, plan);
+  assert.equal(show.pressDemo(), "off");
+  assert.equal(show.plan, plan);
+  assert.equal(show.demoView().off, "The show has started, so the plan stays as it is.");
+  assert.equal(show.askAgent("Claude Code", () => assert.fail("no cue goes")), false);
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "The show has started, so the plan stays as it is." });
+  assert.equal(show.loadView("on", "Claude Code").off, "The show has started, so the plan stays as it is.");
+});
+
+test("demo: one press fills an empty box with the demo show and its notes", () => {
+  const { show } = make();
+  assert.equal(show.pressDemo(), "loaded");
+  assert.equal(show.text, planText(DEMO_SHOW));
+  assert.equal(show.plan.show, DEMO_SHOW.show);
+  assert.equal(show.notes, DEMO_SHOW.notes);
+  assert.equal(show.demoView().text, "Demo loaded ✓");
+  // Pressed again over the untouched demo: loads again, nothing to ask.
+  assert.equal(show.pressDemo(), "loaded");
+});
+
+test("demo over the host's plan: the first press asks for 8 seconds, the second replaces it", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const { show, changes } = make();
+    show.edit(HOST);
+    assert.equal(show.pressDemo(), "asked");
+    assert.equal(show.demoView().text, "Replace your plan? · press again");
+    assert.equal(show.text, HOST, "nothing replaced yet");
+    mock.timers.tick(8000);
+    assert.equal(changes.length, 1, "the page hears the question run out");
+    assert.equal(show.demoView().text, "Load demo show");
+    assert.equal(show.pressDemo(), "asked");
+    mock.timers.tick(7999);
+    assert.equal(show.pressDemo(), "loaded");
+    assert.equal(show.text, planText(DEMO_SHOW));
+    mock.timers.tick(10_000);
+    assert.equal(show.demoView().text, "Demo loaded ✓", "the old question no longer fires");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("demo while the agent is asked: the wait is given up, and the agent's late answer is refused once", () => {
+  const { show } = make();
+  show.edit(HOST);
+  show.askAgent("Claude Code", () => true);
+  show.pressDemo();
+  assert.equal(show.pressDemo(), "loaded");
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+  assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "The host loaded the demo show instead. Nothing to do." });
+  assert.match(show.agentLoad(GOOD, "Claude Code").error, /already has a plan/, "only once; then the demo is the host's plan");
+  assert.equal(show.text, planText(DEMO_SHOW));
+});
+
+test("demo over the agent's show replaces it after asking, and takes the agent's notes away", () => {
+  const { show } = make();
+  show.agentLoad(GOOD, "Claude Code");
+  assert.equal(show.pressDemo(), "asked");
+  assert.equal(show.pressDemo(), "loaded");
+  assert.equal(show.notes, DEMO_SHOW.notes);
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+  assert.match(show.agentLoad(GOOD, "Claude Code").error, /already has a plan/, "the demo is the host's own plan now");
+});
+
+test("the host's edit: what the agent loaded is the host's now; its notes stay for a small edit and go with another show", () => {
+  const { show } = make();
+  show.agentLoad(GOOD, "Claude Code");
+  show.edit(`${show.text}\n3. One more?`);
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+  assert.equal(show.notes, GOOD.notes, "a small edit keeps the notes");
+  assert.match(show.agentLoad(GOOD, "Claude Code").error, /already has a plan/, "the box is the host's now");
+  show.edit(show.text.replace("Show: Sample Show", "Show: Another"));
+  assert.equal(show.notes, "", "another show takes the notes away");
+});
+
+test("the host's edit: an emptied box takes the notes away, an unclear one keeps them", () => {
+  const { show } = make();
+  show.agentLoad(GOOD, "Claude Code");
+  show.edit(`${show.text}\nnot clear`);
+  assert.equal(show.notes, GOOD.notes);
+  show.edit("  ");
+  assert.equal(show.notes, "");
+});
+
+test("the host's edit ends the demo and its question", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const { show, changes } = make();
+    show.pressDemo();
+    show.edit(`${show.text}\n9. Mine?`);
+    assert.equal(show.demoView().text, "Load demo show");
+    assert.equal(show.pressDemo(), "asked", "the edited demo is the host's plan");
+    show.edit(HOST);
+    assert.equal(show.demoView().text, "Load demo show", "an edit ends the question");
+    mock.timers.tick(8000);
+    assert.equal(changes.length, 0, "and its timer");
+  } finally {
+    mock.timers.reset();
+  }
+});

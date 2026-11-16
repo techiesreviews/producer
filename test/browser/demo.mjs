@@ -256,20 +256,15 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await loadText(), await load.getAttribute("data-state"), await load.getAttribute("data-tip")], ["Let my agent load it", null, "Claude Code sends the show name, guest, questions and run order. You can still change them."], `${name}: loading the demo clears the failure`);
     ok(`${name}: the agent's load and the demo replace each other, with their own notes; a request on its way is given up`);
 
-    // A fixed plan (the show has started) is not replaced.
+    // From the keyboard: Enter asks, Space replaces, and the focus stays on the button. (A fixed plan is checked after Start below.)
     await page.locator("#planIn").fill("Show: My Own\n5 Only part\n1. Typed by the host?");
-    await page.evaluate(() => { document.querySelector("#planIn").readOnly = true; });
-    await press(demo);
-    assert.equal(await page.locator("#planIn").inputValue(), "Show: My Own\n5 Only part\n1. Typed by the host?", `${name}: a fixed plan stays as it is`);
-    await page.evaluate(() => { document.querySelector("#planIn").readOnly = false; });
-    // From the keyboard: Enter asks, Space replaces, and the focus stays on the button.
     await demo.focus();
     await page.keyboard.press("Enter");
     assert.equal((await button()).text, CONFIRM.text, `${name}: Enter asks`);
     await page.keyboard.press("Space");
     assert.deepEqual(await button(), LOADED, `${name}: Space loads the demo`);
     assert.equal(await page.evaluate(() => document.activeElement?.id), "demoBtn", `${name}: the focus stays on the button`);
-    ok(`${name}: a fixed plan is not replaced; the keyboard works the same`);
+    ok(`${name}: the keyboard works the same`);
 
     // The producer screen: the demo's first question on the card, its run order; then the report.
     await press(page.locator("#guestSeg button").first());
@@ -294,6 +289,10 @@ export async function run({ browser, base, out }) {
     // The show has started: the demo button is switched off with its reason, and still says the demo is in.
     assert.deepEqual(await button(), { ...LOADED, text: "i Demo loaded ✓", off: "true", tip: "The show has started, so the plan stays as it is." }, `${name}: once the clock runs the demo button is switched off with its reason`);
     assert.equal(await demo.locator(".off-mark").count(), 1, `${name}: with the round i`);
+    // A fixed plan is not replaced by the agent's load_show either.
+    const fixed = await page.locator("#planIn").inputValue();
+    assert.equal((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).error, "The show has started, so the plan stays as it is.", `${name}: the agent's show is refused once the clock runs`);
+    assert.deepEqual([await page.locator("#planIn").inputValue(), await page.locator("#planIn").evaluate((el) => el.readOnly)], [fixed, true], `${name}: the started show's plan stays as it is`);
     await page.clock.fastForward(150_000);
     await press(page.locator("#askedBtn")); // Q1
     assert.equal(await text("#qMain"), "What did the very first version do?", `${name}: Asked moves the card to the demo's second question`);
