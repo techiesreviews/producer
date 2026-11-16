@@ -17,9 +17,6 @@ const VIEWS = [
   { name: "phone-dark", colorScheme: "dark", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
 ];
 
-// Chromium's note that the microphone's sound tap (card 03) uses an older audio node; not a problem of this page.
-const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
-
 // A plan of five parts and twelve questions (the mock-up's counts). Names are made up.
 const PLAN = [
   "Show: Techies Live",
@@ -114,7 +111,7 @@ export async function run({ browser, base, out }) {
     const requests = [];
     const problems = [];
     page.on("request", (r) => requests.push(r.url()));
-    page.on("console", (m) => { if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`); });
+    page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);

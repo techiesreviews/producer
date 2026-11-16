@@ -23,7 +23,6 @@ const VIEWS = [
   { name: "phone-light", colorScheme: "light", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
   { name: "phone-dark", colorScheme: "dark", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
 ];
-const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
 
 // Made-up names and questions.
 const PLAN = ["Show: Techies Live", "Guest: Jane Doe", "3 Intro", "8 Her story", "1. How did it start?", "2. Who paid first?", "3. What went wrong first?", "4. What would you change now?"].join("\n");
@@ -133,7 +132,7 @@ export async function run({ browser, base, out }) {
     const requests = [];
     const problems = [];
     page.on("request", (r) => requests.push(new URL(r.url()).pathname));
-    page.on("console", (m) => { if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`); });
+    page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);

@@ -5,7 +5,8 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import vm from "node:vm";
 import { join, resolve } from "node:path";
-import { build, INLINED, LIVE_HOST, pageScript, PREVIEW_HOST, SPEECH_WORKER } from "../scripts/build.mjs";
+import { AUDIO_TAP, build, INLINED, LIVE_HOST, pageScript, PREVIEW_HOST, SPEECH_WORKER } from "../scripts/build.mjs";
+import { TAP_URL } from "../src/audio-tap.mjs";
 import { SPEECH_BYTES } from "../scripts/speech-files.mjs";
 
 const scratch = (name) => resolve(import.meta.dirname, "../.scratch", name);
@@ -27,11 +28,11 @@ const header = (name) => [...rules.values()].find((r) => r[name])?.[name];
 
 test("the build is the page, its headers, robots.txt and the speech folder", () => {
   assert.deepEqual(readdirSync(dist).sort(), ["_headers", "index.html", "robots.txt", "speech"]);
-  assert.deepEqual(readdirSync(join(dist, "speech")).sort(), ["manifest.json", ...SPEECH_WORKER.map((f) => f.split("/").pop())].sort());
+  assert.deepEqual(readdirSync(join(dist, "speech")).sort(), ["manifest.json", ...[...SPEECH_WORKER, AUDIO_TAP].map((f) => f.split("/").pop())].sort());
 });
 
 test("the speech worker is served as written, with a manifest; without the model files it lists no parts", () => {
-  for (const file of SPEECH_WORKER) assert.equal(readFileSync(join(dist, "speech", file.split("/").pop()), "utf8"), readFileSync(resolve(import.meta.dirname, "..", file), "utf8"), file);
+  for (const file of [...SPEECH_WORKER, AUDIO_TAP]) assert.equal(readFileSync(join(dist, "speech", file.split("/").pop()), "utf8"), readFileSync(resolve(import.meta.dirname, "..", file), "utf8"), file);
   const manifest = JSON.parse(readFileSync(join(dist, "speech/manifest.json"), "utf8"));
   assert.equal(manifest.bytes, SPEECH_BYTES);
   assert.ok(manifest.files.length > 0 && manifest.files.every((f) => f.parts.length === 0));
@@ -56,6 +57,14 @@ test("the inlined script is one valid program that holds the browser's speech se
   assert.deepEqual(directives(header("Content-Security-Policy")).get("connect-src"), ["'self'"]);
 });
 
+test("the page's sound runs through the audio tap's worklet, served from this site, never through the old main-thread hook", () => {
+  assert.doesNotMatch(script, /createScriptProcessor|onaudioprocess/, "the deprecated ScriptProcessorNode handled the sound on the page's main thread");
+  assert.match(script, /function createListening\b/, "the listening session is in the page");
+  assert.match(script, /audioWorklet\.addModule\(/);
+  assert.equal(TAP_URL, `/speech/${AUDIO_TAP.split("/").pop()}`, "the tap's address is the file the build serves");
+  assert.ok(INLINED.indexOf("src/audio-tap.mjs") >= 0 && INLINED.indexOf("src/listening.mjs") > INLINED.indexOf("src/audio-tap.mjs"));
+});
+
 test("the page keeps nothing, logs nothing and talks only to its own agent relay", () => {
   const banned = /\b(XMLHttpRequest|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|caches|serviceWorker|importScripts|cookie|console)\b|\bimport\s*\(/;
   assert.doesNotMatch(script, banned);
@@ -69,7 +78,9 @@ test("the policy pins the page's own script and style by hash and allows nothing
   assert.equal(rules.get("/")["Content-Security-Policy"], rules.get("/index.html")["Content-Security-Policy"], "the page's policy, at both of its addresses");
   const csp = directives(rules.get("/")["Content-Security-Policy"]);
   assert.deepEqual(csp.get("default-src"), ["'none'"]);
-  assert.deepEqual(csp.get("script-src"), [hash(script)]);
+  // Its own inline script by hash, and files of this site for the one script that has to be a file: the audio tap's
+  // AudioWorklet module (/speech/tap-worklet.mjs), which keeps the microphone's sound off the page's main thread.
+  assert.deepEqual(csp.get("script-src"), [hash(script), "'self'"]);
   assert.deepEqual(csp.get("style-src"), [hash(style)]);
   assert.deepEqual(csp.get("connect-src"), ["'self'"], "the page may call only its own site (the relay and the token), nothing outside");
   assert.deepEqual(csp.get("img-src"), ["data:"]);
