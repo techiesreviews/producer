@@ -108,6 +108,15 @@ function watch() {
       },
     };
   };
+  // Every audio worklet node the page makes, by name: the sound must run through the audio tap's worklet.
+  window.__watch.worklets = [];
+  const Worklet = window.AudioWorkletNode;
+  window.AudioWorkletNode = class extends Worklet {
+    constructor(context, name, ...rest) {
+      super(context, name, ...rest);
+      window.__watch.worklets.push(name);
+    }
+  };
   const connect = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (target, ...rest) {
     if (target instanceof AudioDestinationNode) window.__watch.speakers++;
@@ -623,7 +632,8 @@ export async function run({ playwright, base, dist, out }) {
     }
     assert.ok(await page.locator("#micMeter").isVisible(), "the level meter shows");
     assert.ok(loudest >= 20, `the meter moves with the sound (up to ${loudest} %)`);
-    ok(`sound: the microphone turns on and its meter moves (up to ${loudest} %)`);
+    assert.deepEqual(await page.evaluate(() => window.__watch.worklets), ["producer-tap"], "the microphone's sound runs through the audio tap's worklet, off the page's main thread");
+    ok(`sound: the microphone turns on through the audio worklet and its meter moves (up to ${loudest} %)`);
 
     // The studio tab's sound: the open button waits for it (a guest who said yes is heard through it); the browser is
     // asked for a tab only, with no echo processing and a tiny picture; the button names the studio; its meter moves
