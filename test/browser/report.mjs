@@ -375,6 +375,31 @@ export async function run({ browser, base, out }) {
     ok("a slow agent: off with the reason after two minutes; a late report fills in; a report before End is refused");
     await context.close();
   }
+  // A connected agent whose loop went quiet (no call for a minute: the agent button waits for it again): End & report
+  // still sends it the end cue and waits the normal two minutes, rather than saying no agent was connected; the loop
+  // that comes back inside that time hears End, and its report fills in.
+  {
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
+    const page = await context.newPage();
+    await page.clock.install({ time: new Date("2026-11-09T19:00:00") });
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await openScreen(page, (l) => l.click(), { agent: true });
+    await page.clock.fastForward(61_000);
+    await page.waitForFunction((t) => document.querySelector("#connectBtn").textContent === t, "Waiting for Claude Code…");
+    await page.locator("#endBtn").click();
+    let s = await page.evaluate(SCREEN);
+    assert.deepEqual([s.topics, s.clips], [[WAITING], [WAITING]], "a quiet agent: its parts wait for it, no \"no agent\"");
+    await page.clock.fastForward(119_000);
+    assert.deepEqual((await page.evaluate(SCREEN)).topics, [WAITING], "a quiet agent: still waited for after 1:59, the normal wait");
+    const cue = (await page.evaluate(() => window.__relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }))).result;
+    assert.equal(cue.cue, "end_report", "the loop that comes back hears End");
+    await page.evaluate((r) => window.__relay.call("post_report", r), REPORT);
+    s = await page.evaluate(SCREEN);
+    assert.deepEqual([s.topics, s.clips.length], [REPORT.topics, 2], "its report fills in");
+    ok("a quiet agent: End & report sends the end cue and waits the normal two minutes; the loop that comes back hears End");
+    await context.close();
+  }
   {
     const context = await browser.newContext(ownAddress(VIEWS[2]));
     const page = await context.newPage();

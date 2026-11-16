@@ -297,6 +297,40 @@ test("a cue goes only to a connected agent; it reaches the wait held, with label
   link.disconnect();
 });
 
+test("the end cue waits for a loop that went quiet, and reaches it when the loop comes back; show cues do not", async () => {
+  const { link, call, connect, timers } = setup();
+  await connect();
+  await call("get_context");
+  await timers.tick(AGENT_QUIET_MS);
+  assert.equal(link.view().state, "waiting", "the loop went quiet");
+  assert.equal(link.send(CUE), false, "a pause cue is not kept for a quiet loop");
+  assert.equal(link.send({ cue: CUE_NAMES.endReport, transcript: [{ speaker: "guest", text: "Thanks for having me." }] }), true, "the end cue is taken");
+  const back = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([back.cue, back.seq, back.transcript.map((l) => l.text)], [CUE_NAMES.endReport, 1, ["Thanks for having me."]], "the loop comes back and hears End");
+  link.disconnect();
+});
+
+test("the end cue is not taken when no agent ever called: none, or a connect message never pasted, or another tab", async () => {
+  const END = { cue: CUE_NAMES.endReport, transcript: [] };
+  const { link, call, connect, timers } = setup();
+  assert.equal(link.send(END), false, "no connection at all");
+  await connect();
+  assert.equal(link.send(END), false, "the message was copied, but no agent has called");
+  await timers.tick(AGENT_QUIET_MS * 3);
+  assert.equal(link.send(END), false, "still no call, minutes later");
+  await call("get_context");
+  link.disconnect();
+  assert.equal(link.send(END), false, "after Disconnect the agent is gone");
+  const other = setup();
+  const { token } = await other.connect();
+  await other.call("get_context");
+  await other.kit.tab(checkToken(token).born); // a duplicated tab connects with the same token
+  await other.flush();
+  assert.equal(other.link.view().state, "elsewhere");
+  assert.equal(other.link.send(END), false, "the agent talks to the other tab");
+  other.link.disconnect();
+});
+
 test("cues sent while the agent is busy wait for its next call, joined, with the newest reason; a lost answer gets the same again", async () => {
   const { link, call, connect } = setup();
   await connect();
