@@ -1,8 +1,9 @@
 // The page script. scripts/build.mjs inlines the page modules (its INLINED list) above this file in one scope and
 // drops these import lines: they say where each name comes from.
 import { detectBrowser } from "./browser.mjs";
-import { browserService, listeningSign, loudness, meterFill, openBlocked, tabButton } from "./listen.mjs";
-import { createBrowserSpeech } from "./web-speech.mjs";
+import { browserService, listeningSign, openBlocked } from "./listen.mjs";
+import { createTapOpener } from "./audio-tap.mjs";
+import { createListening } from "./listening.mjs";
 import { clockText, PLAN_EXAMPLE, planButton, runPosition, showLine } from "./runorder.mjs";
 import { CUE, readReport } from "./protocol.mjs";
 import { createCues } from "./cues.mjs";
@@ -42,20 +43,10 @@ function choices(group, onPick = () => {}) {
   });
 }
 
-// engine: "local" is the speech model on this computer, "browser" is the browser's own speech service (opt-in; its audio
-// goes to the browser maker's service, which src/browser.mjs names). speech is true when the picked engine is ready to
-// turn the microphone into text. With the browser service only the host's microphone is heard: the guest's tab sound
-// is never sent to it, because the guest agreed to being turned into text on this computer.
-const state = { guest: null, mic: false, tab: false, speech: false, listening: false, engine: "local" };
-
 // Step 1 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
 const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"]').dataset.v;
-choices(document.getElementById("streamSeg"), () => {
-  // OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again.
-  if (tabUi().off) { tabWanted = false; if (state.tab || tabPhase === "busy") tabOff(); }
-  showTab();
-  refresh();
-});
+// OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again (src/listening.mjs).
+choices(document.getElementById("streamSeg"), () => session.streamChanged());
 
 // Step 2, the AI agent. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
 // the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
@@ -211,15 +202,8 @@ testBtn.addEventListener("click", () => agent.test());
 addEventListener("pagehide", () => agent.disconnect());
 
 // Step 4: the host's own answer for the guest. Nothing else sets it. A guest who said no, or a solo show, is never
-// listened to: a tab that was already shared stops, and Listen will not ask for it again.
-choices($("guestSeg"), (answer) => {
-  state.guest = answer;
-  showBrowserChoice();
-  if (answer !== "yes") { tabWanted = false; if (state.tab || tabPhase === "busy") tabOff(); }
-  done("sGuest", true);
-  showTab();
-  refresh();
-});
+// listened to: a tab that was already shared stops, and Listen will not ask for it again (src/listening.mjs).
+choices($("guestSeg"), (answer) => session.answerGuest(answer));
 
 // ---- Step 3, the show plan (src/showplan.mjs owns it; the format is src/runorder.mjs's). A show arrives pasted by hand,
 // from the demo button, or from the agent's load_show; this part of the page passes each one on and draws what the plan
@@ -555,11 +539,11 @@ runsMore.addEventListener("click", () => {
 });
 
 // ---- Sound: two sources, each with its own live level meter: the host's microphone and the guest's shared tab ----
-// While listening, each source's sound goes to the speech worker under its own label ("host", "guest"); the two are
-// never mixed. The page never plays a sound: each source runs into a silent end (a stream destination, not the
-// speakers) only so the browser keeps handing it over. It never leaves the computer.
-let mic = null;
-let tab = null;
+// The listening session (src/listening.mjs) owns them, the speech engine and the rules between them; this part of the
+// page passes on the presses, draws its view and hands what was heard to the cues and the report. While listening,
+// each source's sound goes to the speech worker under its own label ("host", "guest"); the two are never mixed. The
+// sound is gathered off the page's main thread (src/audio-tap.mjs). The page never plays a sound, and the sound never
+// leaves the computer.
 
 /** A level meter: a bar that fills from the left. */
 function levelMeter(el) {
@@ -572,230 +556,21 @@ function levelMeter(el) {
 }
 const hostMeter = levelMeter($("micMeter"));
 const guestMeter = levelMeter($("tabMeter"));
-
-/** Opens one source: its meter moves with the sound and, while listening, the worker gets it under `source`. */
-function openTap(stream, source, meter) {
-  let context;
-  let tap;
-  try {
-    context = new AudioContext();
-    // A browser may start the sound paused; asking it to resume (not waiting on it) keeps the meter and the speech fed.
-    // Not awaited, and a refusal is left alone on purpose: the sound then stays paused, which the still meter shows.
-    context.resume().catch(() => {});
-    const input = context.createMediaStreamSource(stream);
-    tap = context.createScriptProcessor(4096, 1, 1);
-    input.connect(tap);
-    tap.connect(context.createMediaStreamDestination());
-  } catch (error) {
-    // The sound was granted but could not be set up: let it go, so the browser's microphone or sharing light goes out.
-    for (const track of stream.getTracks()) track.stop();
-    context?.close();
-    throw error;
-  }
-  tap.onaudioprocess = (e) => {
-    const samples = e.inputBuffer.getChannelData(0);
-    meter.set(meterFill(loudness(samples)));
-    if (state.listening && state.engine === "local" && speech) {
-      const copy = samples.slice();
-      speech.postMessage({ type: "audio", source, samples: copy, rate: context.sampleRate }, [copy.buffer]);
-    }
-  };
-  return { stream, context };
-}
-
-function closeTap({ stream, context }) {
-  for (const track of stream.getTracks()) track.stop();
-  context.close();
-}
-
-async function micOn() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
-  mic = openTap(stream, "host", hostMeter);
-  // The microphone can also end on its own (unplugged, or the permission taken back): the page shows it at once.
-  for (const track of stream.getAudioTracks()) track.addEventListener("ended", () => { if (mic?.stream === stream) micOff(); });
-}
-
-function micOff() {
-  if (!mic) return;
-  closeTap(mic);
-  mic = null;
-  speech?.postMessage({ type: "stop", source: "host" });
-  web.stop();
-  state.mic = false;
-  // Without the host's microphone nothing is listened to: the sign stops and the guest tab goes with it. Listen asks
-  // for both again (the browser asks the host to pick the tab again each time).
-  if (state.listening) {
-    state.listening = false;
-    tabWanted = tabWanted || state.tab;
-    tabOff();
-  }
-  showMic();
-  showSign();
-  refresh();
-}
-
 const micBtn = $("micBtn");
 const micTxt = $("micTxt");
-
-/** What a failed microphone says on the control that asked for it, with the way out in its tooltip. */
-function micProblem(error) {
-  return error === "NotFoundError"
-    ? { text: "No microphone found", tip: "This computer has no microphone the browser can use. Plug one in, then press again." }
-    : { text: "Microphone blocked", tip: "The browser blocked the microphone. Allow it for this site (the icon beside the address), then press again." };
-}
-
-/** The Sound step is done once the microphone is on and the tab sound is shared, or switched off for a reason. */
-function showSound() {
-  done("sSound", state.mic && (state.tab || tabUi().off));
-}
-
-function showMic(error = "") {
-  hostMeter.show(state.mic);
-  if (state.mic) {
-    micBtn.dataset.state = "ok";
-    micTxt.textContent = "Microphone";
-    micBtn.dataset.tip = "Your microphone is on. Press to turn it off.";
-  } else if (error) {
-    const problem = micProblem(error);
-    micBtn.dataset.state = "error";
-    micTxt.textContent = problem.text;
-    micBtn.dataset.tip = problem.tip;
-  } else {
-    micBtn.removeAttribute("data-state");
-    micTxt.textContent = "Microphone";
-    micBtn.removeAttribute("data-tip");
-  }
-  showSound();
-}
-
-switchOff(micBtn, browser.features.microphone.on ? "" : browser.features.microphone.reason);
-micBtn.addEventListener("click", async () => {
-  if (micBtn.getAttribute("aria-disabled") === "true" || micBtn.dataset.state === "busy") return;
-  if (state.mic) { micOff(); return; }
-  micBtn.dataset.state = "busy";
-  try {
-    await micOn();
-    state.mic = true;
-    showMic();
-  } catch (error) {
-    state.mic = false;
-    showMic(error?.name || "error");
-  }
-  refresh();
-});
-
-// The guest's tab: the host picks the studio's browser tab and ticks "Also share tab audio". Only the tab's sound is
-// used, kept apart from the microphone. A browser that cannot do it shows the button switched off with the reason.
 const tabBtn = $("tabBtn");
 const tabTxt = $("tabTxt");
 const tabIcon = tabBtn.querySelector("svg");
-let tabPhase = "idle";
-let tabFailure = "";
-// Numbers each ask for a tab: an answer that comes after Stop, No or a newer ask is let go, not kept.
-let shareRun = 0;
-// Set when the tab was shared and listening ended (Stop, or the tab itself ended): Listen then asks for the tab again.
-let tabWanted = false;
-
-const tabUi = () => tabButton({ feature: browser.features.tabSound, guest: state.guest, phase: tabPhase, problem: tabFailure, stream: streamName(), engine: state.engine });
-
-function showTab() {
-  const ui = tabUi();
-  switchOff(tabBtn, ui.off ? ui.tip : "");
-  tabTxt.textContent = ui.text;
-  label(tabBtn, ui.state, ui.tip, ui.off ? offMark() : tabIcon, tabTxt);
-  guestMeter.show(state.tab);
-  showSound();
-}
-
-async function tabOn() {
-  // A tiny, slow picture: only the sound is wanted, and a small picture keeps the work on the studio's own tab low.
-  // Only a browser tab is offered (not a window or a screen, whose sound can be the whole computer's), and no echo
-  // processing, which is made for a microphone.
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 2 }, width: { ideal: 320 }, height: { ideal: 180 } },
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    systemAudio: "exclude",
-    selfBrowserSurface: "exclude",
-    surfaceSwitching: "exclude",
-    monitorTypeSurfaces: "exclude",
-  });
-  const fail = (name) => {
-    for (const track of stream.getTracks()) track.stop();
-    throw Object.assign(new Error(name), { name });
-  };
-  const surface = stream.getVideoTracks()[0]?.getSettings?.().displaySurface;
-  if (surface && surface !== "browser") fail("NotATab");
-  if (!stream.getAudioTracks().length) fail("NoTabSound");
-  const opened = openTap(stream, "guest", guestMeter);
-  // Sharing can end from the browser's own bar or when the tab closes: the page shows it at once. If it ends while
-  // listening, Listen asks again.
-  for (const track of stream.getTracks()) {
-    track.addEventListener("ended", () => {
-      if (tab?.stream !== stream) return;
-      const was = state.listening;
-      tabOff();
-      tabWanted = was;
-    });
-  }
-  return opened;
-}
-
-/** Asks the browser for the tab and shows the outcome on the button; it never throws. */
-async function shareTab() {
-  const run = ++shareRun;
-  tabPhase = "busy";
-  showTab();
-  try {
-    const opened = await tabOn();
-    if (run !== shareRun || tabUi().off) {
-      // Stop, "No", "Solo show" or a newer ask came while the browser was asking: what it hands over is let go.
-      closeTap(opened);
-      if (run === shareRun) tabPhase = "idle";
-    } else {
-      tab = opened;
-      state.tab = true;
-      tabWanted = false;
-      tabPhase = "on";
-    }
-  } catch (error) {
-    if (run !== shareRun) return;
-    state.tab = false;
-    tabPhase = "error";
-    tabFailure = error?.name || "";
-  }
-  showTab();
-  showSign();
-  refresh();
-}
-
-function tabOff() {
-  shareRun++;
-  if (tab) {
-    closeTap(tab);
-    tab = null;
-    speech?.postMessage({ type: "stop", source: "guest" });
-  }
-  state.tab = false;
-  tabPhase = "idle";
-  tabFailure = "";
-  showTab();
-  showSign();
-  refresh();
-}
-
-tabBtn.addEventListener("click", () => {
-  if (tabBtn.getAttribute("aria-disabled") === "true" || tabPhase === "busy") return;
-  if (state.tab) tabOff(); else shareTab();
-});
-showTab();
-
-// ---- Speech to text: the model runs in a worker of this site and is downloaded once ----
-let speech = null;
-let localReady = false; // the model on this computer has loaded
 const speechBtn = $("speechBtn");
 const speechTxt = $("speechTxt");
 const speechIdle = speechTxt.textContent;
 const SPEECH_TIP = speechBtn.dataset.tip;
+const engineSeg = $("engineSeg");
+const browserChoice = $("browserChoice");
+const speechOf = browser.features.webSpeech;
+const service = browserService(speechOf.company);
+const goBtn = $("goBtn");
+const stopBtn = $("stopBtn");
 
 /** What was heard, in this page's memory only and gone when the tab closes: the final lines and each source's newest draft. */
 const heard = { lines: [], drafts: {}, pauses: {} };
@@ -818,112 +593,128 @@ function hear(data) {
   }
 }
 
-function onSpeech({ data }) {
-  if (data.type === "progress") {
-    speechTxt.textContent = `Loading ${Math.floor((data.loaded / data.total) * 100)}%`;
-  } else if (data.type === "ready") {
-    localReady = true;
-    state.speech = true;
-    speechBtn.dataset.state = "ok";
-    speechTxt.textContent = "Speech ready";
-    speechBtn.dataset.tip = `Kept in this browser (${speechIdle.split("· ")[1]}): next time the model loads without downloading.`;
-    done("sSpeech", state.speech);
-    refresh();
-  } else if (data.type === "error") {
-    // The model failed to load, or failed on the producer screen: the microphone stops and the setup comes back, so
-    // the sign never shows listening in vain and the failed button (with its reason) offers to load it again.
-    if (state.engine === "local" && !$("live").hidden) {
-      micOff();
-      showScreen(false);
-    }
-    speech?.terminate();
-    speech = null;
-    localReady = false;
-    state.speech = state.engine === "browser";
-    speechBtn.dataset.state = "error";
-    speechTxt.textContent = "Speech model failed · try again";
-    speechBtn.dataset.tip = `${data.reason[0].toUpperCase()}${data.reason.slice(1)}.`;
-    done("sSpeech", state.speech);
-    refresh();
-  } else if (data.type === "text") {
-    hear(data);
-  } else if (data.type === "pause") {
-    paused(data.source, data.at);
-  }
-}
-
 /** A pause of one source (from the model's worker or the browser's service): the agent's cue may go, and the light shows it. */
 function paused(source, at) {
   heard.pauses[source] = at;
   if (cues.pause(source)) cueWent();
 }
 
-switchOff(speechBtn, browser.features.wasm.on ? "" : browser.features.wasm.reason);
-speechBtn.addEventListener("click", () => {
-  if (speechBtn.getAttribute("aria-disabled") === "true" || speech) return;
-  speech = new Worker("/speech/worker.mjs", { type: "module", name: "speech" });
-  speech.addEventListener("message", onSpeech);
-  speech.addEventListener("error", () => onSpeech({ data: { type: "error", reason: "the speech worker could not start" } }));
-  speechBtn.dataset.state = "busy";
-  speechBtn.dataset.tip = SPEECH_TIP;
-  speechTxt.textContent = "Loading 0%";
-  speech.postMessage({ type: "load" });
-});
-
-// The engine choice: the model on this computer (the default) or the browser's own speech service, which is opt-in
-// and warned on its own label. A browser without the service shows the choice switched off with its reason. The text
-// of the browser's service feeds the same lines as the model's (hear), and nothing is kept past this page.
-const engineSeg = $("engineSeg");
-const browserChoice = $("browserChoice");
-const speechOf = browser.features.webSpeech;
-const service = browserService(speechOf.company);
-let browserFailure = ""; // why the service last failed, shown on its choice until it is picked again
-
-const web = createBrowserSpeech({
-  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
-  onText: (piece) => hear({ ...piece, source: "host" }),
-  // About 1.5 s after the last words, as the model's worker reports one: the agent's cues go at pauses.
-  onPause: (at) => paused("host", at),
-  onFail: (reason) => {
-    // The service failed on the producer screen: the microphone stops and the setup comes back with the reason on the
-    // choice, back on the model on this computer, so the sign never shows listening while nothing becomes text.
-    browserFailure = `${reason[0].toUpperCase()}${reason.slice(1)}.`;
-    if (!$("live").hidden) {
-      micOff();
-      showScreen(false);
-    }
-    pickEngine("local");
-    // The Stop button that had focus is gone with the producer screen: focus goes to the failed choice and its reason
-    // opens, so a keyboard or screen-reader host hears why the setup came back.
-    // The scroll to the choice comes first and is let settle (a scroll closes a tooltip), then focus and the reason.
+/** An engine failed. On the producer screen the microphone stops and the setup comes back, so the sign never shows
+ * listening in vain; the failed control says why (the model's button, or the service's choice, which the session puts
+ * back on the model). */
+function engineFailed(engine) {
+  const live = !$("live").hidden;
+  if (engine === "local") {
+    if (live && session.view().engine === "local") { session.stop(); showScreen(false); }
+    return;
+  }
+  if (live) { session.stop(); showScreen(false); }
+  // The Stop button that had focus is gone with the producer screen: focus goes to the failed choice and its reason
+  // opens, so a keyboard or screen-reader host hears why the setup came back. Once the session has put the choice back
+  // on the model and the page has drawn it, the scroll to the choice comes first and is let settle (a scroll closes a
+  // tooltip), then focus and the reason.
+  queueMicrotask(() => {
     browserChoice.scrollIntoView({ block: "nearest" });
     requestAnimationFrame(() => {
       browserChoice.focus({ preventScroll: true });
       tooltip.show(browserChoice);
     });
-  },
+  });
+}
+
+const session = createListening({
+  media: navigator.mediaDevices,
+  openTap: createTapOpener({ AudioContext: window.AudioContext, AudioWorkletNode: window.AudioWorkletNode }),
+  newWorker: () => new Worker("/speech/worker.mjs", { type: "module", name: "speech" }),
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  features: browser.features,
+  stream: streamName,
+  onChange: renderListening,
+  onLevel: (source, fill) => (source === "host" ? hostMeter : guestMeter).set(fill),
+  onText: hear,
+  onPause: paused,
+  onFail: engineFailed,
 });
 
-/** Show the engine picked: the choice row, the model's button (only for the model), the step's done mark. */
-function pickEngine(engine) {
-  if (engine === "browser" && !speechOf.on) engine = "local";
-  if (engine === "browser") browserFailure = "";
-  state.engine = engine;
-  if (engine === "local") web.stop();
-  // The service hears only the host's microphone, so a shared guest tab is let go and the tab button says why.
-  if (engine === "browser") { tabWanted = false; if (state.tab || tabPhase !== "idle") tabOff(); }
-  showTab();
-  for (const b of engineSeg.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === engine));
-  state.speech = engine === "browser" || localReady;
-  speechBtn.hidden = engine === "browser";
-  done("sSpeech", state.speech);
-  showBrowserChoice();
-  refresh();
+/** What a failed microphone says on the control that asked for it, with the way out in its tooltip. */
+function micProblem(error) {
+  return error === "NotFoundError"
+    ? { text: "No microphone found", tip: "This computer has no microphone the browser can use. Plug one in, then press again." }
+    : { text: "Microphone blocked", tip: "The browser blocked the microphone. Allow it for this site (the icon beside the address), then press again." };
+}
+
+/** Everything the session decides, drawn: the Sound step, the speech step, the Open button and the listening sign. */
+function renderListening(v) {
+  showMic(v);
+  showTab(v);
+  // The Sound step is done once the microphone is on and the tab sound is shared, or switched off for a reason.
+  done("sSound", v.mic && (v.tab || session.tabView().off));
+  done("sGuest", v.guest !== null);
+  showSpeech(v);
+  showSign(v);
+  switchOff(goBtn, openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
+}
+
+function showMic(v) {
+  hostMeter.show(v.mic);
+  if (v.mic) {
+    micBtn.dataset.state = "ok";
+    micTxt.textContent = "Microphone";
+    micBtn.dataset.tip = "Your microphone is on. Press to turn it off.";
+  } else if (v.micBusy) {
+    micBtn.dataset.state = "busy";
+  } else if (v.micError) {
+    const problem = micProblem(v.micError);
+    micBtn.dataset.state = "error";
+    micTxt.textContent = problem.text;
+    micBtn.dataset.tip = problem.tip;
+  } else {
+    micBtn.removeAttribute("data-state");
+    micTxt.textContent = "Microphone";
+    // A switched-off microphone keeps its reason.
+    if (micBtn.getAttribute("aria-disabled") !== "true") micBtn.removeAttribute("data-tip");
+  }
+}
+
+// The guest's tab: the host picks the studio's browser tab and ticks "Also share tab audio". Only the tab's sound is
+// used, kept apart from the microphone. A browser that cannot do it shows the button switched off with the reason.
+function showTab(v) {
+  const ui = session.tabView();
+  switchOff(tabBtn, ui.off ? ui.tip : "");
+  tabTxt.textContent = ui.text;
+  label(tabBtn, ui.state, ui.tip, ui.off ? offMark() : tabIcon, tabTxt);
+  guestMeter.show(v.tab);
+}
+
+// Speech to text: the model runs in a worker of this site and is downloaded once. The engine choice: the model on this
+// computer (the default) or the browser's own speech service, which is opt-in and warned on its own label. A browser
+// without the service shows the choice switched off with its reason. Both feed the same lines (hear), and nothing is
+// kept past this page.
+function showSpeech(v) {
+  const { model } = v;
+  speechBtn.hidden = v.engine === "browser";
+  if (model.phase === "loading") {
+    speechBtn.dataset.state = "busy";
+    speechBtn.dataset.tip = SPEECH_TIP;
+    speechTxt.textContent = `Loading ${model.percent}%`;
+  } else if (model.phase === "ready") {
+    speechBtn.dataset.state = "ok";
+    speechTxt.textContent = "Speech ready";
+    speechBtn.dataset.tip = `Kept in this browser (${speechIdle.split("· ")[1]}): next time the model loads without downloading.`;
+  } else if (model.phase === "error") {
+    speechBtn.dataset.state = "error";
+    speechTxt.textContent = "Speech model failed · try again";
+    speechBtn.dataset.tip = `${model.reason[0].toUpperCase()}${model.reason.slice(1)}.`;
+  }
+  for (const b of engineSeg.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === v.engine));
+  showBrowserChoice(v);
+  done("sSpeech", v.speech);
 }
 
 /** The browser service's choice: its warning line while it can be used (also after a failure, since pressing it is the opt-in), its reason when it cannot. */
-function showBrowserChoice() {
+function showBrowserChoice(v) {
   const open = browserChoice.getAttribute("aria-describedby") === "tip";
+  const failure = v.serviceFailure ? `${v.serviceFailure[0].toUpperCase()}${v.serviceFailure.slice(1)}.` : "";
   browserChoice.classList.toggle("seg__long", speechOf.on);
   if (!speechOf.on) {
     browserChoice.replaceChildren(offMark(), ` ${service.label}`);
@@ -933,46 +724,17 @@ function showBrowserChoice() {
     const warning = Object.assign(document.createElement("span"), { className: "nowrap", textContent: service.warning });
     // One flowing piece inside the button (its own children would be separate items of the choice's flex row).
     const words = document.createElement("span");
-    words.append(`${service.label}${browserFailure ? " failed" : ""} · `, warning);
+    words.append(`${service.label}${failure ? " failed" : ""} · `, warning);
     browserChoice.replaceChildren(words);
-    browserChoice.dataset.tip = browserFailure || (state.guest === "yes" || state.guest === "no" ? service.guestTip : service.tip);
-    if (browserFailure) browserChoice.dataset.state = "error"; else browserChoice.removeAttribute("data-state");
+    browserChoice.dataset.tip = failure || (v.guest === "yes" || v.guest === "no" ? service.guestTip : service.tip);
+    if (failure) browserChoice.dataset.state = "error"; else browserChoice.removeAttribute("data-state");
   }
   if (open) tooltip.show(browserChoice);
 }
 
-choices(engineSeg, pickEngine);
-showBrowserChoice();
-
-// ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
-const goBtn = $("goBtn");
-function refresh() {
-  switchOff(goBtn, openBlocked({ ...state, tabReady: state.tab || tabUi().off }));
-}
-refresh();
-
-/** The setup or the producer screen (with the listening sign in the top bar). */
-function showScreen(live) {
-  tooltip.hide();
-  $("setup").hidden = live;
-  $("live").hidden = !live;
-  $("topLive").hidden = !live;
-  if (live) { renderRun(); renderCard(); }
-}
-
-goBtn.addEventListener("click", () => {
-  if (goBtn.getAttribute("aria-disabled") === "true") return;
-  // A Listen that failed earlier must not leave its words on Stop now that the page listens afresh.
-  stopBtn.removeAttribute("data-state");
-  stopBtn.removeAttribute("data-tip");
-  showScreen(true);
-  startListening();
-});
-
-// ---- The listening sign: shows while the page listens; Stop ends the microphone at once; Listen starts it again ----
-const stopBtn = $("stopBtn");
-function showSign() {
-  const sign = listeningSign({ ...state, company: speechOf.company, noTab: !browser.features.tabSound.on ? "browser" : streamName() === "obs" ? "obs" : "", tabBusy: tabPhase === "busy" });
+/** The listening sign in the top bar, and its Stop or Listen button. */
+function showSign(v) {
+  const sign = listeningSign({ ...v, company: speechOf.company, noTab: !browser.features.tabSound.on ? "browser" : streamName() === "obs" ? "obs" : "", tabBusy: v.tabPhase === "busy" });
   $("listen").dataset.on = String(sign.on);
   $("listenDot").className = sign.on ? "dot dot--live" : "dot";
   $("listenOn").hidden = !sign.on;
@@ -987,52 +749,54 @@ function showSign() {
     chip.className = sign.chip.ok ? "chip chip--ok" : "chip";
     chip.dataset.tip = sign.chip.tip;
   }
-  // A failed or waiting Listen keeps its words until it is settled (a tab picked meanwhile must not wipe them).
-  if (stopBtn.dataset.state === "error" || stopBtn.dataset.state === "busy") return;
-  stopBtn.textContent = sign.button;
-  stopBtn.className = sign.on ? "tb" : "tb tb--primary";
-  stopBtn.removeAttribute("data-state");
-}
-
-/** Listening needs the microphone and the picked engine (the model on this computer, or the browser's service); without either the sign stays "Not listening". With the model the tab joins whenever it is shared. */
-function startListening() {
-  state.listening = Boolean(mic && state.speech && (state.engine === "browser" || speech));
-  if (state.listening && state.engine === "browser") web.start(mic.stream.getAudioTracks()[0]);
-  showSign();
-}
-
-let listenPress = 0;
-stopBtn.addEventListener("click", async () => {
-  if (stopBtn.dataset.state === "busy") return;
-  if (state.listening) { micOff(); return; }
-  const press = ++listenPress;
-  stopBtn.dataset.state = "busy";
-  stopBtn.removeAttribute("data-tip");
-  // The browser lets the tab picker open only straight from a click, so it starts here, beside the microphone; the
-  // microphone does not wait for it, and the tab joins the sign once the host has picked it.
-  const sharing = tabWanted && tabPhase !== "busy" && !tabUi().off ? shareTab() : null;
-  try {
-    await micOn();
-    // End & report came while the browser asked for the microphone: it is let go at once.
-    if (ending.at) { micOff(); return; }
-    state.mic = true;
-    stopBtn.removeAttribute("data-state");
-    showMic();
-    startListening();
-  } catch (error) {
-    // The failure shows on Listen itself, as on the setup's microphone button; pressing it again tries again.
-    showMic(error?.name || "error");
-    showSign();
-    const problem = micProblem(error?.name);
+  // A waiting Listen keeps its words until it is settled (a tab picked meanwhile must not wipe them).
+  if (v.listen.phase === "busy") {
+    stopBtn.dataset.state = "busy";
+    stopBtn.removeAttribute("data-tip");
+    return;
+  }
+  // A failed Listen says why on itself, as the setup's microphone button does; pressing it again tries again.
+  if (v.listen.phase === "error") {
+    const problem = micProblem(v.listen.error);
     stopBtn.className = "tb";
     stopBtn.dataset.state = "error";
     stopBtn.textContent = `${problem.text} · Listen`;
     stopBtn.dataset.tip = problem.tip;
-    // No microphone, nothing is listened to: a tab picked meanwhile is let go again.
-    // Only this press's own tab: a later press may be waiting for the same picker.
-    sharing?.then(() => { if (press === listenPress && !state.listening) { tabOff(); tabWanted = true; } });
+    return;
   }
+  stopBtn.textContent = sign.button;
+  stopBtn.className = sign.on ? "tb" : "tb tb--primary";
+  stopBtn.removeAttribute("data-state");
+  stopBtn.removeAttribute("data-tip");
+}
+
+const pressed = (button) => button.getAttribute("aria-disabled") !== "true";
+switchOff(micBtn, browser.features.microphone.on ? "" : browser.features.microphone.reason);
+micBtn.addEventListener("click", () => { if (pressed(micBtn)) session.pressMic(); });
+tabBtn.addEventListener("click", () => { if (pressed(tabBtn)) session.pressTab(); });
+switchOff(speechBtn, browser.features.wasm.on ? "" : browser.features.wasm.reason);
+speechBtn.addEventListener("click", () => { if (pressed(speechBtn)) session.loadModel(); });
+choices(engineSeg, (engine) => session.pickEngine(engine));
+
+// ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
+/** The setup or the producer screen (with the listening sign in the top bar). */
+function showScreen(live) {
+  tooltip.hide();
+  $("setup").hidden = live;
+  $("live").hidden = !live;
+  $("topLive").hidden = !live;
+  if (live) { renderRun(); renderCard(); }
+}
+
+goBtn.addEventListener("click", () => {
+  if (!pressed(goBtn)) return;
+  showScreen(true);
+  session.open();
 });
+
+// The listening sign shows while the page listens; Stop ends the microphone at once; Listen starts it again.
+stopBtn.addEventListener("click", () => session.pressListen());
+renderListening(session.view());
 
 // ---- End & report (card 12, src/report.mjs): listening stops, the run order is frozen where it is, the agent is asked
 // for its report (the end_report cue) and the report screen shows at once with what the page knows itself. The agent's
@@ -1054,9 +818,7 @@ endBtn.addEventListener("click", () => {
   ending.run = show.run ? show.run.view(now) : null;
   clearInterval(ticker);
   ticker = null;
-  tabWanted = false;
-  micOff();
-  tabOff();
+  session.end();
   const name = AGENT_WAYS[agentKey()].name;
   const link = agent.view().state;
   ending.asked = cues.end();

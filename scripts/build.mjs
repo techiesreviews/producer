@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Builds dist/: one self-contained index.html (styles and script inlined), the _headers file whose policy pins
 // the hash of that inline script and style and allows microphone and screen capture for this site only,
-// robots.txt, and speech/: the speech worker (src/speech/*.mjs as they are), manifest.json and the speech model
-// with its engine (scripts/speech-files.mjs). The page asks for no outside file; the worker only for this site's.
+// robots.txt, and speech/: the speech worker and the audio tap's worklet (src/speech/*.mjs as they are),
+// manifest.json and the speech model with its engine (scripts/speech-files.mjs). The page asks for no outside file;
+// the worker and the worklet only for this site's.
 // Usage: node scripts/build.mjs [outDir=dist] [--host <host> | --host=<host>] [--no-speech]
 // --host names the address the page is served from (default the live producer.techies.tools): any other
 // address (the preview) asks search engines to stay away. The command line fetches the pinned speech files once
@@ -26,10 +27,13 @@ export const STYLES = ["src/theme.css", "src/app.css"];
  * page's one scope, so the build checks the name is exported there and drops the line. Any other import form, and an
  * aliased name (`a as b`), stops the build.
  */
-export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs"];
+export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/audio-tap.mjs", "src/listening.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
 export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];
+
+/** The audio tap's worklet (src/audio-tap.mjs loads it): served as it is under /speech/, beside the speech worker. */
+export const AUDIO_TAP = "src/speech/tap-worklet.mjs";
 
 /** The live address, and the preview's (Worker producer-preview). */
 export const LIVE_HOST = "producer.techies.tools";
@@ -84,7 +88,10 @@ export function build(dir = join(root, "dist"), { host = LIVE_HOST, speechDir = 
   const html = page.replace(marks.style, () => `<style>${style}</style>`).replace(marks.script, () => `<script>${script}</script>`).replace(marks.size, speechMegabytes());
   const csp = [
     "default-src 'none'",
-    `script-src ${sha256(script)}`,
+    // The page's own inline script, and files of this site for the one script that has to be a file: the audio tap's
+    // AudioWorklet module (/speech/tap-worklet.mjs), which keeps the microphone's sound off the page's main thread.
+    // This site serves no script but its own files, and nosniff keeps anything else from running as one.
+    `script-src ${sha256(script)} 'self'`,
     `style-src ${sha256(style)}`,
     "img-src data:",
     // Only this site: its relay (/api/relay, a WebSocket) and its token (/api/agent-token). Nothing outside.
@@ -124,7 +131,7 @@ export function build(dir = join(root, "dist"), { host = LIVE_HOST, speechDir = 
   writeFileSync(join(dir, "index.html"), html);
   writeFileSync(join(dir, "_headers"), headers);
   writeFileSync(join(dir, "robots.txt"), live ? "User-agent: *\nAllow: /\n" : "User-agent: *\nDisallow: /\n");
-  for (const file of SPEECH_WORKER) copyFileSync(join(root, file), join(dir, "speech", file.split("/").pop()));
+  for (const file of [...SPEECH_WORKER, AUDIO_TAP]) copyFileSync(join(root, file), join(dir, "speech", file.split("/").pop()));
   const manifest = speechDir ? copySpeechFiles(speechDir, join(dir, "speech")) : speechManifest();
   writeFileSync(join(dir, "speech", "manifest.json"), `${JSON.stringify(manifest, null, 1)}\n`);
   return { html, headers, dir, manifest };

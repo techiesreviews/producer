@@ -40,13 +40,14 @@ function fakeAudio({ addModule = async () => {} } = {}) {
   return { AudioContext, AudioWorkletNode, log };
 }
 
-test("a tap: the worklet module loads from this site first, then the source runs through it into a silent end, never the speakers", async () => {
+test("a tap: the worklet module loads from this site while the browser asks for the sound, then the source runs through it into a silent end, never the speakers", async () => {
   const audio = fakeAudio();
   const open = createTapOpener(audio);
   const stream = fakeStream();
-  const tap = await open(stream, () => {});
+  const tap = await open(async () => { audio.log.push("asked"); return stream; }, () => {});
   assert.equal(TAP_URL, "/speech/tap-worklet.mjs");
-  assert.deepEqual(audio.log, ["context", "resume", ["addModule", TAP_URL], "source", ["node", TAP_NAME], ["connect source", "tap"], ["connect tap", "silent end"]]);
+  // The context starts and the module loads while the browser still asks for the sound, so it flows once granted.
+  assert.deepEqual(audio.log, ["context", "resume", ["addModule", TAP_URL], "asked", "source", ["node", TAP_NAME], ["connect source", "tap"], ["connect tap", "silent end"]]);
   const [node] = audio.AudioWorkletNode.made;
   assert.deepEqual(node.options, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: "explicit", processorOptions: { frames: TAP_FRAMES } });
   assert.equal(tap.stream, stream);
@@ -56,7 +57,7 @@ test("each chunk the worklet posts reaches the page with the sound's rate; after
   const audio = fakeAudio();
   const got = [];
   const stream = fakeStream();
-  const tap = await createTapOpener(audio)(stream, (samples, rate) => got.push([samples, rate]));
+  const tap = await createTapOpener(audio)(async () => stream, (samples, rate) => got.push([samples, rate]));
   const [node] = audio.AudioWorkletNode.made;
   const chunk = new Float32Array(TAP_FRAMES);
   node.port.onmessage({ data: chunk });
@@ -73,9 +74,17 @@ test("each chunk the worklet posts reaches the page with the sound's rate; after
 test("a tap that cannot be set up lets the sound go and says why", async () => {
   const audio = fakeAudio({ addModule: async () => { throw new Error("blocked"); } });
   const stream = fakeStream();
-  await assert.rejects(createTapOpener(audio)(stream, () => {}), /blocked/);
+  await assert.rejects(createTapOpener(audio)(async () => stream, () => {}), /blocked/);
   assert.equal(stream.tracks[0].stopped, true);
   assert.equal(audio.AudioContext.made[0].closed, true);
+});
+
+test("a refused ask closes the audio context and gives the browser's own error, even when the module failed too", async () => {
+  const audio = fakeAudio({ addModule: async () => { throw new Error("blocked"); } });
+  const refused = Object.assign(new Error("denied"), { name: "NotAllowedError" });
+  await assert.rejects(createTapOpener(audio)(async () => { throw refused; }, () => {}), (error) => error === refused);
+  assert.equal(audio.AudioContext.made[0].closed, true);
+  assert.equal(audio.AudioWorkletNode.made.length, 0);
 });
 
 /** The worklet file run in a fake worklet scope: its registered processor class and every message it posts. */

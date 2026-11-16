@@ -54,7 +54,8 @@ function setup({ tabSound = { on: true }, webSpeech = { on: true, company: "Goog
     },
   };
   const taps = [];
-  const openTap = async (s, onChunk) => {
+  const openTap = async (getStream, onChunk) => {
+    const s = await getStream();
     const tap = { stream: s, onChunk, closed: false, close() { this.closed = true; for (const t of s.getTracks()) t.stop(); } };
     taps.push(tap);
     return tap;
@@ -94,7 +95,7 @@ function setup({ tabSound = { on: true }, webSpeech = { on: true, company: "Goog
     onLevel: (source, fill) => out.levels.push([source, fill]),
     onText: (piece) => out.texts.push(piece),
     onPause: (source, at) => out.pauses.push([source, at]),
-    onFail: (engine, reason) => out.fails.push([engine, reason]),
+    onFail: (engine, reason) => { out.fails.push([engine, reason]); out.atFail = session.view(); },
   });
   return { session, asks, taps, workers, service, out, picked };
 }
@@ -336,6 +337,7 @@ test("a model that fails: the page hears it first, the worker is ended, the view
   const worker = t.workers[0];
   worker.emit({ type: "error", reason: "out of memory" });
   assert.deepEqual(t.out.fails, [["local", "out of memory"]]);
+  assert.equal(t.out.atFail.listening, true, "the page hears it before anything is let go");
   assert.equal(worker.terminated, true);
   assert.deepEqual(t.session.view().model, { phase: "error", percent: 0, reason: "out of memory" });
   assert.equal(t.session.view().speech, false);
@@ -379,11 +381,10 @@ test("the service's failure: the page hears it first, then the model is picked a
   await readySetup(t);
   t.session.pickEngine("browser");
   t.session.open();
-  const seen = [];
   t.service.hooks.onFail("the browser blocked its speech service");
-  seen.push(t.session.view().engine);
   assert.deepEqual(t.out.fails, [["browser", "the browser blocked its speech service"]]);
-  assert.deepEqual(seen, ["local"]);
+  assert.equal(t.out.atFail.engine, "browser", "the page hears it while the service is still the engine");
+  assert.equal(t.session.view().engine, "local", "then the model is picked again");
   assert.equal(t.session.view().serviceFailure, "the browser blocked its speech service");
   assert.ok(t.service.log.some(([what]) => what === "stop"), "the service is stopped");
   t.session.pickEngine("browser");
