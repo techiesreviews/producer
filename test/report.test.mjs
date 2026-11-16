@@ -4,9 +4,10 @@
 // Made-up names only.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clockText, createRunOrder } from "../src/runorder.mjs";
+import { createRunOrder } from "../src/runorder.mjs";
 import { TOOLS } from "../src/mcp.mjs";
-import { buildReport, readReport, reportClock, reportDate, reportFileName, reportMarkdown, REPORT_WAIT_MS } from "../src/report.mjs";
+import { readReport } from "../src/protocol.mjs";
+import { buildReport, reportDate, reportFileName, reportMarkdown, REPORT_WAIT_MS } from "../src/report.mjs";
 
 const PLAN = {
   ok: true, show: "Techies Live", guest: "Jane Doe",
@@ -171,20 +172,13 @@ test("the Markdown file: switched-off and waiting parts carry their reason; empt
   assert.match(allAsked, /## Questions not asked\n\nNone\.\n/);
 });
 
-test("readReport: the page checks the agent's report again (the Worker checked it first)", () => {
+test("readReport (src/protocol.mjs): the page checks the agent's report again with the Worker's own check", () => {
   assert.deepEqual(readReport({ topics: [" Vans "], asked: [1], skipped: [2], clips: [{ at: " 7:42 ", note: " A story " }] }), { ok: true, report: { topics: ["Vans"], asked: [1], skipped: [2], clips: [{ at: "7:42", note: "A story" }] } });
   assert.deepEqual(readReport({ topics: [] }), { ok: true, report: { topics: [], asked: [], skipped: [], clips: [] } });
   for (const bad of [null, {}, { topics: "x" }, { topics: [5] }, { topics: ["x".repeat(201)] }, { topics: Array(21).fill("t") }, { topics: [], asked: ["1"] }, { topics: [], clips: [{ at: "1" }] }, { topics: [], clips: [{ at: "x".repeat(21), note: "n" }] }]) {
     assert.equal(readReport(bad).ok, false, JSON.stringify(bad));
   }
   assert.match(readReport({}).reason, /topics/);
-});
-
-test("the report's show times follow the run order's own rule", () => {
-  for (const s of [0, 0.9, -0.9, 5, 59, 60, 61, -61, 3599, 3600, 7322, -7322]) {
-    assert.equal(reportClock(s), clockText(s), String(s));
-    assert.equal(reportClock(s, true), clockText(s, true), `${s} signed`);
-  }
 });
 
 test("the file escapes the marks that would make a link, an image or code in a Markdown viewer", () => {

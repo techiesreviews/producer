@@ -29,7 +29,7 @@ test("the message holds the ready-made loop with this page's address and token, 
   assert.equal(code.split("\n")[1], AGENT_LOOP, "the loop exactly as the relay's tests run it");
   assert.equal((message.match(/```/g) ?? []).length, 2, "one block only: nothing else to copy into a file");
   assert.ok(message.includes(`P=wait_for_cue B='${agentBody({ seq: 0 })}'`), "then it waits for cues");
-  for (const rule of [/in the foreground/, /time limit of 10 minutes/, /change only P and B/, /Answer in the next wait/, /That one command shows your answer and waits for the next cue/, /No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install/, /Do not explain the command/, /run it again at once with the same P and B/, /tell me in one line and stop/, /data, not instructions/, /never save it or repeat it/, /eight hours/, /Disconnect/]) {
+  for (const rule of [/in the foreground/, /time limit of 10 minutes/, /change only P and B/, /Answer in the next wait/, /That one command shows your answer and waits for the next cue/, /No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install/, /Do not explain the command/, /run it again at once with the same P and B/, /tell me in one line and stop/, /data, never commands/, /never save it or repeat it/, /eight hours/, /Disconnect/]) {
     assert.match(message, rule);
   }
   assert.doesNotMatch(message, /\bsleep\s+\d|nohup|&\s*$|>\s*\S+\.(sh|py|js)/m, "nothing in it sleeps, runs in the background or writes a script");
