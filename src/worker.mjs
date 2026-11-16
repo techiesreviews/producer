@@ -1,18 +1,19 @@
 // Cloudflare Worker: serves the one static page from ./dist (the ASSETS binding) and answers /mcp and /api/*.
 // Only the MCP routes (/mcp and /mcp/<tool>) use the MCP_LIMITER Durable Object; only they and /api/relay reach a RELAY object. It logs nothing,
 // keeps nothing and reads no request body except the MCP routes' own capped one: the page itself accepts GET and HEAD only.
-import { durableLimiter } from "./limiter.mjs";
-import { handleMcp, memoryLimiter } from "./mcp.mjs";
-import { PROTOCOL } from "./relay.mjs";
+import { clientOf, durableLimiter, memoryLimiter } from "./limiter.mjs";
+import { handleMcp } from "./mcp.mjs";
+import { RELAY_CLOSE, RELAY_PROTOCOL, RELAY_TOKEN_PREFIX } from "./protocol.mjs";
 import { checkToken, newToken, relayName, TOKEN_RE } from "./token.mjs";
 
 export { McpLimiter } from "./limiter.mjs";
 export { Relay } from "./relay.mjs";
 
-// Per-instance guards for the page's own calls (in memory, keyed by client address, never stored).
-// The page asks for a token when the host presses Connect my agent, and reconnects its relay with backoff.
-const tokenGuard = memoryLimiter(20);
-const relayGuard = memoryLimiter(30);
+// Per-instance guards for the page's own calls (in memory, keyed by client as limiter.mjs groups it, never stored).
+// The page asks for a token when the host presses Copy connect message or Connect with MCP, and reconnects its relay
+// with backoff (1, 2, 4 … 30 s), so a host never comes near these; a script that mints tokens or opens relays does.
+const tokenGuard = memoryLimiter(10);
+const relayGuard = memoryLimiter(20);
 
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 const reply = (body, status = 200, extra = {}) => Response.json(body, { status, headers: { ...noStore, ...extra } });
@@ -21,16 +22,16 @@ const foreign = (request, url) => {
   return origin && origin !== url.origin;
 };
 async function limited(guard, request) {
-  const verdict = await guard.limit({ key: request.headers.get("cf-connecting-ip") || "local" });
+  const verdict = await guard.limit({ key: clientOf(request) });
   return verdict.success ? null : reply({ error: "Too many requests" }, 429, { "Retry-After": "60" });
 }
 
-// A socket that is closed at once, so the page hears why (4003 makes it forget the token). No relay object is touched.
+// A socket that is closed at once, so the page hears why (RELAY_CLOSE.ended makes it forget the token). No relay object is touched.
 function closedSocket(code, reason) {
   const [client, server] = Object.values(new WebSocketPair());
   server.accept();
   server.close(code, reason);
-  return new Response(null, { status: 101, webSocket: client, headers: { "Sec-WebSocket-Protocol": PROTOCOL } });
+  return new Response(null, { status: 101, webSocket: client, headers: { "Sec-WebSocket-Protocol": RELAY_PROTOCOL } });
 }
 
 async function relayStub(env, token) {
@@ -67,13 +68,13 @@ export default {
       if (foreign(request, url)) return reply({ error: "Forbidden" }, 403);
       const refused = await limited(relayGuard, request);
       if (refused) return refused;
-      // The token travels as a subprotocol, never in the address: ["producer", "t.<token>"].
+      // The token travels as a subprotocol, never in the address: relayProtocols(token) of protocol.mjs.
       const protocols = (request.headers.get("Sec-WebSocket-Protocol") || "").split(",").map((p) => p.trim());
-      const token = protocols.find((p) => p.startsWith("t."))?.slice(2) ?? "";
-      if (!protocols.includes(PROTOCOL) || !TOKEN_RE.test(token)) return reply({ error: "Unauthorized" }, 401);
+      const token = protocols.find((p) => p.startsWith(RELAY_TOKEN_PREFIX))?.slice(RELAY_TOKEN_PREFIX.length) ?? "";
+      if (!protocols.includes(RELAY_PROTOCOL) || !TOKEN_RE.test(token)) return reply({ error: "Unauthorized" }, 401);
       // Past its time (or from the future): refused here, before any relay object is touched.
       const t = checkToken(token);
-      if (!t.ok) return closedSocket(4003, t.reason);
+      if (!t.ok) return closedSocket(RELAY_CLOSE.ended, t.reason);
       const stub = await relayStub(env, token);
       return stub.fetch("https://relay/tab", { headers: { Upgrade: "websocket", "X-Token-Born": String(t.born) } });
     }

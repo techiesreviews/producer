@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import "./runtime.mjs";
 import { pairs } from "./runtime.mjs";
 
-const { Relay, PROTOCOL } = await import("../src/relay.mjs");
+const { Relay } = await import("../src/relay.mjs");
+const { RELAY_PROTOCOL: PROTOCOL } = await import("../src/protocol.mjs");
 export { Relay, PROTOCOL };
 
 export const T0 = Date.UTC(2026, 10, 9, 20);

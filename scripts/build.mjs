@@ -11,7 +11,7 @@
 // does the same from the command line, for checks without a network; a deploy never passes it.
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, posix, resolve } from "node:path";
 import { cacheDir, copySpeechFiles, fetchSpeechFiles, SPEECH_BYTES, speechManifest } from "./speech-files.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -20,8 +20,13 @@ const read = (file) => readFileSync(join(root, file), "utf8");
 /** Stylesheets inlined into the page's one style block, in this order. */
 export const STYLES = ["src/theme.css", "src/app.css"];
 
-/** Shared modules inlined into the page script, in this order, without `export`; then src/app.js. */
-export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/runorder.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs"];
+/**
+ * Page modules inlined into the page script, in this order, without `export`; then src/app.js. A file (src/app.js
+ * too) says what it uses with `import { a, b } from "./x.mjs";` from a module inlined before it: they share the
+ * page's one scope, so the build checks the name is exported there and drops the line. Any other import form, and an
+ * aliased name (`a as b`), stops the build.
+ */
+export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
 export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];
@@ -34,16 +39,32 @@ export function pageStyle() {
   return `\n${STYLES.map((file) => read(file).trim()).join("\n\n")}\n`;
 }
 
-/** Inline the page script: the shared modules, then the app, in one function scope. */
-export function pageScript() {
-  const modules = INLINED.map((file) => {
-    const source = read(file);
-    if (/^\s*import\s/m.test(source)) throw new Error(`${file} must not import anything`);
-    const stripped = source.replace(/^export (?=(async )?function |const |let |class )/gm, "");
+const EXPORTED = /^export (?:async )?(?:function|const|let|class) (\w+)/gm;
+
+/** A page file with its import lines dropped, once each one names exported names of a module inlined before it. */
+function dropImports(file, code, before, source) {
+  const kept = code.replace(/^import \{([^}]*)\} from "(\.\.?\/[^"]+)";[ \t]*\n/gm, (line, list, spec) => {
+    const from = posix.join(posix.dirname(file), spec);
+    if (/\bas\b/.test(list)) throw new Error(`${file}: an aliased import (${line.trim()}) cannot be inlined`);
+    if (!before.includes(from)) throw new Error(`${file} imports ${spec}, which is not inlined before it`);
+    const exported = new Set([...source(from).matchAll(EXPORTED)].map((m) => m[1]));
+    for (const name of list.split(",").map((n) => n.trim()).filter(Boolean)) {
+      if (!exported.has(name)) throw new Error(`${file} imports ${name} from ${spec}, which does not export it`);
+    }
+    return "";
+  });
+  if (/^\s*import\s/m.test(kept)) throw new Error(`${file} must not import anything but \`import { … } from "./file.mjs";\``);
+  return kept;
+}
+
+/** Inline the page script: the page modules, then the app, in one function scope. */
+export function pageScript(files = INLINED, source = read) {
+  const modules = files.map((file, i) => {
+    const stripped = dropImports(file, source(file), files.slice(0, i), source).replace(/^export (?=(async )?function |const |let |class )/gm, "");
     if (/^export\b/m.test(stripped)) throw new Error(`${file} has an export form the build cannot strip`);
     return stripped;
   });
-  return `\n(() => {\n${modules.join("\n")}\n${read("src/app.js")}\n})();\n`;
+  return `\n(() => {\n${modules.join("\n")}\n${dropImports("src/app.js", source("src/app.js"), files, source)}\n})();\n`;
 }
 
 const sha256 = (text) => `'sha256-${createHash("sha256").update(text).digest("base64")}'`;

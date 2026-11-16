@@ -1,6 +1,6 @@
 // The show plan the host pastes by hand, and the run order with its show clock. Plain facts in, words out: no page,
 // no storage, no network. The plan lives only in the page's memory and is gone when the tab closes.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 //
 // The plan's format, one thing per line (blank lines are fine):
 //   Show: Techies Live        the show's name (optional)

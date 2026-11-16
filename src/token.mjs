@@ -6,9 +6,9 @@
 // the past only lives shorter, and one from the future is refused.
 // The prefix and the hash salt are the producer's own: a Prompter token ("tp1-") is not a valid producer token,
 // and even the same text would name another relay object.
-// No imports: the Worker, the relay and the tests share this file.
+// The Worker, the relay and the tests share this file; its only import is the protocol's token age.
+import { TOKEN_MAX_AGE_MS } from "./protocol.mjs";
 
-export const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 export const FUTURE_SLACK_MS = 60_000;
 export const TOKEN_RE = /^pr1-([0-9a-z]{8,10})-([A-Za-z0-9_-]{43})$/;
 const SALT = "techies-producer/relay/v1";
@@ -25,7 +25,14 @@ export function checkToken(token, now = Date.now()) {
   if (!m) return { ok: false, reason: "invalid" };
   const born = parseInt(m[1], 36);
   if (born > now + FUTURE_SLACK_MS) return { ok: false, reason: "invalid" };
-  return now - born < MAX_AGE_MS ? { ok: true, born } : { ok: false, reason: "expired" };
+  return now - born < TOKEN_MAX_AGE_MS ? { ok: true, born } : { ok: false, reason: "expired" };
+}
+
+/** The agent token from an Authorization header, with its birth time, or null when it is malformed or past its time. */
+export function bearer(header, now = Date.now()) {
+  const m = String(header || "").match(/^Bearer\s+(\S+)$/i);
+  const t = m ? checkToken(m[1], now) : null;
+  return t?.ok ? { token: m[1], born: t.born } : null;
 }
 
 /** The relay object's name: a salted SHA-256 of the token, so the object never sees the token itself. */

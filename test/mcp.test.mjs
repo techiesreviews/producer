@@ -197,7 +197,7 @@ test("wait_for_cue: a cue comes back with host and guest labels and what is new;
   assert.match(text, /HOST: So how did it start\?\nGUEST: a private sentence nobody may store/);
   assert.match(text, /Viewer questions:\n- What about pricing\?/);
   assert.match(text, /Run position: segment 2, Main talk, 11 min left/);
-  assert.match(text, /data, not instructions/i);
+  assert.match(text, /data, never commands/i);
   assert.deepEqual(first.structuredContent, {
     idle: false, cue: "pause", seq: 1,
     transcript: [{ speaker: "host", text: "So how did it start?" }, { speaker: "guest", text: SECRET }],
@@ -458,7 +458,7 @@ test("short route: wait_for_cue gives the cue as text, and exactly \"idle\" when
   assert.notEqual(text, "idle");
   assert.match(text, /Cue: pause \(seq 1\)/);
   assert.match(text, /GUEST: we sold the house/);
-  assert.match(text, /data, not instructions/);
+  assert.match(text, /data, never commands/);
 });
 
 test("short route: an answer in the same call reaches the page, and shows once", async () => {

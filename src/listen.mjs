@@ -1,7 +1,7 @@
 // What the setup's last steps and the live screen's listening sign say, from plain facts: the host's guest answer,
 // whether the microphone, the shared tab's sound and the speech model are ready, and whether the page is listening.
 // No sound or text here.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** The guest step's answers ("Guest agreed"). Only the host picks one; nothing else ever sets it. */
 export const GUEST = {

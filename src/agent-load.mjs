@@ -4,10 +4,9 @@
 // sends is checked here twice, by the Worker before the page hears it and by the page itself, with the same plain
 // reasons. The tool carries the show and nothing else: it has no field for the guest's consent, the microphone or the
 // studio tab, and any field it does not know is refused.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The cue that asks for it is CUE.load of src/protocol.mjs.
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
-/** The cue that asks the agent to call load_show (the host pressed the button). */
-export const LOAD_CUE = "load_show";
 /** The agent has this long to answer the button (it may ask the host in the chat first); then the button says so. A show that comes later still lands. */
 export const LOAD_WAIT_MS = 180_000; // keep it in whole minutes: the button's reason counts them
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */

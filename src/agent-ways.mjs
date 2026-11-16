@@ -9,7 +9,7 @@
 // after Disconnect, after leaving the page and after eight hours. A later Claude Code chat without the variable reads
 // the default "ended", so the leftover entry only gets a refusal and Claude Code raises no warning; a later Codex chat
 // without it starts normally and the producer server there simply fails to authorise (TOOLS-169 review, tried).
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** The words that open the chat. Plain: it sits inside single quotes in the line. */
 export const START = "Be my live-show producer. Use the producer MCP tools, and load_show when a cue asks you to load my show. Keep going until I end the show.";

@@ -1,4 +1,5 @@
-// Per-client rate limit for /mcp, enforced by one Durable Object per client.
+// Per-client rate limits. For /mcp: one Durable Object per client. For every server route: an in-memory guard per
+// Worker instance (memoryLimiter), keyed the same way (clientOf: one IPv6 /64 is one client).
 // Privacy: the Worker hashes the client address with a fixed salt before it
 // picks the object, so no object ever sees an IP address. The object counts
 // in memory only and never touches its storage. Each request first drops the
@@ -89,6 +90,9 @@ export function clientKey(ip) {
   return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
+/** The client a request counts against: its address as clientKey groups it (one IPv6 /64 is one client). */
+export const clientOf = (request) => clientKey(request.headers.get("cf-connecting-ip") || "local");
+
 export async function hashClient(ip) {
   const bytes = new TextEncoder().encode(`${SALT}|${clientKey(ip)}`);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
@@ -117,6 +121,32 @@ export function durableLimiter(namespace, timeoutMs = TIMEOUT_MS) {
       } finally {
         clearTimeout(timer);
       }
+    },
+  };
+}
+
+/**
+ * Per-isolate fixed-window counter, in memory only, keyed by clientOf. It runs before any Durable Object limiter.
+ * When full it drops expired entries, then the oldest window starts, so rotating addresses cannot reset every count at once.
+ */
+export function memoryLimiter(limit = RATE_LIMIT, windowMs = 60_000, now = () => Date.now(), maxKeys = 10_000) {
+  const hits = new Map();
+  return {
+    async limit({ key }) {
+      const t = now();
+      const entry = hits.get(key);
+      if (!entry || t - entry.start >= windowMs) {
+        if (hits.size >= maxKeys) {
+          // Map order is insertion order (oldest first): only scan when the oldest has expired.
+          if (t - hits.values().next().value.start >= windowMs) for (const [k, v] of hits) if (t - v.start >= windowMs) hits.delete(k);
+          for (const k of hits.keys()) { if (hits.size < maxKeys) break; hits.delete(k); }
+        }
+        hits.delete(key);
+        hits.set(key, { start: t, count: 1 });
+        return { success: true };
+      }
+      entry.count += 1;
+      return entry.count <= limit ? { success: true } : { success: false, max: limit, ms: windowMs };
     },
   };
 }

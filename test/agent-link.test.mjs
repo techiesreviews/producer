@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { fakeTimers, pageSockets, relayWith, settle } from "./fakes.mjs";
 import { checkToken, newToken } from "../src/token.mjs";
 import { AGENT_QUIET_MS, AGENT_SAMPLE, AGENT_TEST_MS, ANSWERS_KEPT, createAgentLink } from "../src/agent-link.mjs";
-import { CUE, WAIT_HOLD_MS } from "../src/protocol.mjs";
+import { CUE as CUE_NAMES, WAIT_HOLD_MS } from "../src/protocol.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.test";
@@ -569,7 +569,7 @@ test("the load cue goes alone, is not a question for the agent to answer, and ne
   link.onSuggestions(() => assert.fail("a load cue has no suggestions"));
   await connect();
   await call("get_context");
-  link.send({ cue: CUE.load, transcript: [] }); // seq 1
+  link.send({ cue: CUE_NAMES.load, transcript: [] }); // seq 1
   assert.equal(link.asking(), false, "loading is not a question on the card");
   link.send(CUE); // seq 2
   const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
@@ -578,8 +578,8 @@ test("the load cue goes alone, is not a question for the agent to answer, and ne
   assert.deepEqual([second.cue, second.seq], ["pause", 2], "the next wait gets the pause cue");
   assert.equal(link.suggestion(), null, "an answer to the load cue is not a suggestion");
   // A second press while the first still waits replaces it.
-  link.send({ cue: CUE.load, transcript: [] }); // seq 3
-  link.send({ cue: CUE.load, transcript: [] }); // seq 4
+  link.send({ cue: CUE_NAMES.load, transcript: [] }); // seq 3
+  link.send({ cue: CUE_NAMES.load, transcript: [] }); // seq 4
   const again = (await call("wait_for_cue", { seq: 2 })).body.result.structuredContent;
   assert.deepEqual([again.cue, again.seq], ["load_show", 4]);
   await flush();
@@ -590,17 +590,13 @@ test("the load cue is the host's request: the 20,000-character cap lets it stay 
   const { link, call, connect } = setup();
   await connect();
   await call("get_context");
-  link.send({ cue: CUE.load, transcript: [] }); // seq 1
+  link.send({ cue: CUE_NAMES.load, transcript: [] }); // seq 1
   for (let i = 0; i < 5; i++) link.send({ cue: "pause", transcript: [{ speaker: "guest", text: `${i}${"x".repeat(5_999)}` }] });
   const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
-  assert.deepEqual([first.cue, first.seq, first.transcript], [CUE.load, 1, []], "the load request is still the first thing the agent gets");
+  assert.deepEqual([first.cue, first.seq, first.transcript], [CUE_NAMES.load, 1, []], "the load request is still the first thing the agent gets");
   const next = (await call("wait_for_cue", { seq: 1 })).body.result.structuredContent;
   assert.deepEqual(next.transcript.map((l) => l.text[0]), ["2", "3", "4"], "the show cues were trimmed as before");
   link.disconnect();
-});
-
-test("the cue name the page sends is the one the Worker and the link know", () => {
-  assert.equal(CUE.load, "load_show", "src/agent-link.mjs spells it out: an inlined file imports nothing");
 });
 
 test("post_report: the page's own report() takes what the agent sent, and its answer goes back to the agent", async () => {
@@ -610,7 +606,7 @@ test("post_report: the page's own report() takes what the agent sent, and its an
   const report = { topics: ["Vans"], asked: [1], clips: [{ at: "7:42", note: "The van story" }] };
   const ok = await call("post_report", report);
   assert.equal(ok.status, 200);
-  assert.deepEqual(got, [report], "what the Worker checked and passed on");
+  assert.deepEqual(got, [{ ...report, skipped: [] }], "what the Worker checked and passed on, every list filled in");
   assert.deepEqual(ok.body.result.structuredContent, { ok: true });
   const refused = await call("post_report", { topics: [] });
   assert.equal(refused.body.result.isError, true);
