@@ -191,7 +191,7 @@ test("every reason is one or two plain sentences that fit a tooltip", () => {
   }
 });
 
-test("a browser that cannot gather sound off the page's main thread (no AudioWorklet) shows the microphone off with that reason", () => {
+test("a browser too old to gather sound off the page's main thread (no AudioWorklet) shows the microphone off with that reason", () => {
   const b = detectBrowser(env({ ua: UA.chrome, worklet: false }));
   assert.equal(b.features.microphone.on, false);
   assert.equal(b.features.microphone.reason, REASONS.worklet);

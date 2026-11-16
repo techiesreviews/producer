@@ -9,7 +9,7 @@
 export const REASONS = {
   secure: "This page is not on a secure (https) address, so the browser keeps the microphone and tab sharing off.",
   microphone: "This browser does not let web pages use a microphone.",
-  worklet: "This browser cannot handle a microphone's sound off the page's main thread. Use a current Chrome, Edge, Firefox or Safari.",
+  worklet: "This browser is too old to listen to a microphone here. Use a current Chrome, Edge, Firefox or Safari.",
   tabFirefox: "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.",
   tabSafari: "Safari does not give web pages any sound from a shared tab or screen, so the guest cannot be heard here. Use Chrome or Edge.",
   tabPhone: "Phone and tablet browsers generally cannot share a tab with sound. Use Chrome or Edge on a computer.",
