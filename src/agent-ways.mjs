@@ -10,9 +10,10 @@
 // the default "ended", so the leftover entry only gets a refusal and Claude Code raises no warning; a later Codex chat
 // without it starts normally and the producer server there simply fails to authorise (TOOLS-169 review, tried).
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+import { TOOL } from "./protocol.mjs";
 
 /** The words that open the chat. Plain: it sits inside single quotes in the line. */
-export const START = "Be my live-show producer. Use the producer MCP tools, and load_show when a cue asks you to load my show. Keep going until I end the show.";
+export const START = `Be my live-show producer. Use the producer MCP tools, and ${TOOL.load} when a cue asks you to load my show. Keep going until I end the show.`;
 
 // `where` is a note on the remove command: Claude Code's entry belongs to the folder the line was run in.
 const mcpTips = (agent, remove, where = "") => ({

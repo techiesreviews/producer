@@ -12,9 +12,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
-// address itself, and here each browser context gets its own made-up one, so these checks never meet that limit.
+// address itself, and here each browser context gets its own made-up one (its own /64 in the documentation range), so
+// these checks never meet that limit.
 let nextClient = 0;
-const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `10.0.5.${++nextClient}` } });
+const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `2001:db8:5:${++nextClient}::1` } });
 
 const ANDROID = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36";
 const VIEWS = [

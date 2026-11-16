@@ -418,6 +418,14 @@ test("/mcp holds 10 per 10 seconds per client (the Durable Object limiter) and 6
   assert.match((await (await s.post({ jsonrpc: "2.0", id: 1, method: "ping" }, { guard, headers: { "cf-connecting-ip": "198.51.100.1" } })).json()).error.message, /Limit: 60 per minute/);
 });
 
+test("S2: the in-memory /mcp guard counts one IPv6 /64 as one client", async () => {
+  const s = await setup();
+  const guard = memoryLimiter(2);
+  const ping = (ip) => s.post({ jsonrpc: "2.0", id: 1, method: "ping" }, { guard, headers: { "cf-connecting-ip": ip } }).then((r) => r.status);
+  assert.deepEqual([await ping("2001:db8:1:1::a"), await ping("2001:db8:1:1::b"), await ping("2001:db8:1:1:ffff::c")], [200, 200, 429], "new addresses in the same /64 share the count");
+  assert.equal(await ping("2001:db8:1:2::a"), 200, "the next /64 is another client");
+});
+
 test("bearer: the token from a header, with its birth time, only while it may be used", () => {
   const { token, born } = newToken(T0);
   assert.deepEqual(bearer(`Bearer ${token}`, T0), { token, born });
