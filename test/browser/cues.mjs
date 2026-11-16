@@ -7,6 +7,11 @@
 // answer taken) stays under 0.3 s; nothing is stored and nothing but the token request leaves the page.
 import assert from "node:assert/strict";
 
+// The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
+// address itself, and here each browser context gets its own made-up one, so these checks never meet that limit.
+let nextClient = 0;
+const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `10.0.1.${++nextClient}` } });
+
 const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
 const PAGE_BUDGET_MS = 300;
 
@@ -74,7 +79,7 @@ function standIns() {
 export async function run({ browser, base }) {
   const checks = [];
   const ok = (name) => checks.push(name);
-  const context = await browser.newContext({ colorScheme: "light", viewport: { width: 1366, height: 900 } });
+  const context = await browser.newContext(ownAddress({ colorScheme: "light", viewport: { width: 1366, height: 900 } }));
   const page = await context.newPage();
   await page.addInitScript(standIns);
   const requests = [];

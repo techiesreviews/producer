@@ -15,7 +15,7 @@ const VIEWS = [
   { name: "phone-dark", colorScheme: "dark", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID },
 ];
 const STREAM = ["Restream Studio", "Wave.video", "OBS", "Other"];
-// The Worker limits tokens per client address (20 a minute); a real Cloudflare sets the address itself, and here each
+// The Worker limits tokens per client address (10 a minute); a real Cloudflare sets the address itself, and here each
 // browser context gets its own made-up one, so the many connections these checks make do not meet that limit.
 let nextClient = 0;
 const ownAddress = (context) => context.setExtraHTTPHeaders({ "cf-connecting-ip": `203.0.113.${++nextClient}` });
