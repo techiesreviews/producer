@@ -1,6 +1,7 @@
 // The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
 // src/questions.mjs, src/report.mjs,
-// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs, src/demo.mjs and src/agent-link.mjs above this file.
+// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs, src/demo.mjs, src/showplan.mjs and
+// src/agent-link.mjs above this file.
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -138,7 +139,7 @@ const agent = createAgentLink({
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: (view) => { renderAgent(view); renderLoad(); renderCard(); renderEnding(view.state); },
+  onChange: (view) => { show.agentLink(view.state); renderAgent(view); renderLoad(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
   report: reportFromAgent,
@@ -208,30 +209,31 @@ choices($("guestSeg"), (answer) => {
   refresh();
 });
 
-// ---- Step 3, the show plan pasted by hand (format: src/runorder.mjs). It lives in this page's memory only: never
-// stored, never sent. Each change is read at once; the button says what was read, or which line is unclear. ----
+// ---- Step 3, the show plan (src/showplan.mjs owns it; the format is src/runorder.mjs's). A show arrives pasted by hand,
+// from the demo button, or from the agent's load_show; this part of the page passes each one on and draws what the plan
+// says. It lives in this page's memory only: never stored, never sent. Each change is read at once; the button says what
+// was read, or which line is unclear. ----
 const planBtn = $("planBtn");
 const planBox = $("planBox");
 const planIn = $("planIn");
-/** The plan as last read clearly (null before), and its run order with the show clock. */
-const show = { plan: null, run: null, parts: "", notes: "", notesFor: null };
+const demoBtn = $("demoBtn");
+const loadBtn = $("loadBtn");
+/** The plan box's text, the plan as last read clearly (null before), its run order with the show clock, the agent's notes, and how it got there. */
+const show = createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs: LOAD_WAIT_MS, demo: DEMO_SHOW, demoButton, onChange: () => { renderDemo(); renderLoad(); } });
 // The example's lines, a space apart in the text (a screen reader and a copy keep them apart; the layout ignores it).
 for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
 
-function readPasted() {
-  if (planIn.readOnly) return; // fixed once the show clock runs (lockPlan)
-  const plan = readPlan(planIn.value);
-  const said = planButton(plan);
+/** The run order the rows were built for, so they are built again only for a new one. */
+let drawnRun = null;
+/** What the text in the box was read as: the plan button, the run order, the show line and the question card. */
+function renderPlan() {
+  const said = planButton(show.read);
   label(planBtn, said.state, said.tip, said.text);
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
-  show.plan = plan.ok ? plan : null;
-  // A new run order only when the parts change.
-  const parts = plan.ok ? JSON.stringify(plan.parts) : "";
-  if (parts !== show.parts) {
-    show.parts = parts;
-    show.run = plan.ok ? createRunOrder(plan.parts) : null;
-    buildRuns(plan.ok ? plan.parts : []);
+  if (show.run !== drawnRun) {
+    drawnRun = show.run;
+    buildRuns(show.plan?.parts ?? []);
   }
   $("showLine").textContent = showLine(show.plan);
   done("sPlan", Boolean(show.plan));
@@ -239,16 +241,10 @@ function readPasted() {
   renderCard();
 }
 planIn.addEventListener("input", () => {
-  // The host's own edit: what the agent loaded is no longer what is there, and the host's go-ahead for the agent is used up.
-  if (loadState.phase === "loaded") { loadState.phase = "idle"; renderLoad(); }
-  Object.assign(loadState, { byAgent: false, hostAsked: false, gaveUp: false });
-  readPasted();
-  // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
-  if (show.notes && (show.plan ? show.plan.show !== show.notesFor?.show || show.plan.guest !== show.notesFor?.guest : !planIn.value.trim())) show.notes = "";
-  demoLoaded = false;
-  clearTimeout(demoTimer);
-  demoConfirm = false;
+  show.edit(planIn.value);
+  if (!show.locked) renderPlan(); // fixed once the show clock runs (lockPlan)
   renderDemo();
+  renderLoad();
 });
 planBtn.addEventListener("click", () => {
   const open = planBox.hidden;
@@ -257,113 +253,53 @@ planBtn.addEventListener("click", () => {
   if (open) planIn.focus();
 });
 
-// ---- Load demo show (src/demo.mjs): one click puts the built-in made-up show in the plan box, as the host's own text, with
-// its notes. The host can still edit it; the button says Demo loaded until they do. In this page's memory only. ----
-const demoBtn = $("demoBtn");
-/** The demo is in the box and has not been edited since. */
-let demoLoaded = false;
-/** The first press over a plan of the host's own only asks (on the button); the second press, within 8 seconds, replaces it. */
-let demoConfirm = false;
-let demoTimer = 0;
-
+// Load demo show (src/demo.mjs): one click puts the built-in made-up show in the plan box, as the host's own text, with
+// its notes. The host can still edit it; the button says Demo loaded until they do. Over a plan of the host's own, the
+// first press only asks (on the button).
 function renderDemo() {
-  const said = demoButton({ loaded: demoLoaded, locked: planIn.readOnly, confirm: demoConfirm });
+  const said = show.demoView();
   label(demoBtn, said.state, said.off || said.tip, ...(said.off ? [offMark(), " "] : []), said.text);
   switchOff(demoBtn, said.off);
 }
 
 demoBtn.addEventListener("click", () => {
-  if (demoBtn.getAttribute("aria-disabled") === "true" || planIn.readOnly) return;
-  clearTimeout(demoTimer);
-  // A plan in the box that is not the untouched demo is the host's (or the agent's): the button asks before it replaces it.
-  if (planIn.value.trim() && !demoLoaded && !demoConfirm) {
-    demoConfirm = true;
-    demoTimer = setTimeout(() => { demoConfirm = false; renderDemo(); }, 8000);
-    renderDemo();
-    return;
+  if (demoBtn.getAttribute("aria-disabled") === "true") return;
+  if (show.pressDemo() === "loaded") {
+    planIn.value = show.text;
+    renderPlan();
   }
-  demoConfirm = false;
-  planIn.value = planText(DEMO_SHOW);
-  // What the agent loaded is no longer what is in the box; the host's own go-ahead for the agent is used up. A request
-  // still on its way is given up too (its answer is refused with that reason), so nothing is left waiting.
-  if (loadState.phase === "asking") loadState.gaveUp = true;
-  if (loadState.phase !== "idle") { clearTimeout(loadState.timer); loadState.phase = "idle"; }
-  Object.assign(loadState, { byAgent: false, hostAsked: false });
-  readPasted();
-  show.notes = DEMO_SHOW.notes;
-  show.notesFor = DEMO_SHOW;
-  demoLoaded = true;
   renderDemo();
   renderLoad();
 });
-renderDemo();
 
-// ---- Let my agent load it (src/agent-load.mjs): the button asks the agent with a cue; the agent answers with its
-// load_show tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show
-// only: nothing here reads or sets "Guest agreed", the microphone or the tab sharing. In this page's memory only. ----
-const loadBtn = $("loadBtn");
-/** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show;
- * hostAsked: the host pressed the button and has not edited the box since, so the agent may load over a plan they typed
- * (also after a refused try or a slow one: the agent's next try still counts). */
-const loadState = { phase: "idle", name: "", plan: null, reason: "", byAgent: false, hostAsked: false, gaveUp: false, timer: 0 };
-
+// Let my agent load it (src/agent-load.mjs): the button asks the agent with a cue; the agent answers with its load_show
+// tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show only:
+// nothing here reads or sets "Guest agreed", the microphone or the tab sharing.
 function renderLoad() {
-  const link = agent.view().state;
-  // The agent went (Disconnect, or another tab took it) while the page waited for the show, or after a failed try: nothing is
-  // on its way any more. A quiet link ("waiting") is an agent busy with the host's outline, so the wait goes on.
-  if ((link === "off" || link === "elsewhere") && (loadState.phase === "asking" || loadState.phase === "failed")) { clearTimeout(loadState.timer); Object.assign(loadState, { phase: "idle", hostAsked: false }); }
-  const said = loadButton({ agent: link, locked: planIn.readOnly, load: { ...loadState, name: loadState.name || AGENT_WAYS[agentKey()].name } });
+  const said = show.loadView(agent.view().state, AGENT_WAYS[agentKey()].name);
   label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
   switchOff(loadBtn, said.off);
   loadBtn.className = said.primary ? "tb tb--primary" : "tb";
 }
 
-function loadFailed(reason) {
-  clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "failed", reason });
-  renderLoad();
-}
-
-/** The agent's load_show: checked again here (the Worker checked it first), then the show goes into the plan box as the host's own format. */
+/** The agent's load_show (src/showplan.mjs checks it and gives the answer the agent hears). */
 function loadFromAgent(args) {
-  const refuse = (reason) => {
-    if (loadState.phase === "asking") loadFailed(`${loadState.name} could not load the show: ${reason[0].toLowerCase()}${reason.slice(1)}`);
-    return { error: reason };
-  };
-  const read = readLoad(args);
-  if (!read.ok) return refuse(read.reason);
-  if (planIn.readOnly) return refuse("The show has started, so the plan stays as it is.");
-  if (loadState.gaveUp && !loadState.hostAsked) { loadState.gaveUp = false; return refuse("The host loaded the demo show instead. Nothing to do."); }
-  // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
-  if (!loadState.hostAsked && planIn.value.trim() && !loadState.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
-  const text = planText(read.plan);
-  const back = readPlan(text);
-  const same = back.ok && back.show === read.plan.show && back.guest === read.plan.guest && JSON.stringify(back.parts) === JSON.stringify(read.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(read.plan.questions);
-  if (!same) return refuse("That show could not be read back clearly. Use plain names and questions.");
-  planIn.value = text;
-  readPasted();
-  show.notes = read.plan.notes;
-  show.notesFor = read.plan;
-  demoLoaded = false;
-  clearTimeout(demoTimer);
-  demoConfirm = false;
+  const answer = show.agentLoad(args, AGENT_WAYS[agentKey()].name);
+  if (answer.result) {
+    planIn.value = show.text;
+    renderPlan();
+  }
   renderDemo();
-  clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "loaded", name: loadState.name || AGENT_WAYS[agentKey()].name, plan: read.plan, byAgent: true, hostAsked: false, gaveUp: false });
   renderLoad();
-  renderCard();
-  return { result: { loaded: true, questions: read.plan.questions.length, parts: read.plan.parts.length } };
+  return answer;
 }
 
 loadBtn.addEventListener("click", () => {
-  if (loadBtn.getAttribute("aria-disabled") === "true" || loadBtn.dataset.state === "busy" || planIn.readOnly) return;
-  const name = AGENT_WAYS[agentKey()].name;
-  if (!agent.send({ cue: "load_show", transcript: [] })) return renderLoad();
-  clearTimeout(loadState.timer);
-  Object.assign(loadState, { phase: "asking", name, hostAsked: true, gaveUp: false });
-  loadState.timer = setTimeout(() => { if (loadState.phase === "asking") loadFailed(`No show came back from ${name} in ${LOAD_WAIT_MS / 60_000} minutes. Check ${name}, then press again.`); }, LOAD_WAIT_MS);
+  if (loadBtn.getAttribute("aria-disabled") === "true" || loadBtn.dataset.state === "busy") return;
+  show.askAgent(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: LOAD_CUE, transcript: [] }));
   renderLoad();
 });
+renderDemo();
 renderLoad();
 
 // ---- The run order and the show clock on the producer screen. Start starts the clock with the first part; Next
@@ -448,7 +384,7 @@ runBtn.addEventListener("click", () => {
 // Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
 // so step 3's button always describes the run order on the producer screen.
 function lockPlan(now) {
-  show.run.start(now);
+  show.lock(now);
   planIn.readOnly = true;
   label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
   renderLoad();

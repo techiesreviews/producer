@@ -82,7 +82,7 @@ Each entry:
 ### F-setup-07 Step 3 "Show, questions & plan": paste the plan by hand
 - Try: Press Paste it myself; paste a plan (Show:, Guest:, parts like "10 Intro", numbered questions); then paste a line the page cannot read; press the button again.
 - Good: The box opens under the button with the example's lines under it (the only words beyond the labels: no other explainer); the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast. The plan is never stored.
-- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`, `src/showplan.mjs`
 - Phone: yes
 - Spec: `test/browser/runorder.mjs`
 - Steps: none yet (no kit shots command)
@@ -90,7 +90,7 @@ Each entry:
 ### F-setup-10 Step 3 "Let my agent load it": the agent loads the show
 - Try: Connect an agent in step 2; in step 3 press Let my agent load it and give the agent an outline in its chat; watch the button, the top bar and the plan box; press Paste it myself and change a line; try the button before any agent is connected.
 - Good: As the mock-up: the button is switched off with the round "i" and its reason ("Connect your agent first (step 2).") until an agent is connected, then orange and ready (the tooltip says the agent sends the show name, guest, questions and run order and that the host can still change them). A press makes it read "Agent is loading…" with the breathing dot; when the agent's load_show lands it reads "Loaded by Claude Code · 12 questions · 5 parts" in green with the show, the guest and "guest notes" in its tooltip, the top bar names the show and the guest, and the plan box holds the show in the host's own format, so the host can still change it (the button then goes back to ready). With no answer in 90 seconds it reads "Not loaded · try again" in orange with the reason, and a press tries again. The agent can never tick Guest agreed or start the microphone or tab sharing: those stay the host's own clicks; a too big (over 200 KB) or unclear plan is refused with a plain reason and the page stays as it was; a plan the host typed is not overwritten unless the host pressed the button. No toast, no explainer text; nothing is stored.
-- Files: `src/page.html`, `src/app.js`, `src/agent-load.mjs`, `src/agent-link.mjs`, `src/agent-message.mjs`, `src/agent-ways.mjs`, `src/mcp.mjs`
+- Files: `src/page.html`, `src/app.js`, `src/agent-load.mjs`, `src/showplan.mjs`, `src/agent-link.mjs`, `src/agent-message.mjs`, `src/agent-ways.mjs`, `src/mcp.mjs`
 - Phone: yes
 - Spec: `test/browser/load.mjs`
 - Steps: none yet (no kit shots command)
@@ -98,7 +98,7 @@ Each entry:
 ### F-setup-11 Step 3 "Load demo show": a made-up show to try the whole screen
 - Try: In step 3 press Load demo show; look at the plan box, the plan button and the top bar; change a line in the box; press Load demo show again; then fill the other steps, open the producer screen, press Start, Asked, Skip and Next part, and press End & report.
 - Good: One click fills the plan box with a short made-up show ("Demo – A small app's first year", the guest "Demo Guest", 8 questions, 3 parts of 3, 8 and 4 minutes, and notes the agent gets with get_context), in the host's own format. The button reads "Demo loaded ✓" in green; the plan button reads "8 questions · 3 parts ✓" and the top bar names the demo show and its guest, so it is marked as a demo. It needs no agent and sends and stores nothing. Over a plan of the host's own (or the agent's) the first press only asks, on the button ("Replace your plan? · press again", in the warning look, for 8 seconds); the second press replaces it. The host can still edit the box: the button then goes back to "Load demo show" (a small edit keeps the notes, another show takes them away). It is switched off with its reason once the show clock runs. The Next question card, the run order and the end report fill from it like from any plan. No toast, no explainer text. The demo names nobody real (the repository is public).
-- Files: `src/page.html`, `src/app.js`, `src/demo.mjs`
+- Files: `src/page.html`, `src/app.js`, `src/demo.mjs`, `src/showplan.mjs`
 - Phone: yes
 - Spec: `test/browser/demo.mjs`, `test/demo.test.mjs`
 - Steps: none yet (no kit shots command)

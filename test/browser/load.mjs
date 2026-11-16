@@ -234,16 +234,14 @@ export async function run({ browser, base, out }) {
     assert.equal("notes" in (await page.evaluate(() => window.__relay.call("get_context"))).result, false, `${name}: another show in the box takes the notes away`);
     ok(`${name}: the notes stay through a small edit and go with another show`);
 
-    // A fixed plan (the show has started) is not changed.
+    // After a host's edit, the button loads the agent's show again. (A started show's plan is checked after a real Start in
+    // the demo suite, and in test/showplan.test.mjs.)
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 4, holdMs: 25000 }); });
     await press(load);
     await page.evaluate(() => window.__wait);
-    assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the show is loaded again before it is fixed`);
-    await page.evaluate(() => { document.querySelector("#planIn").readOnly = true; });
-    assert.match(await refused({ ...SHOW, show: "Another" }), /The show has started, so the plan stays as it is\./, `${name}: a started show's plan is not changed`);
-    assert.equal(await page.locator("#planIn").inputValue(), SHOW_TEXT, `${name}: and stays as it was`);
-    await page.evaluate(() => { document.querySelector("#planIn").readOnly = false; });
-    ok(`${name}: a fixed plan is not changed`);
+    assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the show is loaded again`);
+    assert.equal(await page.locator("#planIn").inputValue(), SHOW_TEXT, `${name}: over the host's plan`);
+    ok(`${name}: the button loads the agent's show again after a host's edit`);
 
     // No answer in 3 minutes: the button says so and can be pressed again. (The agent keeps calling, so it stays connected.)
     await page.locator("#planIn").fill(HOST_PLAN);
