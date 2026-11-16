@@ -6,7 +6,7 @@
 // runs late by the service's own delay), so the page treats both alike. The service may split one unfinished
 // sentence over several results; they are joined into one draft, as the model's worker has one draft at a time.
 // Nothing is kept here: a draft lives only until it is final, and the page keeps no sound.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** A session that ends sooner than this counts as a quick ending; this many in a row is a service that keeps stopping. */
 const QUICK_MS = 1000;

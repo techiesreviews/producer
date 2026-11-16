@@ -3,7 +3,7 @@
 // share, so it follows the TOOLS-149 table: only Chrome-family browsers on a computer hand a tab's sound to a page.
 // Chrome or Edge on an iPad asking for the desktop site says it is Safari: it shows as "Safari · tablet", and its
 // features are right, since every iPad browser runs on Safari's engine.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** Tooltip reasons for a feature that is off (the tab-sound ones are the TOOLS-149 wording). */
 export const REASONS = {

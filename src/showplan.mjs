@@ -3,17 +3,19 @@
 // here and leaves the same things in a clear state: the text, the plan as last read clearly, its run order, the
 // agent's notes, who wrote it, the lock at Start, and the exchange with the agent for "Let my agent load it". The page
 // only draws the views. It lives in this page's memory only: never stored, never sent.
-// The build pastes the page files into one scope with no import lines, so the readers it uses are passed in.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+import { createRunOrder, readPlan } from "./runorder.mjs";
+import { LOAD_WAIT_MS, loadButton, planText, readLoad } from "./agent-load.mjs";
+import { DEMO_SHOW, demoButton } from "./demo.mjs";
 
 /** How long the first press of "Load demo show" over a plan of the host's own waits for the second press. */
 export const DEMO_CONFIRM_MS = 8000;
 
 /**
- * createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs, demo, demoButton, onChange }):
- * readPlan and createRunOrder from src/runorder.mjs; readLoad, planText, loadButton and LOAD_WAIT_MS from
- * src/agent-load.mjs; DEMO_SHOW and demoButton from src/demo.mjs. onChange is called when a timer changes the state
- * on its own (the demo's question runs out, the agent's wait runs out).
+ * createShowPlan({ loadWaitMs, demo, readBack, onChange }): loadWaitMs is how long the agent has to load the show
+ * (LOAD_WAIT_MS of src/agent-load.mjs), demo the demo show (DEMO_SHOW of src/demo.mjs), readBack the reader that reads
+ * the agent's show back from its text before it lands (readPlan; a test passes one that drops a part of it). onChange is
+ * called when a timer changes the state on its own (the demo's question runs out, the agent's wait runs out).
  *
  * The ways in: edit(text) the host's own text; pressDemo() gives "loaded", "asked" (the first press over the host's
  * plan) or "off" (the show has started); agentLoad(args, name) the agent's load_show, giving { result } or { error }
@@ -22,7 +24,7 @@ export const DEMO_CONFIRM_MS = 8000;
  * What it holds: text, read (the last read, for the plan button), plan (null unless clear), run, notes, locked.
  * The views: demoView() and loadView(link, name) for the two buttons, name being the agent picked now.
  */
-export function createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs, demo, demoButton, onChange = () => {} }) {
+export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, readBack = readPlan, onChange = () => {} } = {}) {
   const plan = { text: "", read: null, plan: null, run: null, parts: "", notes: "", notesFor: null, locked: false };
   /** loaded: the demo is in the box and has not been edited since; confirm: the first press over the host's plan asked. */
   const demoState = { loaded: false, confirm: false, timer: 0 };
@@ -108,7 +110,7 @@ export function createShowPlan({ readPlan, createRunOrder, readLoad, planText, l
       // A plan the host typed is theirs: the agent loads over it only when the host pressed the button.
       if (!load.hostAsked && plan.text.trim() && !load.byAgent) return refuse("The host already has a plan in the page. Ask the host to press Let my agent load it, then call load_show again.");
       const text = planText(got.plan);
-      const back = readPlan(text);
+      const back = readBack(text);
       const same = back.ok && back.show === got.plan.show && back.guest === got.plan.guest
         && JSON.stringify(back.parts) === JSON.stringify(got.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(got.plan.questions);
       if (!same) return refuse("That show could not be read back clearly. Use plain names and questions.");

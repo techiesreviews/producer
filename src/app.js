@@ -1,7 +1,19 @@
-// The page script. build.mjs inlines src/browser.mjs, src/listen.mjs, src/web-speech.mjs, src/runorder.mjs, src/cues.mjs,
-// src/questions.mjs, src/report.mjs,
-// src/ui/tooltip.mjs, src/agent-ways.mjs, src/agent-message.mjs, src/agent-load.mjs, src/demo.mjs, src/showplan.mjs and
-// src/agent-link.mjs above this file.
+// The page script. scripts/build.mjs inlines the page modules (its INLINED list) above this file in one scope and
+// drops these import lines: they say where each name comes from.
+import { detectBrowser } from "./browser.mjs";
+import { browserService, listeningSign, loudness, meterFill, openBlocked, tabButton } from "./listen.mjs";
+import { createBrowserSpeech } from "./web-speech.mjs";
+import { clockText, PLAN_EXAMPLE, planButton, runPosition, showLine } from "./runorder.mjs";
+import { CUE, readReport } from "./protocol.mjs";
+import { createCues } from "./cues.mjs";
+import { createQuestions, isThinking, suggestButton, THINK_MS, thinkLight, turnsText } from "./questions.mjs";
+import { buildReport, REPORT_EMPTY, REPORT_WAIT_MS, reportFileName, reportMarkdown } from "./report.mjs";
+import { installTooltip } from "./ui/tooltip.mjs";
+import { AGENT_WAYS, LOCK_TIP, mcpLine, NO_MCP_TIP, TEST_TIP } from "./agent-ways.mjs";
+import { connectMessage } from "./agent-message.mjs";
+import { createShowPlan } from "./showplan.mjs";
+import { AGENT_TEST_MS, createAgentLink } from "./agent-link.mjs";
+
 const tooltip = installTooltip();
 const $ = (id) => document.getElementById(id);
 
@@ -219,7 +231,7 @@ const planIn = $("planIn");
 const demoBtn = $("demoBtn");
 const loadBtn = $("loadBtn");
 /** The plan box's text, the plan as last read clearly (null before), its run order with the show clock, the agent's notes, and how it got there. */
-const show = createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs: LOAD_WAIT_MS, demo: DEMO_SHOW, demoButton, onChange: () => { renderDemo(); renderLoad(); } });
+const show = createShowPlan({ onChange: () => { renderDemo(); renderLoad(); } });
 // The example's lines, a space apart in the text (a screen reader and a copy keep them apart; the layout ignores it).
 for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.createElement("code"), { textContent: line }));
 
@@ -296,7 +308,7 @@ function loadFromAgent(args) {
 
 loadBtn.addEventListener("click", () => {
   if (loadBtn.getAttribute("aria-disabled") === "true" || loadBtn.dataset.state === "busy") return;
-  show.askAgent(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: LOAD_CUE, transcript: [] }));
+  show.askAgent(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.load, transcript: [] }));
   renderLoad();
 });
 renderDemo();

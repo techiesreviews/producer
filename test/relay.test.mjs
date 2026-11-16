@@ -4,7 +4,8 @@ import { fakePage, PROTOCOL, relayWith, settle, T0 } from "./fakes.mjs";
 import { FakeSocket } from "./runtime.mjs";
 import { TOKEN_MAX_AGE_MS } from "../src/protocol.mjs";
 
-const { ALARM_SLACK_MS, MAX_CALL_MS, TAB_GRACE_MS } = await import("../src/relay.mjs");
+const { ALARM_SLACK_MS, TAB_GRACE_MS } = await import("../src/relay.mjs");
+const { MAX_CALL_MS } = await import("../src/protocol.mjs");
 const TRANSCRIPT = "a private sentence nobody may store";
 
 test("relay: the protocol name is the producer's own", () => {

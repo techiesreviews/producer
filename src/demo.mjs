@@ -2,7 +2,7 @@
 // short made-up show, so anyone can try the whole screen (the Next question card, the run order, End & report) without
 // writing a plan. It is a constant in the page: nothing is fetched, stored or sent, and the guest and everything else in
 // it is invented (this repository is public). The host can edit it like any plan. Plain facts in, words out.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** The demo in the shape the agent's load_show takes (src/agent-load.mjs): show, guest, questions, parts, notes. */
 export const DEMO_SHOW = {

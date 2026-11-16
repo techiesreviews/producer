@@ -11,13 +11,12 @@
 // goes to report() the same way (card 12).
 // Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The tool and cue names, the token's age, the wait's hold and the relay's close codes come from src/protocol.mjs,
+// which the Worker shares. The build inlines this file and drops its import line and each `export`.
+import { CUE, RELAY_CLOSE, relayProtocols, TOKEN_MAX_AGE_MS, TOOL, WAIT_HOLD_MS } from "./protocol.mjs";
 
-export const AGENT_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 /** No call and no held wait for this long: the agent's loop has stopped, so the page waits for it again. */
 export const AGENT_QUIET_MS = 60_000;
-/** The page holds a wait at most this long, then answers idle (the Worker waits 30 s for it). */
-export const AGENT_HOLD_MS = 25_000;
 /** The first answer after pasting took 7 to 25 s in TOOLS-154; a Test that waits longer has failed. */
 export const AGENT_TEST_MS = 90_000;
 
@@ -29,6 +28,8 @@ export const AGENT_SAMPLE = [
 
 /** Answers remembered for their cue's time and reason; older ones are let go. */
 const SENT_KEPT = 50;
+/** Answers already taken, remembered so a repeat counts once; older ones are let go (the loop repeats only its latest). */
+export const ANSWERS_KEPT = 50;
 /** Text the agent has not confirmed yet, at most (the Worker passes on no more either); the oldest goes first. */
 const UNCONFIRMED_CHARS = 20_000;
 
@@ -71,7 +72,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
   const view = () => ({ state: link.state, failed: link.failed, test: { ...link.test }, passed: link.passed });
   const changed = () => onChange(view());
   const set = (state) => { if (link.state !== state) { link.state = state; changed(); } };
-  const live = () => Boolean(link.token) && now() - link.at < AGENT_MAX_AGE_MS;
+  const live = () => Boolean(link.token) && now() - link.at < TOKEN_MAX_AGE_MS;
 
   function reply(id, payload) {
     try { if (ws?.readyState === 1) ws.send(JSON.stringify({ type: "result", id, ...payload })); } catch { /* closed */ }
@@ -106,7 +107,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
 
   function queue(item, test = false) {
     seq += 1;
-    const kind = test ? "test" : item.cue === "load_show" ? "load" /* LOAD_CUE of src/agent-load.mjs: an inlined file imports nothing */ : "show";
+    const kind = test ? "test" : item.cue === CUE.load ? "load" : "show";
     // A second press while the first request still waits is the same request.
     if (kind === "load") cues = cues.filter((c) => c.kind !== "load");
     cues.push({ ...item, seq, test, kind });
@@ -133,6 +134,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     const key = `${after}|${JSON.stringify(suggestions)}`;
     if (answered.has(key)) return suggestions.length;
     answered.add(key);
+    if (answered.size > ANSWERS_KEPT) answered.delete(answered.values().next().value);
     const of = sent.get(after);
     // The Test's answer stays on the Test button; an older answer never replaces a newer one; the load cue takes none.
     if (of?.kind === "show" && after > (latest?.seq ?? 0)) {
@@ -162,26 +164,31 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     drop(); // a newer wait replaces the one held (the relay has already ended it)
     cues = cues.filter((c) => c.seq > after); // the agent has seen these
     if (cues.length) return deliver(id, after);
-    const hold = Math.min(Math.max(Number(args.holdMs) || AGENT_HOLD_MS, 1_000), AGENT_HOLD_MS);
+    const hold = Math.min(Math.max(Number(args.holdMs) || WAIT_HOLD_MS, 1_000), WAIT_HOLD_MS);
     const timer = timers.setTimeout(() => { held = null; reply(id, { result: { idle: true, seq: after } }); }, hold);
     held = { id, timer, after };
   }
+
+  // The page's answer to each protocol tool (test/protocol.test.mjs holds it to the protocol's list).
+  const answers = {
+    [TOOL.wait]: (id, a) => onWait(id, a),
+    [TOOL.suggest]: (id, a) => reply(id, { result: { shown: take(handed, a.suggestions) } }),
+    // The seq to wait from: just before the oldest cue the agent has not confirmed, so none is skipped.
+    [TOOL.context]: (id) => reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } }),
+    [TOOL.load]: (id, a) => reply(id, load(a)),
+    [TOOL.report]: (id, a) => reply(id, report(a)),
+    [TOOL.transcript](id, a) {
+      // The show's own lines only: the Test's made-up talk never joins them.
+      const after = Number(a.seq) || 0;
+      reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after && !c.test).flatMap((c) => c.transcript) } });
+    },
+  };
 
   function onCall({ id, tool, args }) {
     const a = args && typeof args === "object" ? args : {};
     set("on");
     watch();
-    if (tool === "wait_for_cue") return onWait(id, a);
-    if (tool === "post_suggestions") return reply(id, { result: { shown: take(handed, a.suggestions) } });
-    // The seq to wait from: just before the oldest cue the agent has not confirmed, so none is skipped.
-    if (tool === "get_context") return reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } });
-    if (tool === "load_show") return reply(id, load(a));
-    if (tool === "post_report") return reply(id, report(a));
-    if (tool === "get_new_transcript") {
-      // The show's own lines only: the Test's made-up talk never joins them.
-      const after = Number(a.seq) || 0;
-      return reply(id, { result: { seq, transcript: cues.filter((c) => c.seq > after && !c.test).flatMap((c) => c.transcript) } });
-    }
+    if (Object.hasOwn(answers, tool)) return answers[tool](id, a);
     reply(id, { error: `Unknown tool: ${tool}` });
   }
 
@@ -189,7 +196,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     timers.clearTimeout(retryTimer);
     if (!live()) return forget();
     try { ws?.close(); } catch { /* closed */ }
-    const sock = net.socket(["producer", `t.${link.token}`]);
+    const sock = net.socket(relayProtocols(link.token));
     ws = sock;
     sock.addEventListener("open", () => { if (ws === sock) retry = 0; });
     sock.addEventListener("message", (e) => {
@@ -202,8 +209,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
       if (ws !== sock) return;
       ws = null;
       drop();
-      if (e.code === 4001) return set("elsewhere");
-      if (e.code === 4003) return forget();
+      if (e.code === RELAY_CLOSE.elsewhere) return set("elsewhere");
+      if (e.code === RELAY_CLOSE.ended) return forget();
       // Any other close (a network blip, a Worker restart): try again, waiting longer each time.
       const delay = Math.min(30_000, 1_000 * 2 ** retry++) * (0.75 + Math.random() * 0.5);
       retryTimer = timers.setTimeout(open, delay);
@@ -253,7 +260,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
           Object.assign(link, { token, at: now() });
           // A keepalive the relay answers without waking up; the token is dropped when its eight hours are up.
           pingTimer = timers.setInterval(() => { try { if (ws?.readyState === 1) ws.send('{"type":"ping"}'); } catch { /* closed */ } }, 45_000);
-          endTimer = timers.setTimeout(forget, AGENT_MAX_AGE_MS);
+          endTimer = timers.setTimeout(forget, TOKEN_MAX_AGE_MS);
           open();
         } else if (!(await pending) || !link.token) return null; // no token, or the wait was given up meanwhile
       } else if (!ws) open();
@@ -271,7 +278,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
       const close = () => { try { sock?.close(1000, "bye"); } catch { /* closed */ } };
       const revoke = () => { try { sock.send('{"type":"revoke"}'); } catch { /* closed */ } timers.setTimeout(close, 200); };
       try {
-        if (!sock || sock.readyState > 1) sock = net.socket(["producer", `t.${token}`]);
+        if (!sock || sock.readyState > 1) sock = net.socket(relayProtocols(token));
         if (sock.readyState === 1) revoke();
         else sock.addEventListener("open", revoke, { once: true });
       } catch { /* offline: the token still ends after eight hours */ }
@@ -294,7 +301,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
       testTimer = timers.setTimeout(() => { if (link.test.state === "busy") { link.test = { state: "fail" }; changed(); } }, AGENT_TEST_MS);
       changed();
       cues = cues.filter((c) => !c.test); // an earlier Test's cue still waiting is replaced by this one
-      queue({ cue: "suggest_now", transcript: AGENT_SAMPLE }, true);
+      queue({ cue: CUE.suggestNow, transcript: AGENT_SAMPLE }, true);
     },
 
     /**
@@ -311,6 +318,9 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     onSuggestions(fn) {
       suggested = fn;
     },
+
+    /** How many answers are remembered as taken (for tests: at most ANSWERS_KEPT). */
+    answersHeld: () => answered.size,
 
     /** The agent's latest answer, kept in memory for the question card (null before one, and after Disconnect). */
     suggestion: () => latest,

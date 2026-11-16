@@ -3,7 +3,7 @@
 // is slow or quiet. The agent's answer (src/agent-link.mjs, one to three suggestions) takes the card once: its first
 // suggestion on the card, its next one and the question it replaced as the two to swap in (a third gives way). Asked
 // and Skip move on and count a prepared question by its number. All in this page's memory; nothing is stored.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** No answer this long after a cue: the thinking light goes back to ready (the card keeps its question). */
 export const THINK_MS = 60_000;

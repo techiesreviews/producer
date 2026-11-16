@@ -6,7 +6,8 @@
 // guest's tab), a pause of one is no pause while the other is still talking.
 // Plain rules: they know nothing about how the agent is reached. `send(cue)` hands the cue over and says whether
 // someone took it (false: no agent; then nothing is used up). All in this page's memory; nothing is stored.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+import { CUE } from "./protocol.mjs";
 
 export const CUE_RULES = {
   speechMs: 30_000,
@@ -76,14 +77,14 @@ export function createCues({ send, context = () => ({}), now = () => Date.now(),
     pause(source) {
       if (source === undefined) talking.clear(); else talking.delete(speakerOf(source));
       if (busy() || speechMs < o.speechMs || now() - last < spaced(o.autoEveryMs)) return false;
-      return fire("pause");
+      return fire(CUE.pause);
     },
     suggestNow() {
       const waitMs = suggestInMs();
       if (waitMs > 0) return { ok: false, waitMs };
-      return fire("suggest_now") ? { ok: true } : { ok: false, noAgent: true };
+      return fire(CUE.suggestNow) ? { ok: true } : { ok: false, noAgent: true };
     },
-    end: () => fire("end_report"),
+    end: () => fire(CUE.endReport),
     slowDown(on) {
       slow = Boolean(on);
     },

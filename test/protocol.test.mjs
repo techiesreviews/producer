@@ -63,7 +63,7 @@ test("one tool list: the page answers every protocol tool (none falls through to
 
 test("timings: the token lives TOKEN_MAX_AGE_MS on the Worker and on the page", async () => {
   assert.equal(TOKEN_MAX_AGE_MS, 8 * 60 * 60 * 1000);
-  const { token, born } = newToken(5_000);
+  const { token, born } = newToken(Date.now());
   assert.equal(checkToken(token, born + TOKEN_MAX_AGE_MS - 1).ok, true);
   assert.equal(checkToken(token, born + TOKEN_MAX_AGE_MS).reason, "expired");
   const { link, timers } = pageLink();

@@ -5,9 +5,9 @@
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { createShowPlan, DEMO_CONFIRM_MS } from "../src/showplan.mjs";
-import { DEMO_SHOW, demoButton } from "../src/demo.mjs";
-import { LOAD_WAIT_MS, loadButton, planText, readLoad } from "../src/agent-load.mjs";
-import { createRunOrder, readPlan } from "../src/runorder.mjs";
+import { DEMO_SHOW } from "../src/demo.mjs";
+import { LOAD_WAIT_MS, planText, readLoad } from "../src/agent-load.mjs";
+import { readPlan } from "../src/runorder.mjs";
 
 const GOOD = {
   show: "Sample Show",
@@ -20,7 +20,7 @@ const HOST = "Show: My Show\nGuest: My Guest\n10 Intro\n20 Story\n1. Why?";
 
 function make(over = {}) {
   const changes = [];
-  const show = createShowPlan({ readPlan, createRunOrder, readLoad, planText, loadButton, loadWaitMs: LOAD_WAIT_MS, demo: DEMO_SHOW, demoButton, onChange: () => changes.push(true), ...over });
+  const show = createShowPlan({ onChange: () => changes.push(true), ...over });
   return { show, changes };
 }
 
@@ -142,7 +142,7 @@ test("a bad show is refused with the same words as today, and the box stays as i
 
 test("a show that does not read back the same is refused", () => {
   // The page's own reader drops the questions: what the box would hold is not what the agent sent.
-  const { show } = make({ readPlan: (text) => ({ ...readPlan(text), questions: [] }) });
+  const { show } = make({ readBack: (text) => ({ ...readPlan(text), questions: [] }) });
   assert.deepEqual(show.agentLoad(GOOD, "Claude Code"), { error: "That show could not be read back clearly. Use plain names and questions." });
   assert.equal(show.text, "");
   assert.equal(show.plan, null);

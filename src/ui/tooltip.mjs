@@ -2,7 +2,7 @@
 // delay), keyboard focus or a tap, and goes away on leaving (a mouse may cross onto the tip to read it), scrolling,
 // Escape or a press elsewhere. A control that is switched off (aria-disabled="true") shows its reason when pressed,
 // so a touch screen can read it too.
-// The inlined page script keeps this file's code as it is (the build only drops `export`).
+// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 export function installTooltip(doc = document) {
   const tip = doc.getElementById("tip");
   let timer;
