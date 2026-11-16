@@ -659,11 +659,12 @@ export async function run({ playwright, base, dist, out }) {
     }
     await page.evaluate(() => { window.__watch.tabGain.gain.value = 0; });
     assert.ok(tabLoudest >= 20, `the tab meter moves with the tab's sound (up to ${tabLoudest} %)`);
+    assert.deepEqual(await page.evaluate(() => window.__watch.worklets), ["producer-tap", "producer-tap"], "the tab's sound runs through its own audio worklet too");
     await page.waitForFunction(() => Number(document.querySelector("#tabMeter").getAttribute("aria-valuenow")) < 5, null, { timeout: 5000 });
     const setupShot = join(out, "speech-setup-ready.png");
     await page.screenshot({ path: setupShot });
     screenshots.push(setupShot);
-    ok(`tab sound: the open button waits for it; only a tab is asked for; the button names the studio; its meter moves apart from the microphone's (up to ${tabLoudest} %)`);
+    ok(`tab sound: the open button waits for it; only a tab is asked for; the button names the studio; its meter moves apart from the microphone's (up to ${tabLoudest} %), through its own audio worklet`);
 
     // Open producer screen: listening at once, with the sign.
     const beforeListening = requests.length;

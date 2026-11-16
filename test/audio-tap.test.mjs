@@ -1,10 +1,11 @@
 // The microphone's and the tab's sound off the page's main thread: the audio tap (src/audio-tap.mjs) sets up an
-// AudioWorklet for one source, and the worklet (src/speech/tap-worklet.mjs) gathers the sound into chunks on the
-// browser's audio thread and posts each chunk to the page. Checked here against a fake AudioContext and a fake
-// worklet scope.
+// AudioWorklet for one source, and the worklet (its code, TAP_SOURCE, is part of the page's own script) gathers the
+// sound into chunks on the browser's audio thread and posts each chunk to the page. Checked here against a fake
+// AudioContext and a fake worklet scope.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTapOpener, TAP_FRAMES, TAP_NAME, TAP_URL } from "../src/audio-tap.mjs";
+import { resolveObjectURL } from "node:buffer";
+import { createTapOpener, TAP_FRAMES, TAP_NAME, TAP_SOURCE } from "../src/audio-tap.mjs";
 
 function fakeStream() {
   const tracks = [{ stopped: false, stop() { this.stopped = true; } }];
@@ -14,6 +15,7 @@ function fakeStream() {
 /** An AudioContext and AudioWorkletNode pair that remember what was asked of them. */
 function fakeAudio({ addModule = async () => {} } = {}) {
   const log = [];
+  const modules = [];
   const destination = { kind: "speakers" };
   class AudioContext {
     constructor() { this.sampleRate = 48000; this.destination = destination; this.closed = false; AudioContext.made.push(this); log.push("context"); }
@@ -26,7 +28,8 @@ function fakeAudio({ addModule = async () => {} } = {}) {
     createMediaStreamDestination() { return { kind: "silent end" }; }
   }
   AudioContext.made = [];
-  AudioContext.prototype.audioWorklet = { addModule: (url) => { log.push(["addModule", url]); return addModule(url); } };
+  // The module is read the moment it is asked for, as the browser does: its address and its text.
+  AudioContext.prototype.audioWorklet = { addModule: (url) => { log.push("addModule"); modules.push({ url, blob: resolveObjectURL(url) }); return addModule(url); } };
   class AudioWorkletNode {
     constructor(context, name, options) {
       log.push(["node", name]);
@@ -37,20 +40,25 @@ function fakeAudio({ addModule = async () => {} } = {}) {
     connect(target) { log.push(["connect tap", target.kind]); this.to = target; }
   }
   AudioWorkletNode.made = [];
-  return { AudioContext, AudioWorkletNode, log };
+  return { AudioContext, AudioWorkletNode, log, modules };
 }
 
-test("a tap: the worklet module loads from this site while the browser asks for the sound, then the source runs through it into a silent end, never the speakers", async () => {
+test("a tap: the worklet module, made from the page's own code, loads while the browser asks for the sound; then the source runs through it into a silent end, never the speakers", async () => {
   const audio = fakeAudio();
   const open = createTapOpener(audio);
   const stream = fakeStream();
   const tap = await open(async () => { audio.log.push("asked"); return stream; }, () => {});
-  assert.equal(TAP_URL, "/speech/tap-worklet.mjs");
   // The context starts and the module loads while the browser still asks for the sound, so it flows once granted.
-  assert.deepEqual(audio.log, ["context", "resume", ["addModule", TAP_URL], "asked", "source", ["node", TAP_NAME], ["connect source", "tap"], ["connect tap", "silent end"]]);
+  assert.deepEqual(audio.log, ["context", "resume", "addModule", "asked", "source", ["node", TAP_NAME], ["connect source", "tap"], ["connect tap", "silent end"]]);
   const [node] = audio.AudioWorkletNode.made;
   assert.deepEqual(node.options, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: "explicit", processorOptions: { frames: TAP_FRAMES } });
   assert.equal(tap.stream, stream);
+  // No file is fetched: the module is a blob address of the page's own text, let go once it has loaded.
+  const [{ url, blob }] = audio.modules;
+  assert.match(url, /^blob:/);
+  assert.equal(blob.type, "text/javascript");
+  assert.equal(await blob.text(), TAP_SOURCE);
+  assert.equal(resolveObjectURL(url), undefined, "the address is let go after the load");
 });
 
 test("each chunk the worklet posts reaches the page with the sound's rate; after close nothing more does", async () => {
@@ -87,14 +95,12 @@ test("a refused ask closes the audio context and gives the browser's own error, 
   assert.equal(audio.AudioWorkletNode.made.length, 0);
 });
 
-/** The worklet file run in a fake worklet scope: its registered processor class and every message it posts. */
+/** The worklet's code run in a fake worklet scope: its registered processor class and every message it posts. */
 async function loadWorklet() {
   const registered = {};
-  globalThis.AudioWorkletProcessor = class { constructor() { this.port = { sent: [], postMessage(data, transfer) { this.sent.push({ data, transfer }); } }; } };
-  globalThis.registerProcessor = (name, cls) => { registered[name] = cls; };
-  await import(`../src/speech/tap-worklet.mjs?${Math.random()}`);
-  delete globalThis.AudioWorkletProcessor;
-  delete globalThis.registerProcessor;
+  const AudioWorkletProcessor = class { constructor() { this.port = { sent: [], postMessage(data, transfer) { this.sent.push({ data, transfer }); } }; } };
+  // The very text the browser loads, run with the two names a worklet scope gives it.
+  new Function("AudioWorkletProcessor", "registerProcessor", TAP_SOURCE)(AudioWorkletProcessor, (name, cls) => { registered[name] = cls; });
   return registered;
 }
 

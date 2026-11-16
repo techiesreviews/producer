@@ -9,6 +9,7 @@
 export const REASONS = {
   secure: "This page is not on a secure (https) address, so the browser keeps the microphone and tab sharing off.",
   microphone: "This browser does not let web pages use a microphone.",
+  worklet: "This browser cannot handle a microphone's sound off the page's main thread. Use a current Chrome, Edge, Firefox or Safari.",
   tabFirefox: "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.",
   tabSafari: "Safari does not give web pages any sound from a shared tab or screen, so the guest cannot be heard here. Use Chrome or Edge.",
   tabPhone: "Phone and tablet browsers generally cannot share a tab with sound. Use Chrome or Edge on a computer.",
@@ -54,7 +55,8 @@ export function detectBrowser(win) {
   const media = secure ? nav.mediaDevices : undefined;
   const can = (f) => typeof f === "function";
 
-  const microphone = !secure ? off(REASONS.secure) : can(media?.getUserMedia) ? on() : off(REASONS.microphone);
+  // The page gathers the sound in an AudioWorklet (src/audio-tap.mjs), which every current browser has.
+  const microphone = !secure ? off(REASONS.secure) : !can(media?.getUserMedia) ? off(REASONS.microphone) : can(win.AudioWorkletNode) ? on() : off(REASONS.worklet);
   const tabSound = device !== "desktop" ? off(REASONS.tabPhone)
     : engine === "gecko" ? off(REASONS.tabFirefox)
     : engine === "webkit" ? off(REASONS.tabSafari)
