@@ -176,7 +176,7 @@ const HAND_TYPED = [
   [/\b8 \* 60 \* 60\b|\b28_?800_?000\b/, "the token's age (TOKEN_MAX_AGE_MS)"],
   [/\b35_?000\b/, "the relay's longest call (MAX_CALL_MS)"],
   [/\b400[13]\b/, "a relay close code (RELAY_CLOSE)"],
-  [/-320\d\d\b/, "a JSON-RPC error code (RPC_ERROR)"],
+  [/-32[0-7]\d\d\b/, "a JSON-RPC error code (RPC_ERROR)"],
   [/["'](no-tab|superseded|unauthorized)["']/, "a relay call status (CALL_STATUS)"],
   [/["']t\.["']|["']producer["']/, "the relay subprotocol (relayProtocols)"],
 ];
@@ -196,6 +196,7 @@ test("guard: it does catch a hand-typed name, timing and code", () => {
   const hits = (line) => HAND_TYPED.filter(([re]) => re.test(code(line))).map(([, what]) => what);
   assert.deepEqual(hits('if (tool === "wait_for_cue") hold = 25_000;'), ["the tool name wait_for_cue", "the wait's hold (WAIT_HOLD_MS)"]);
   assert.deepEqual(hits("if (e.code === 4001) return;"), ["a relay close code (RELAY_CLOSE)"]);
+  for (const value of Object.values(RPC_ERROR)) assert.deepEqual(hits(`rpcError(id, ${value}, "x")`), ["a JSON-RPC error code (RPC_ERROR)"], String(value));
   assert.deepEqual(hits("// wait_for_cue holds 25 seconds"), [], "a comment may say it");
   assert.deepEqual(hits("P=load_show B='{}'"), ["the tool name load_show"]);
   assert.deepEqual(hits('lines.push("The host pressed End report: call post_report, then stop.");'), ["the tool name post_report"], "a name inside a sentence for the agent");
