@@ -441,3 +441,27 @@ test("every change is told to the page", async () => {
   await press;
   assert.ok(t.out.changes >= after + 2, "busy, then on");
 });
+
+test("picking the browser's service while the tab picker is open lets the late tab go", async () => {
+  const t = setup();
+  t.session.answerGuest("yes");
+  const share = t.session.pressTab();
+  assert.equal(t.session.view().tabPhase, "busy");
+  t.session.pickEngine("browser");
+  assert.equal(t.session.view().tabPhase, "idle");
+  const late = t.asks.tab[0].give();
+  await share;
+  assert.deepEqual({ tab: t.session.view().tab, phase: t.session.view().tabPhase }, { tab: false, phase: "idle" });
+  assert.ok(t.taps[0].closed && late.tracks.every((tr) => tr.stopped), "its sharing light goes out");
+});
+
+test("picking the browser's service clears a tab error", async () => {
+  const t = setup();
+  t.session.answerGuest("yes");
+  const share = t.session.pressTab();
+  t.asks.tab[0].refuse("NotAllowedError");
+  await share;
+  assert.equal(t.session.view().tabPhase, "error");
+  t.session.pickEngine("browser");
+  assert.deepEqual({ phase: t.session.view().tabPhase, problem: t.session.view().tabFailure }, { phase: "idle", problem: "" });
+});

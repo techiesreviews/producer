@@ -6,8 +6,9 @@ import { detectBrowser, REASONS } from "../src/browser.mjs";
 
 const fn = () => {};
 // A window as the browser hands it to the page: only the parts detectBrowser reads.
-const env = ({ ua, secure = true, touch = 0, display = true, mic = true, wasm = true, speech = "webkit", mobile }) => ({
+const env = ({ ua, secure = true, touch = 0, display = true, mic = true, worklet = true, wasm = true, speech = "webkit", mobile }) => ({
   isSecureContext: secure,
+  ...(worklet ? { AudioWorkletNode: fn } : {}),
   navigator: {
     userAgent: ua,
     maxTouchPoints: touch,
@@ -188,4 +189,12 @@ test("every reason is one or two plain sentences that fit a tooltip", () => {
     assert.match(text, /^[A-Z].*\.$/, `${name} is a sentence`);
     assert.ok(text.length <= 140, `${name} fits a tooltip (${text.length} characters)`);
   }
+});
+
+test("a browser that cannot gather sound off the page's main thread (no AudioWorklet) shows the microphone off with that reason", () => {
+  const b = detectBrowser(env({ ua: UA.chrome, worklet: false }));
+  assert.equal(b.features.microphone.on, false);
+  assert.equal(b.features.microphone.reason, REASONS.worklet);
+  assert.match(REASONS.worklet, /Chrome, Edge, Firefox or Safari/);
+  reasonsAreSet(b);
 });

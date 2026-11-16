@@ -11,12 +11,12 @@ import { loudness, meterFill, tabButton } from "./listen.mjs";
 import { createBrowserSpeech } from "./web-speech.mjs";
 
 /** What the microphone is asked for: one channel, with the browser's echo, noise and level care for a voice. */
-const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } };
+const MIC_ASK = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } };
 
 // A tiny, slow picture: only the sound is wanted, and a small picture keeps the work on the studio's own tab low. Only a
 // browser tab is offered (not a window or a screen, whose sound can be the whole computer's), and no echo processing,
 // which is made for a microphone.
-const TAB = {
+const TAB_ASK = {
   video: { frameRate: { ideal: 2 }, width: { ideal: 320 }, height: { ideal: 180 } },
   audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
   systemAudio: "exclude",
@@ -104,7 +104,7 @@ export function createListening({ media, openTap, newWorker, Recognition, create
   }
 
   async function micOn() {
-    const tap = await openTap(() => media.getUserMedia(MIC), (samples, rate) => heard("host", samples, rate));
+    const tap = await openTap(() => media.getUserMedia(MIC_ASK), (samples, rate) => heard("host", samples, rate));
     micTap = tap;
     // The microphone can also end on its own (unplugged, or the permission taken back): it is shown at once.
     for (const track of tap.stream.getAudioTracks()) track.addEventListener("ended", () => { if (micTap === tap) act(micOff); });
@@ -129,7 +129,7 @@ export function createListening({ media, openTap, newWorker, Recognition, create
 
   /** The browser's tab picker; a window, a screen or a tab without sound is let go and refused. */
   async function pickTab() {
-    const sound = await media.getDisplayMedia(TAB);
+    const sound = await media.getDisplayMedia(TAB_ASK);
     const refuse = (name) => {
       for (const track of sound.getTracks()) track.stop();
       throw Object.assign(new Error(name), { name });
