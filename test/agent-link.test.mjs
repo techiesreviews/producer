@@ -331,6 +331,34 @@ test("the end cue is not taken when no agent ever called: none, or a connect mes
   other.link.disconnect();
 });
 
+test("a fresh connection after Disconnect does not carry the old agent's calls over to the end cue", async () => {
+  const END = { cue: CUE_NAMES.endReport, transcript: [] };
+  const now = { t: Date.now() };
+  const timers = fakeTimers(now);
+  const sockets = [];
+  // A stand-in for the relay: each socket opens at once, and the test plays the agent's calls on the newest one.
+  const net = {
+    token: async () => Response.json({ token: `pr1-stand-in-${sockets.length}` }),
+    socket() {
+      const sock = Object.assign(new EventTarget(), { readyState: 1, send() {}, close() { sock.readyState = 3; } });
+      sockets.push(sock);
+      return sock;
+    },
+  };
+  const link = createAgentLink({ net, now: () => now.t, timers });
+  const agentCalls = () => sockets.at(-1).dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "call", id: "c1", tool: "get_context", args: {} }) }));
+  await link.connect();
+  agentCalls();
+  await timers.tick(AGENT_QUIET_MS);
+  assert.equal(link.view().state, "waiting");
+  assert.equal(link.send(END), true, "the agent called on this connection, then went quiet: it takes the end cue");
+  link.disconnect();
+  await link.connect();
+  assert.equal(link.view().state, "waiting");
+  assert.equal(link.send(END), false, "a new connection no agent has called yet: not taken");
+  link.disconnect();
+});
+
 test("cues sent while the agent is busy wait for its next call, joined, with the newest reason; a lost answer gets the same again", async () => {
   const { link, call, connect } = setup();
   await connect();

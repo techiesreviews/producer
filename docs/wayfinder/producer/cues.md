@@ -9,7 +9,7 @@ Written 2026-11-09. A cue is the page asking the host's connected agent for the 
 - **Slow down.** Doubles both spacings: a pause cue at most every 2 minutes, Suggest now at least 20 s apart. The 30 s of new speech stays the same.
 - With the studio tab shared, the host and the guest are heard apart: a pause of one is no pause while the other is still talking (a side counts as talking for 12 s after its last text, until its own pause).
 - Both kinds share one clock: Suggest now restarts the minute, and a pause cue blocks Suggest now for 10 s.
-- With no agent connected (or its loop gone quiet), nothing is used up: the text waits for the next cue (the newest 20,000 characters) and the spacing does not start.
+- With no agent connected (or its loop gone quiet), nothing is used up: the text waits for the next cue (the newest 20,000 characters) and the spacing does not start. The one exception is End & report: an agent that has called on this connection and then gone quiet still takes the end cue, and hears it when its loop comes back.
 
 The rules are in `src/cues.mjs` and never name how the agent is reached (a check makes sure), so a later paid API key mode can take the same cues.
 

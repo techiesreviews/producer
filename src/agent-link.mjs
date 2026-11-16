@@ -288,7 +288,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
       timers.setTimeout(close, 5_000);
     },
 
-    /** Use this tab: take the relay back from a newer tab. */
+    /** Use this tab: take the relay back from a newer tab. The agent that called before is still this connection's,
+     * so an end cue meanwhile waits for its next call here. */
     useHere() {
       if (link.state !== "elsewhere") return;
       set("waiting");
