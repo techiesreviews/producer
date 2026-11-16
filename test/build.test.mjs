@@ -61,6 +61,11 @@ test("the page's sound runs through the audio tap's worklet, made from the page'
   assert.match(script, /function createListening\b/, "the listening session is in the page");
   assert.match(script, /audioWorklet\.addModule\(/);
   assert.match(script, /registerProcessor\(/, "the worklet's code is part of the page's own script, pinned by its hash");
+  // The policy's blob: is for that one module: the page makes two blob addresses in all, the worklet's (the only
+  // script) and Save report's Markdown file. Another script blob has to change this guard first.
+  assert.equal(script.match(/URL\.createObjectURL\(new Blob\(/g)?.length, 2, "two blob addresses: the worklet and the saved report");
+  assert.equal(script.match(/type: "text\/javascript"/g)?.length, 1, "and only the worklet's is a script");
+  assert.equal(script.match(/type: "text\/markdown"/g)?.length, 1);
   assert.ok(INLINED.indexOf("src/audio-tap.mjs") >= 0 && INLINED.indexOf("src/listening.mjs") > INLINED.indexOf("src/audio-tap.mjs"));
 });
 
