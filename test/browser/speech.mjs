@@ -116,10 +116,6 @@ function watch() {
   document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`));
 }
 
-// Chromium names the audio tap the page uses (ScriptProcessorNode) as deprecated. It is kept on purpose: its
-// replacement (an AudioWorklet) must load a script file, which the page's policy (its own inline script only) forbids.
-const KNOWN_WARNING = /^console warning: The ScriptProcessorNode is deprecated\./;
-
 // The contrast of a control's text on its own background, as the browser paints it over the page (WCAG ratio).
 const paintedContrast = (page, selector, behindSelector = ".top") => page.locator(selector).evaluate((el, behindSelector) => {
   const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
@@ -156,7 +152,7 @@ async function view(browser, base, out, [name, , options, answer, chip, tab]) {
   const problems = [];
   page.on("console", (m) => {
     const line = `console ${m.type()}: ${m.text()}`;
-    if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(line)) problems.push(line);
+    if (["error", "warning"].includes(m.type())) problems.push(line);
   });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.addInitScript(watch);
@@ -263,7 +259,7 @@ async function twoVoices(browser, base, out) {
   page.on("request", (r) => requests.push(r.url()));
   page.on("console", (m) => {
     const line = `console ${m.type()}: ${m.text()}`;
-    if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(line)) problems.push(line);
+    if (["error", "warning"].includes(m.type())) problems.push(line);
   });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   page.on("worker", (w) => w.on("console", (m) => { if (m.type() === "error") problems.push(`worker console: ${m.text()}`); }));
@@ -533,7 +529,7 @@ async function realPicker(browser, base) {
   const KNOWN_SHARE_ERROR = /^console error: Permissions policy violation: camera is not allowed in this document\.$/;
   page.on("console", (m) => {
     const line = `console ${m.type()}: ${m.text()}`;
-    if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(line) && !KNOWN_SHARE_ERROR.test(line)) problems.push(line);
+    if (["error", "warning"].includes(m.type()) && !KNOWN_SHARE_ERROR.test(line)) problems.push(line);
   });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.addInitScript(() => {
@@ -575,7 +571,7 @@ export async function run({ playwright, base, dist, out }) {
     page.on("websocket", (ws) => problems.push(`a WebSocket opened: ${ws.url()}`));
     page.on("console", (m) => {
       const line = `console ${m.type()}: ${m.text()}`;
-      if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(line)) problems.push(line);
+      if (["error", "warning"].includes(m.type())) problems.push(line);
     });
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     page.on("worker", (w) => w.on("console", (m) => { if (m.type() === "error") problems.push(`worker console: ${m.text()}`); }));

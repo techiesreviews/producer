@@ -13,7 +13,6 @@ import assert from "node:assert/strict";
 let nextClient = 0;
 const ownAddress = (options) => ({ ...options, extraHTTPHeaders: { "cf-connecting-ip": `2001:db8:1:${++nextClient}::1` } });
 
-const KNOWN_WARNING = /^The ScriptProcessorNode is deprecated\./;
 const PAGE_BUDGET_MS = 300;
 
 const PLAN = ["Show: Techies Live", "Guest: Jane Doe", "3 Intro", "8 Her story", "1. How did it start?", "2. Who paid first?"].join("\n");
@@ -86,7 +85,7 @@ export async function run({ browser, base }) {
   const requests = [];
   const problems = [];
   page.on("request", (r) => requests.push(r.url()));
-  page.on("console", (m) => { if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`); });
+  page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.goto(`${base}/`);
   const loaded = requests.length;

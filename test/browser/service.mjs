@@ -67,8 +67,6 @@ function watch() {
   };
   document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`));
 }
-// Chromium names the page's audio tap (ScriptProcessorNode) as deprecated; it is kept on purpose (see speech.mjs).
-const KNOWN_WARNING = /^console warning: The ScriptProcessorNode is deprecated\./;
 
 const text = (page, id) => page.locator(`#${id}`).evaluate((el) => el.innerText.replace(/\s+/g, " ").trim());
 const sessions = (page) => page.evaluate(() => window.__service.made.map((r) => r.log));
@@ -89,7 +87,7 @@ async function one(browser, base, out, [name, options]) {
   page.on("websocket", (ws) => problems.push(`a WebSocket opened: ${ws.url()}`));
   page.on("console", (m) => {
     const line = `console ${m.type()}: ${m.text()}`;
-    if (["error", "warning"].includes(m.type()) && !KNOWN_WARNING.test(line)) problems.push(line);
+    if (["error", "warning"].includes(m.type())) problems.push(line);
   });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.addInitScript(watch);
