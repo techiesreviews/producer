@@ -152,6 +152,9 @@ test("page files import what they use; the build inlines them in order and drops
   assert.throws(() => pageScript(["src/a.mjs", "src/b.mjs"], (f) => (f === "src/b.mjs" ? 'import { A as Z } from "./a.mjs";\n' : files[f])), /aliased import/);
   assert.throws(() => pageScript(["src/a.mjs", "src/b.mjs"], (f) => (f === "src/b.mjs" ? 'import { Nope } from "./a.mjs";\n' : files[f])), /imports Nope from \.\/a\.mjs, which does not export it/);
   assert.throws(() => pageScript(["src/a.mjs"], (f) => (f === "src/app.js" ? 'import * as all from "./a.mjs";\n' : files[f])), /must not import anything/, "only the plain named form");
+  const crlf = pageScript(["src/a.mjs", "src/b.mjs"], (f) => ({ "src/b.mjs": 'import { A } from "./a.mjs";\r\nexport const B = A + 1;\r\n', "src/app.js": "return B;\n" })[f] ?? files[f]);
+  assert.doesNotMatch(crlf, /import \{/, "a file saved with Windows line endings loses its import line too");
+  assert.match(crlf, /const B = A \+ 1;/);
 });
 
 test("the real page files say where each name comes from: every name one takes from another page file is imported", () => {

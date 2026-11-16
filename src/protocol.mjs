@@ -5,7 +5,7 @@
 // The Worker side (src/mcp.mjs, src/relay.mjs, src/token.mjs, src/worker.mjs) and the page (src/agent-link.mjs,
 // src/cues.mjs, src/agent-message.mjs, src/agent-ways.mjs, src/showplan.mjs, src/app.js) import from here. test/protocol.test.mjs fails
 // when another src/ file types a tool or cue name, the hold, the token's age, the relay's longest call, a close code, a
-// JSON-RPC code, a call status or the subprotocol by hand. No imports: both sides share this file.
+// JSON-RPC code, the call statuses no-tab, superseded and unauthorized, or the subprotocol by hand. No imports: both sides share this file.
 
 /** The tools the host's agent calls, in the order tools/list gives them. */
 export const TOOL = {
