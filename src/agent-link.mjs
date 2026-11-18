@@ -70,7 +70,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (settledSeq >= askedSeq) onSettled();
   }
 
-  // passed: a Test was answered on this connection (step 2 is done while the agent is connected).
+  // passed: a Test was answered on this connection (the AI agent step is done while the agent is connected).
   const view = () => ({ state: link.state, failed: link.failed, test: { ...link.test }, passed: link.passed });
   const changed = () => onChange(view());
   const set = (state) => { if (link.state !== state) { link.state = state; changed(); } };
@@ -105,6 +105,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (last.position) result.position = last.position;
     if (last.guestName) result.guestName = last.guestName;
     if (last.solo) result.solo = true;
+    if (last.chatOn) result.chatOn = true;
     reply(id, { result });
   }
 
@@ -115,8 +116,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (kind === "load" || kind === "chat") cues = cues.filter((c) => c.kind !== kind);
     cues.push({ ...item, seq, test, kind });
     let chars = cues.reduce((n, c) => n + c.transcript.reduce((m, l) => m + l.text.length, 0), 0);
-    // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it, and so does a load cue,
-    // which holds no text and is the host's request.
+    // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it, and so do a load cue and
+    // a chat cue, which hold no text and are the host's requests.
     for (let i = 0; chars > UNCONFIRMED_CHARS && i < cues.length - 1;) {
       if (cues[i].kind !== "show") { i += 1; continue; }
       chars -= cues.splice(i, 1)[0].transcript.reduce((m, l) => m + l.text.length, 0);

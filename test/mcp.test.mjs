@@ -753,8 +753,8 @@ test("a solo show with the viewer chat connected: get_context and each cue send 
   Object.assign(s.page, { solo: true, chatOn: true });
   const ctx = await s.call("get_context");
   assert.match(ctx.content[0].text, /picking the viewer question that fits what comes next with post_chat/);
-  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "Next up, the rooms." }], solo: true, chat: true });
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "Next up, the rooms." }], solo: true, chatOn: true });
   const cue = await s.call("wait_for_cue", { seq: 0 });
-  assert.equal(cue.structuredContent.chat, true);
+  assert.equal(cue.structuredContent.chatOn, true);
   assert.match(cue.content[0].text, /put the viewer question that fits what comes next in post_chat as a pick/);
 });

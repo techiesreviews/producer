@@ -74,7 +74,7 @@ const STUDIO = { restream: "Restream Studio", wave: "Wave.video" };
 /**
  * The tab-sound button in the Sound step, from plain facts: `feature` (this browser's tab-sound feature, with its
  * reason when off), the host's `guest` answer, the share's `phase` ("idle", "busy" while the browser asks, "on",
- * "error" with its `problem`) and the `stream` picked in step 1 (OBS has no studio tab). `off` means switched off: the
+ * "error" with its `problem`) and the `stream` picked in "I stream with" (OBS has no studio tab). `off` means switched off: the
  * reason is the tip. `engine` is "browser" when the browser's speech service is picked: it takes the host's microphone
  * only, so the tab stays off (a guest agreed to being turned into text on this computer, not to Google).
  * The echo advice (headphones for the host) lives in the tips, not on the screen.

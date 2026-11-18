@@ -262,9 +262,11 @@ function shapeCue(page, sent) {
   const position = cleanPosition(page.position);
   const guestName = cleanName(page.guestName);
   const solo = page.solo === true;
+  const chatOn = page.chatOn === true; // the viewer chat is connected ("chat" is the list of viewer questions)
   const structured = { idle: false, cue, seq, transcript, chat };
   if (guestName) structured.guestName = guestName;
   if (solo) structured.solo = true;
+  if (chatOn) structured.chatOn = true;
   if (position) structured.position = position;
   if (truncated) structured.truncated = true;
   const lines = [`Cue: ${cue} (seq ${seq})`];
@@ -281,7 +283,7 @@ function shapeCue(page, sent) {
     : cue === CUE.chat
       ? `Next: call ${TOOL.chat}, then call ${TOOL.wait} with seq ${seq}.`
       : solo && cue !== CUE.endReport
-        ? `Next: call ${TOOL.wait} with seq ${seq}. A solo show takes no suggestions: put the viewer question that fits what comes next in ${TOOL.chat} as a pick.`
+        ? `Next: call ${TOOL.wait} with seq ${seq}. A solo show takes no suggestions${chatOn ? `: put the viewer question that fits what comes next in ${TOOL.chat} as a pick` : ""}.`
         : `Next: call ${TOOL.wait} with seq ${seq}${cue === CUE.endReport ? "" : " and your suggestions"}.`);
   return { content: [text(lines.join("\n\n"))], structuredContent: structured };
 }
@@ -306,7 +308,7 @@ function shapeContext(page) {
   if (solo) structured.solo = true;
   const lines = [];
   if (showTitle) lines.push(`Show: ${showTitle}`);
-  if (solo) lines.push(`Solo show: no guest. The numbered list is the host's own points, in the order of the plan. On a solo show send no suggestions: the host follows the plan, and you help by reading the viewer chat (${TOOL.chat}) and picking the viewer question that fits what comes next.`);
+  if (solo) lines.push(`Solo show: no guest. The numbered list is the host's own points, in the order of the plan. On a solo show send no suggestions: the host follows the plan${page.chatOn === true ? `, and you help by picking the viewer question that fits what comes next with ${TOOL.chat}` : ""}.`);
   else if (guestName) lines.push(`Guest: ${guestName}`);
   lines.push(questions.length ? `Prepared questions:\n${questions.map((q) => `${q.n}. ${q.text}`).join("\n")}` : "Prepared questions: none yet.");
   if (segments.length) lines.push(`Run order:\n${segments.map((s, i) => `${i + 1}. ${s.title}${s.plannedMinutes !== undefined ? ` (${s.plannedMinutes} min)` : ""}${s.live ? " (live now)" : ""}`).join("\n")}`);

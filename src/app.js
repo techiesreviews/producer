@@ -70,7 +70,7 @@ choices(document.getElementById("streamSeg"), () => {
   renderChat();
 });
 
-// Step 2, the AI agent. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
+// The AI agent step. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
 // the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
 // button then reads Waiting for the agent, then connected (a press disconnects), and the way not used steps aside.
 // While an agent is connected the other agents are switched off; while the page only waits, a new pick or the other
@@ -228,7 +228,7 @@ addEventListener("pagehide", () => agent.disconnect());
 // listened to: a tab that was already shared stops, and Listen will not ask for it again (src/listening.mjs).
 choices($("guestSeg"), (answer) => session.answerGuest(answer));
 
-// ---- Step 3, the show plan (src/showplan.mjs owns it; the format is src/runorder.mjs's). A show arrives pasted by hand,
+// ---- The plan step (src/showplan.mjs owns it; the format is src/runorder.mjs's). A show arrives pasted by hand,
 // from the demo button, or from the agent's load_show; this part of the page passes each one on and draws what the plan
 // says. It lives in this page's memory only: never stored, never sent. Each change is read at once; the button says what
 // was read, or which line is unclear. ----
@@ -336,6 +336,9 @@ const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } 
 /** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
 const chatRows = new Map();
 let questionsOnly = false;
+
+/** The agent reads the chat now (connected, or watching for the live stream): the cues and get_context say so. */
+const chatReading = () => ["on", "waiting"].includes(viewers.view().phase);
 
 /** The show time now ("12:03") once the clock runs, else "before": when a message came or was answered. */
 function chatTime() {
@@ -586,6 +589,7 @@ function cueContext() {
   const next = main ? `${main.n ? `${solo ? "Point" : "Question"} ${main.n}: ` : ""}${main.text}` : "";
   if (position || next) context.position = { ...position, ...(next ? { next } : {}) };
   if (solo) context.solo = true;
+  if (chatReading()) context.chatOn = true;
   return context;
 }
 
@@ -596,6 +600,7 @@ function agentShow() {
   return {
     showTitle: show.plan.show,
     ...(solo ? { solo: true } : { guestName: show.plan.guest }),
+    ...(chatReading() ? { chatOn: true } : {}),
     questions: show.plan.questions.map((text, i) => ({ n: i + 1, text })),
     segments: show.plan.parts.map((part, i) => ({ title: part.name, plannedMinutes: part.minutes, ...(rows[i]?.state === "now" ? { live: true } : {}) })),
     ...(show.notes ? { notes: show.notes } : {}),
@@ -646,7 +651,7 @@ function renderCard() {
   if (qMain.textContent !== said) qMain.textContent = said;
   qMain.toggleAttribute("data-empty", !viewer && !main);
   const why = viewer
-    ? [viewer.who, viewer.where, viewer.at && `asked at ${viewer.at}`].filter(Boolean).join(" · ")
+    ? [viewer.who, viewer.where, viewer.at === "before" ? "asked before the show" : viewer.at && `asked at ${viewer.at}`].filter(Boolean).join(" · ")
     : main?.why ?? (main?.from === "list" && main.n === first ? (solo ? "Next in your plan." : "Next on your list.") : "");
   qWhy.textContent = why;
   qWhy.hidden = !why;

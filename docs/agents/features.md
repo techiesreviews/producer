@@ -31,17 +31,17 @@ Each entry:
 
 ## Setup
 
-### F-setup-01 First-run setup: browser chip and step 1 "I stream with"
+### F-setup-01 First-run setup: browser chip and "I stream with"
 - Try: Open the page; read the browser chip beside "Set up"; pick Restream Studio, Wave.video, OBS or Other by mouse, tap and keyboard.
-- Good: As the mock-up: one panel of numbered steps, step 1 green as done, one choice filled at a time; wide puts the label beside the choices, a phone puts them under it; no explainer text.
+- Good: As the mock-up: one panel of numbered steps, "I stream with" green as done, one choice filled at a time; wide puts the label beside the choices, a phone puts them under it; no explainer text.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/browser.mjs`, `src/ui/tooltip.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
 
-### F-setup-02 Step 2 "AI agent": connect Claude Code with the paste message
-- Try: In step 2 press Copy connect message, paste the message into Claude Code; watch the button; press Test; press the connected button to disconnect.
-- Good: As the mock-up: Claude Code picked, its Copy connect message carries a small "slower" label and Connect with MCP beside it a small "recommended" label; the button reads Waiting for Claude Code (breathing dot), then Claude Code connected (green) with Test beside it; Test reads Testing, then "Test ✓ · 4.2 s" with the sample answer in its tooltip, and step 2 turns green; a press on the connected button disconnects. No explainer text.
+### F-setup-02 "AI agent": connect Claude Code with the paste message
+- Try: In the AI agent step press Copy connect message, paste the message into Claude Code; watch the button; press Test; press the connected button to disconnect.
+- Good: As the mock-up: Claude Code picked, its Copy connect message carries a small "slower" label and Connect with MCP beside it a small "recommended" label; the button reads Waiting for Claude Code (breathing dot), then Claude Code connected (green) with Test beside it; Test reads Testing, then "Test ✓ · 4.2 s" with the sample answer in its tooltip, and the AI agent step turns green; a press on the connected button disconnects. No explainer text.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/agent-message.mjs`, `src/agent-link.mjs`, `src/ui/tooltip.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`
@@ -49,14 +49,14 @@ Each entry:
 
 ### F-setup-12 Show type: a solo show first
 - Try: Open the page; read step 1 "Show type"; pick With a guest, then Solo show again, by mouse, tap and keyboard; press Start on the producer screen and come back to the setup.
-- Good: As the solo prototype (TOOLS-338): Solo show is picked on arrival and the step is green. A solo show has no Guest agreed step and no "Share the studio tab with sound" button, step 4 reads "Show, points & plan" and its button counts points ("3 points · 2 parts ✓"), the top bar says "· <show> · solo", and the steps number in order. With a guest brings the guest step and the tab button back (numbered again) and the list reads as questions. Once the show clock runs the other choice is switched off with the round "i" and its reason. No explainer text.
+- Good: As the solo prototype (TOOLS-338): Solo show is picked on arrival and the step is green. A solo show has no Guest agreed step and no "Share the studio tab with sound" button, the plan step reads "Show, points & plan" and its button counts points ("3 points · 2 parts ✓"), the top bar says "· <show> · solo", and the steps number in order. With a guest brings the guest step and the tab button back (numbered again) and the list reads as questions. Once the show clock runs the other choice is switched off with the round "i" and its reason. No explainer text.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`, `src/agent-load.mjs`, `src/showplan.mjs`, `src/listen.mjs`
 - Phone: yes
 - Spec: `test/browser/solo.mjs`, `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
 
 ### F-setup-13 Viewer chat: Connect Restream chat through your own agent
-- Try: Before any agent is connected, hover or tap Connect Restream chat; pick OBS; pick Restream Studio, connect Claude Code (step 3) and press Connect Restream chat; let the agent answer "waiting" (no stream live), then send messages; press the connected button; let the agent say it cannot read the chat.
+- Try: Before any agent is connected, hover or tap Connect Restream chat; pick OBS; pick Restream Studio, connect Claude Code (the AI agent step, 3) and press Connect Restream chat; let the agent answer "waiting" (no stream live), then send messages; press the connected button; let the agent say it cannot read the chat.
 - Good: Switched off with the round "i" and "Connect your agent first (step 3)." until an agent is connected, and "Viewer chat works with Restream streams only." with another stream (the step is then green: not needed). Ready, its tooltip says the agent reads the chat with its own Restream connection and nothing is stored. A press reads "Connecting chat…" (breathing dot); the agent's waiting line reads "Chat · waiting for your live stream" (the step turns green); messages make it "Restream chat connected ✓" in green; a press disconnects. A problem or no answer in 2 minutes reads "Chat not connected · try again" in orange with the reason in its tooltip. No toast, no explainer.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/chat.mjs`, `src/agent-link.mjs`, `src/mcp.mjs`, `src/agent-message.mjs`
 - Phone: yes
@@ -87,15 +87,15 @@ Each entry:
 - Spec: `test/browser/speech.mjs`
 - Steps: none yet (no kit shots command)
 
-### F-setup-06 Step 2 "AI agent": Codex, T3 Code and Connect with MCP
-- Try: In step 2 hover, tap or Tab to Codex, T3 Code and API key and read their notes; pick Codex and read the notes on its buttons; with Claude Code or Codex picked press Connect with MCP and watch the button; press Test; hover or tap the connected button; try to pick another agent while connected, and while it only waits; press the connected button to disconnect. Pick T3 Code and press its switched-off Connect with MCP.
+### F-setup-06 "AI agent": Codex, T3 Code and Connect with MCP
+- Try: In the AI agent step hover, tap or Tab to Codex, T3 Code and API key and read their notes; pick Codex and read the notes on its buttons; with Claude Code or Codex picked press Connect with MCP and watch the button; press Test; hover or tap the connected button; try to pick another agent while connected, and while it only waits; press the connected button to disconnect. Pick T3 Code and press its switched-off Connect with MCP.
 - Good: Claude Code carries no note; Codex's tooltip is "Codex blocks the network in safe mode: allow network or use the MCP line" and its Copy connect message carries a small "slower" label; Connect with MCP carries a small "recommended" label for Claude Code and for Codex; T3 Code carries the label "slower" on its chip (not repeated on its button) with a tooltip that says it cannot take a private MCP line, and its Connect with MCP is switched off with that reason; the API key stays off ("Comes later"). Connect with MCP looks like the message button (waiting with the breathing dot, then connected in green, a press disconnects) and its tooltip says the entry stays in the agent's settings until the host removes it, with the command. While an agent is connected the other agents are switched off with a reason and the way not used steps aside; while the page only waits, picking another agent or pressing the other way gives the wait up. No explainer text; every note is a tooltip.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/agent-ways.mjs`, `src/agent-message.mjs`, `src/agent-link.mjs`, `src/ui/tooltip.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
 
-### F-setup-07 Step 3 "Show, questions & plan": paste the plan by hand
+### F-setup-07 The plan step ("Show, points & plan", or questions with a guest): paste the plan by hand
 - Try: Press Paste it myself; paste a plan (Show:, Guest:, parts like "10 Intro", numbered questions); then paste a line the page cannot read; press the button again.
 - Good: The box opens under the button with the example's lines under it (the only words beyond the labels: no other explainer); the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast. The plan is never stored.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`, `src/showplan.mjs`
@@ -103,16 +103,16 @@ Each entry:
 - Spec: `test/browser/runorder.mjs`
 - Steps: none yet (no kit shots command)
 
-### F-setup-10 Step 3 "Let my agent load it": the agent loads the show
-- Try: Connect an agent in step 2; in step 3 press Let my agent load it and give the agent an outline in its chat; watch the button, the top bar and the plan box; press Paste it myself and change a line; try the button before any agent is connected.
+### F-setup-10 The plan step's "Let my agent load it": the agent loads the show
+- Try: Connect an agent in the AI agent step; in the plan step press Let my agent load it and give the agent an outline in its chat; watch the button, the top bar and the plan box; press Paste it myself and change a line; try the button before any agent is connected.
 - Good: As the mock-up: the button is switched off with the round "i" and its reason ("Connect your agent first (step 3).") until an agent is connected, then orange and ready (the tooltip says the agent sends the show name, guest, questions and run order and that the host can still change them). A press makes it read "Agent is loading…" with the breathing dot; when the agent's load_show lands it reads "Loaded by Claude Code · 12 questions · 5 parts" in green with the show, the guest and "guest notes" in its tooltip, the top bar names the show and the guest, and the plan box holds the show in the host's own format, so the host can still change it (the button then goes back to ready). With no answer in 90 seconds it reads "Not loaded · try again" in orange with the reason, and a press tries again. The agent can never tick Guest agreed or start the microphone or tab sharing: those stay the host's own clicks; a too big (over 200 KB) or unclear plan is refused with a plain reason and the page stays as it was; a plan the host typed is not overwritten unless the host pressed the button. No toast, no explainer text; nothing is stored.
 - Files: `src/page.html`, `src/app.js`, `src/agent-load.mjs`, `src/showplan.mjs`, `src/agent-link.mjs`, `src/agent-message.mjs`, `src/agent-ways.mjs`, `src/mcp.mjs`
 - Phone: yes
 - Spec: `test/browser/load.mjs`
 - Steps: none yet (no kit shots command)
 
-### F-setup-11 Step 3 "Load demo show": a made-up show to try the whole screen
-- Try: In step 3 press Load demo show; look at the plan box, the plan button and the top bar; change a line in the box; press Load demo show again; then fill the other steps, open the producer screen, press Start, Asked, Skip and Next part, and press End & report.
+### F-setup-11 The plan step's "Load demo show": a made-up show to try the whole screen
+- Try: In the plan step press Load demo show; look at the plan box, the plan button and the top bar; change a line in the box; press Load demo show again; then fill the other steps, open the producer screen, press Start, Asked, Skip and Next part, and press End & report.
 - Good: One click fills the plan box with a short made-up show ("Demo – A small app's first year", the guest "Demo Guest", 8 questions, 3 parts of 3, 8 and 4 minutes, and notes the agent gets with get_context), in the host's own format. The button reads "Demo loaded ✓" in green; the plan button reads "8 questions · 3 parts ✓" and the top bar names the demo show and its guest, so it is marked as a demo. It needs no agent and sends and stores nothing. Over a plan of the host's own (or the agent's) the first press only asks, on the button ("Replace your plan? · press again", in the warning look, for 8 seconds); the second press replaces it. The host can still edit the box: the button then goes back to "Load demo show" (a small edit keeps the notes, another show takes them away). It is switched off with its reason once the show clock runs. The Next question card, the run order and the end report fill from it like from any plan. No toast, no explainer text. The demo names nobody real (the repository is public).
 - Files: `src/page.html`, `src/app.js`, `src/demo.mjs`, `src/showplan.mjs`
 - Phone: yes
@@ -128,7 +128,7 @@ Each entry:
 - Steps: none yet (no kit shots command)
 
 ### F-setup-09 Speech to text: the browser's own speech service as a warned option
-- Try: In step 6 read the two choices; pick "Browser service · audio goes to Google" and read its tooltip, and the tab-sound button's; pick "On this computer" again; open the page in Firefox.
+- Try: In the speech to text step read the two choices; pick "Browser service · audio goes to Google" and read its tooltip, and the tab-sound button's; pick "On this computer" again; open the page in Firefox.
 - Good: The model on this computer is picked on arrival. The browser service is the second choice and carries its one warning line on itself ("audio goes to Google"; Microsoft in Edge, Apple in Safari); picking it is the opt-in, the model's load button steps aside, the step turns green and the tab-sound button is switched off with its reason (the service hears only the microphone). Picking "On this computer" brings the button back. In a browser without the service (Firefox), and on a phone or tablet (it is offered on computers only), the choice is greyed with the round "i" and says why. No toast, no explainer text.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`, `src/web-speech.mjs`, `src/browser.mjs`
 - Phone: yes

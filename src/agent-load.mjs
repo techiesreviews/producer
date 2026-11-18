@@ -85,7 +85,7 @@ export function planText(plan) {
 }
 
 /**
- * Step 3's "Let my agent load it" for the state it is in. agent: the link's state (off, waiting, on, elsewhere);
+ * The plan step's "Let my agent load it" for the state it is in. agent: the link's state (off, waiting, on, elsewhere);
  * load: { phase: "idle" | "asking" | "loaded" | "failed", name (the agent's name), plan (what was loaded), reason
  * (why it failed) }; locked: the show clock runs, so the plan stays as it is. Gives { state, text, tip, off, primary }:
  * off is the reason the button is switched off; primary is the orange look, only for the button ready to press.

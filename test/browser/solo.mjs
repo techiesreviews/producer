@@ -273,7 +273,7 @@ export async function run({ browser, base, out }) {
     assert.equal(said.position.next, "Point 1: The late call", `${name}: the cue names the next point, so the agent can pick a question that fits`);
     assert.equal(said.guestName, undefined, `${name}: no guest's name on a solo show`);
     assert.equal(said.solo, true, `${name}: the cue says it is a solo show`);
-    assert.equal(said.chat, true, `${name}: and that the viewer chat is connected`);
+    assert.equal(said.chatOn, true, `${name}: and that the viewer chat is connected`);
     // An answer with suggestions never changes the host's next point on a solo show: the agent offers viewer questions instead.
     await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 1000, suggestions: [{ text: "Agent's own question?" }, { question: 3 }] }); }, said.seq);
     await page.waitForTimeout(100);
