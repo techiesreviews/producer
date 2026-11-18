@@ -17,7 +17,7 @@ import { clockText } from "./runorder.mjs";
 export const CHAT_LIMITS = { messages: 50, author: 60, platform: 30, text: 500, time: 40, pick: 120, note: 200 };
 /** The agent gets this long to answer "Connect Restream chat"; then the button says so (a later answer still counts). */
 export const CHAT_WAIT_MS = 120_000;
-/** Plain messages kept in memory at most; questions are always kept. */
+/** Messages kept in memory at most: past it the oldest plain message goes for each new one; questions always stay. */
 const CHAT_KEPT = 2000;
 const CHAT_FIELDS = ["messages", "waiting", "problem"];
 const CHAT_MESSAGE_FIELDS = ["author", "platform", "text", "time", "question", "pick"];
@@ -112,8 +112,11 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
     let got = byKey.get(key);
     const question = m.question ?? (got ? got.q : chatIsQuestion(m.text));
     if (!got) {
-      // A plain message past the cap is let go; a question is always kept.
-      if (!question && !m.pick && messages.length >= CHAT_KEPT) return false;
+      // Past the cap the oldest plain message goes (a question always stays), so the newest chat keeps coming.
+      if (messages.length >= CHAT_KEPT) {
+        const old = messages.findIndex((x) => !x.q);
+        if (old >= 0) byKey.delete(messages.splice(old, 1)[0].key);
+      }
       got = { id: nextId++, key, who: m.author, where: m.platform ?? "", text: m.text, at: typeof stamp === "function" ? stamp(m) : stamp, q: false, s: "", doneAt: "", done: 0, pick: "", picked: 0 };
       messages.push(got);
       byKey.set(key, got);

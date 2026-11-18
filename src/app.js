@@ -334,6 +334,8 @@ const chatState = $("chatState");
 const openChip = $("openChip");
 const qOnlyBtn = $("qOnlyBtn");
 const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } });
+/** The panel's own Connect (or try again) while the chat is off during the show: the setup's button is out of sight there. */
+const chatRetry = Object.assign(document.createElement("button"), { type: "button", className: "tb tb--small" });
 /** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
 const chatRows = new Map();
 let questionsOnly = false;
@@ -356,15 +358,18 @@ function renderChatBtn() {
   done("sChat", streamName() !== "restream" || chatPhase === "on" || chatPhase === "waiting");
 }
 
-chatBtn.addEventListener("click", () => {
-  if (chatBtn.getAttribute("aria-disabled") === "true") return;
+/** Connect Restream chat (the setup's button, or the panel's own): connect, or disconnect a connected chat. */
+function pressChat(button) {
+  if (button.getAttribute("aria-disabled") === "true") return;
   const { phase: chatPhase } = viewers.view();
   if (chatPhase === "asking") return; // the agent is on its way: the button says so
   if (chatPhase === "on" || chatPhase === "waiting") chatOff();
   else viewers.ask(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.chat, transcript: [] }));
   renderChatBtn();
   renderChat();
-});
+}
+chatBtn.addEventListener("click", () => pressChat(chatBtn));
+chatRetry.addEventListener("click", () => pressChat(chatRetry));
 
 /** The chat goes off: a request the agent has not picked up yet is taken back, so it never hears one the page then refuses. */
 function chatOff() {
@@ -443,13 +448,21 @@ function renderChat() {
   // Kept at the bottom while the host reads the newest messages; left alone while they scroll back.
   const atEnd = chatList.hidden || chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 60;
   const fresh = chatRows.size > 0;
+  // Past the cap the oldest plain messages leave the list (src/chat.mjs): their rows go too.
+  const kept = new Set(v.messages.map((m) => m.id));
+  for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); }
   for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
   chatList.hidden = !v.messages.length;
   let state = null;
   if (!restream) state = [offMark(), "Restream streams only"];
   else if (v.phase === "waiting") state = [dot("think"), "Waiting for your live stream"];
   else if (v.phase === "asking") state = [dot("think"), "Connecting…"];
-  else if (v.phase === "off" || v.phase === "failed") state = [offMark(), "Not connected · connect it in Set up"];
+  else if ((v.phase === "off" || v.phase === "failed") && agent.view().state === "on") {
+    // The panel's own Connect (or try again), with the setup button's words and reason.
+    const said = chatButton({ stream: streamName(), agent: "on", chat: v, name: AGENT_WAYS[agentKey()].name });
+    label(chatRetry, said.state, said.tip || null, said.text);
+    state = [chatRetry];
+  } else if (v.phase === "off" || v.phase === "failed") state = [offMark(), "Not connected · connect it in Set up"];
   else if (!v.messages.length) state = ["No messages yet"];
   else if (questionsOnly && !v.messages.some((m) => m.q)) state = ["No questions yet"];
   chatState.hidden = !state;
@@ -603,7 +616,6 @@ function cueContext() {
   const next = main ? `${main.n ? `${solo ? "Point" : "Question"} ${main.n}: ` : ""}${main.text}` : "";
   if (position || next) context.position = { ...position, ...(next ? { next } : {}) };
   if (solo) context.solo = true;
-  if (chatReading()) context.chatOn = true;
   return context;
 }
 
