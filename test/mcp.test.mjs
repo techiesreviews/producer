@@ -676,7 +676,7 @@ test("post_chat: the agent's chat messages reach the page cleaned, and the agent
   const s = await setup();
   const r = await s.call("post_chat", { messages: [{ author: " Person 1 ", platform: "YouTube", text: "How often do you\ntest a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }] });
   assert.equal(r.isError, undefined);
-  assert.deepEqual(s.page.chat, { messages: [{ author: "Person 1", platform: "YouTube", text: "How often do you test a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }], waiting: "", problem: "" });
+  assert.deepEqual(s.page.chat, { messages: [{ author: "Person 1", platform: "YouTube", text: "How often do you test a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }] });
   assert.deepEqual(r.structuredContent, { ok: true, shown: 1 });
   assert.match(r.content[0].text, /Shown on the host's screen: 1 message/);
   assert.match(r.content[0].text, /wait_for_cue/);
@@ -758,4 +758,19 @@ test("a solo show with the viewer chat connected: get_context and each cue send 
   const cue = await s.call("wait_for_cue", { seq: 0 });
   assert.equal(cue.structuredContent.chatOn, true);
   assert.match(cue.content[0].text, /put the viewer question that fits what comes next in post_chat as a pick/);
+});
+
+test("with the viewer chat on, a wait with nothing new says so in words, so a curl loop ends and the agent reads the chat", async () => {
+  const s = await setup({ hold: 50 });
+  s.page.chatOn = true;
+  const r = await s.call("wait_for_cue", { seq: 0 });
+  assert.equal(r.structuredContent.idle, true);
+  assert.equal(r.structuredContent.chatOn, true);
+  assert.match(r.content[0].text, /viewer chat is on: read what is new and send it with post_chat/);
+  const short = await s.post({ seq: 0 }, {}).catch(() => null); // the JSON route above; the short route below
+  assert.ok(short);
+  const res = await handleMcp(new Request(`${URL_}/wait_for_cue`, { method: "POST", headers: { authorization: `Bearer ${s.token}` }, body: "{}" }), { limiter: open, guard: open, relayFor: s.relayFor, now: () => s.now.t, tool: "wait_for_cue" });
+  const line = await res.text();
+  assert.notEqual(line, "idle", "the short route does not answer the bare word idle, so the copied loop stops");
+  assert.match(line, /post_chat/);
 });

@@ -19,10 +19,19 @@ function connected() {
 
 test("readChat: messages with author and text, the optional fields made one line, and nothing else", () => {
   const read = readChat({ messages: [msg("  How do you\n test a restore? ", { question: true, pick: " fits the backup part " })] });
-  assert.deepEqual(read, { ok: true, chat: { messages: [{ author: "Person 1", platform: "YouTube", text: "How do you test a restore?", time: "2026-12-01T19:20:00Z", question: true, pick: "fits the backup part" }], waiting: "", problem: "" } });
-  assert.deepEqual(readChat({}), { ok: true, chat: { messages: [], waiting: "", problem: "" } }, "an empty call is fine: nothing new");
+  assert.deepEqual(read, { ok: true, chat: { messages: [{ author: "Person 1", platform: "YouTube", text: "How do you test a restore?", time: "2026-12-01T19:20:00Z", question: true, pick: "fits the backup part" }] } });
+  assert.deepEqual(readChat({}), { ok: true, chat: { messages: [] } }, "an empty call is fine: nothing new");
+  assert.deepEqual(readChat({ messages: [{ author: "A", text: "hi" }] }).chat, { messages: [{ author: "A", text: "hi" }] }, "an optional field left out stays out");
   assert.equal(readChat({ waiting: "no live event yet" }).chat.waiting, "no live event yet");
   assert.equal(readChat({ problem: "No Restream connection" }).chat.problem, "No Restream connection");
+});
+
+test("readChat: what the Worker cleaned passes the page's own check again, unchanged (the page checks it a second time)", () => {
+  for (const args of [{ messages: [{ author: "A", text: "hi" }] }, { messages: [msg("Why?", { pick: "fits" })] }, { waiting: "no live stream yet" }, { problem: "No Restream connection" }, {}]) {
+    const once = readChat(args);
+    assert.equal(once.ok, true, JSON.stringify(args));
+    assert.deepEqual(readChat(once.chat), once, `cleaned twice is the same: ${JSON.stringify(args)}`);
+  }
 });
 
 test("readChat: refuses what does not fit, with a plain reason", () => {

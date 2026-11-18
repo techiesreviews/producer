@@ -105,7 +105,7 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
       const m = material(msg.args.seq ?? 0);
       if (m) return reply(msg.id, { result: m });
       const w = { id: msg.id, args: msg.args };
-      w.timer = setTimeout(() => { page.held.splice(page.held.indexOf(w), 1); reply(msg.id, { result: { idle: true, seq: msg.args.seq ?? 0 } }); }, hold);
+      w.timer = setTimeout(() => { page.held.splice(page.held.indexOf(w), 1); reply(msg.id, { result: { idle: true, seq: msg.args.seq ?? 0, ...(page.chatOn ? { chatOn: true } : {}) } }); }, hold);
       w.timer.unref?.();
       page.held.push(w);
       return;
