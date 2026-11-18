@@ -1,4 +1,4 @@
-// The ways to connect each agent (card 09, from TOOLS-154): what its chip in step 2 says, and the one line that
+// The ways to connect each agent (card 09, from TOOLS-154): what its chip in the AI agent step says, and the one line that
 // "Connect with MCP" copies. The host pastes that line into a terminal; it sets up Claude Code's or Codex's own MCP
 // entry for this producer and opens a chat that is told to start. The token is exported for that one terminal only:
 // the entry holds a reference to it (Claude Code's "${PRODUCER_TOKEN}", Codex's --bearer-token-env-var), never the

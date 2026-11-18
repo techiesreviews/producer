@@ -82,7 +82,7 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
   .step__ctl { grid-column: 1 / -1; }
 }
 
-/* Step 3, the show plan pasted by hand: the box opens under its button, the example's lines under the box. A bad
+/* The plan step, pasted by hand: the box opens under its button, the example's lines under the box. A bad
    line shows on the button and as the box's orange edge; once the show clock runs the box is greyed (fixed). On a phone the box's text is 16px, so focusing it never zooms. */
 .plan { flex-basis: 100%; display: grid; gap: 0.4rem; }
 .plan__in {

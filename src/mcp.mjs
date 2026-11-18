@@ -306,6 +306,7 @@ function shapeContext(page) {
   if (guestName && !solo) structured.guestName = guestName;
   if (notes) structured.notes = notes;
   if (solo) structured.solo = true;
+  if (page.chatOn === true) structured.chatOn = true;
   const lines = [];
   if (showTitle) lines.push(`Show: ${showTitle}`);
   if (solo) lines.push(`Solo show: no guest. The numbered list is the host's own points, in the order of the plan. On a solo show send no suggestions: the host follows the plan${page.chatOn === true ? `, and you help by picking the viewer question that fits what comes next with ${TOOL.chat}` : ""}.`);

@@ -252,7 +252,7 @@ export function createListening({ media, openTap, newWorker, Recognition, create
       s.guest = answer;
       if (answer !== "yes") dropTab(true);
     }),
-    /** Step 1 changed: OBS has no studio tab, so a shared tab stops and Listen will not ask for it again. */
+    /** "I stream with" changed: OBS has no studio tab, so a shared tab stops and Listen will not ask for it again. */
     streamChanged: () => act(() => { if (tabView().off) dropTab(true); }),
     /** The setup's microphone button: on, or off when it is on. A press while the browser asks does nothing. */
     async pressMic() {
