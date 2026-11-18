@@ -13,7 +13,8 @@ const ALTS = 2;
 
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
- * agent's answer (true when it changed the card or its rows to swap in); asked(), skip() and swap(i) are the card's controls; pick(n) puts
+ * agent's answer (true when it changed the card or its rows to swap in); asked(), skip() and swap(i) are the card's
+ * controls; pick(n) puts
  * prepared question n on the card (the search's click or Enter; an asked or skipped one opens again); view() gives
  * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
  * open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
@@ -27,6 +28,7 @@ export function createQuestions() {
   let alts = [];
   let seen = 0; // the newest answer's seq: each answer is shown once
   let newAsked = 0; // new questions (not on the list) the host pressed Asked on
+  let replaced = null; // the question the host's pick took the card from: it stays to swap back while the pick is on the card
 
   const key = (q) => (q.n ? `#${q.n}` : `t:${q.text.toLowerCase()}`);
   const open = (q) => (q.n ? !done.has(q.n) : !gone.has(key(q)));
@@ -54,6 +56,7 @@ export function createQuestions() {
     if (main.n) done.set(main.n, kind); else gone.add(key(main));
     if (!main.n && kind === "asked") newAsked += 1;
     main = null;
+    replaced = null;
     fill();
     return true;
   }
@@ -64,6 +67,7 @@ export function createQuestions() {
       plan = [...texts];
       const again = (q) => (q && q.n ? prepared(q.n, q.why ? { why: q.why, from: q.from } : { from: q.from }) : q);
       main = again(main);
+      replaced = again(replaced);
       alts = alts.map(again).filter(Boolean);
       fill();
     },
@@ -80,7 +84,7 @@ export function createQuestions() {
       if (!fresh.length) return false;
       // The host's pick stays on the card: the agent's first suggestion waits below it, then the question the pick replaced.
       if (main?.from === "picked") {
-        alts = [fresh[0], ...alts, ...fresh.slice(1)];
+        alts = [fresh[0], replaced, ...fresh.slice(1), ...alts].filter(Boolean);
         fill();
         return true;
       }
@@ -98,6 +102,7 @@ export function createQuestions() {
     swap(i) {
       if (!main || !alts[i]) return false;
       [main, alts[i]] = [alts[i], unpicked(main)];
+      replaced = null;
       return true;
     },
 
@@ -110,8 +115,9 @@ export function createQuestions() {
         return true;
       }
       done.delete(n);
-      // The question it replaced comes first to swap back.
-      alts = [unpicked(main), ...alts].filter(Boolean);
+      // The question it replaced comes first to swap back, and stays while the pick is on the card.
+      replaced = unpicked(main);
+      alts = [replaced, ...alts].filter(Boolean);
       main = q;
       fill();
       return true;
