@@ -1054,7 +1054,12 @@ function renderPhase(now) {
   $("live").hidden = now !== "live";
   $("topLive").hidden = now !== "live";
   $("report").hidden = now !== "ended";
-  if (now === "live") { renderRun(); renderCard(); }
+  if (now === "live") {
+    renderRun();
+    renderCard();
+    renderChat();
+    chatList.scrollTop = chatList.scrollHeight; // chat that came during the setup: the newest messages in sight
+  }
 }
 
 goBtn.addEventListener("click", () => {

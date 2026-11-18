@@ -23,7 +23,8 @@ const CHAT_FIELDS = ["messages", "waiting", "problem"];
 const CHAT_MESSAGE_FIELDS = ["author", "platform", "text", "time", "question", "pick"];
 
 const chatLine = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
-const chatFits = (v, max) => typeof v === "string" && chatLine(v) !== "" && chatLine(v).length <= max;
+// Characters as a person sees them (an emoji is one), as the tool's JSON schema counts them, not UTF-16 units.
+const chatFits = (v, max) => typeof v === "string" && chatLine(v) !== "" && [...chatLine(v)].length <= max;
 
 /**
  * The agent's post_chat, checked: { ok: true, chat: { messages: [{ author, text, platform?, time?, question?, pick? }],
