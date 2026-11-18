@@ -34,6 +34,12 @@ test("readChat: what the Worker cleaned passes the page's own check again, uncha
   }
 });
 
+test("readChat: lengths count characters as a person sees them (an emoji is one), as the tool's schema does", () => {
+  const text = `${"😀".repeat(400)} ok?`;
+  assert.equal(readChat({ messages: [{ author: "Person 1", text }] }).ok, true, "a 404-character message of emoji fits under 500");
+  assert.equal(readChat({ messages: [{ author: "Person 1", text: "😀".repeat(501) }] }).ok, false, "501 characters do not");
+});
+
 test("readChat: refuses what does not fit, with a plain reason", () => {
   const no = (args) => { const r = readChat(args); assert.equal(r.ok, false, JSON.stringify(args)); return r.reason; };
   assert.match(no(null), /messages/);
