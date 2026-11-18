@@ -729,6 +729,28 @@ test("post_chat on a page with no chat: a plain refusal, never a crash", async (
   link.disconnect();
 });
 
+test("the chat cue is the host's request: the 20,000-character cap lets it stay while old show cues go", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send({ cue: CUE_NAMES.chat, transcript: [] }); // seq 1
+  for (let i = 0; i < 5; i++) link.send({ cue: "pause", transcript: [{ speaker: "host", text: `${i}${"x".repeat(5_999)}` }] });
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.cue, first.seq], [CUE_NAMES.chat, 1], "the chat request is still the first thing the agent gets");
+  link.disconnect();
+});
+
+test("a solo show's cue says so, so the agent knows to pick viewer questions rather than suggest", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send({ ...CUE, guestName: undefined, solo: true });
+  const r = (await call("wait_for_cue", { seq: 0 })).body.result;
+  assert.equal(r.structuredContent.solo, true);
+  assert.match(r.content[0].text, /solo show takes no suggestions/);
+  link.disconnect();
+});
+
 test("the chat cue goes alone, is not a question on the card, and never takes suggestions as an answer", async () => {
   const { link, call, connect, flush } = setup();
   link.onSuggestions(() => assert.fail("a chat cue has no suggestions"));

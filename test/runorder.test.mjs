@@ -65,6 +65,7 @@ test("the paste button says what was read, or what is wrong, on itself", () => {
   assert.equal(planButton(readPlan("5 A\n5 B")).text, "2 parts ✓", "no questions: only the parts");
   assert.equal(planButton(readPlan("5 A\n5 B\n1. a?\n2. b?"), { solo: true }).text, "2 points · 2 parts ✓", "a solo show's list is the host's points");
   assert.equal(planButton(readPlan("5 A\n1. a?"), { solo: true }).text, "1 point · 1 part ✓");
+  assert.equal(planButton(readPlan(""), { solo: true }).tip, "Paste your show name, points and run order.", "a solo show names no guest in the tip");
   const bad = planButton(readPlan("5 A\nhello there"));
   assert.deepEqual([bad.state, bad.text], ["error", "Line 2 not clear"]);
   assert.match(bad.tip, /^Line 2: "hello there"\. /);

@@ -166,7 +166,7 @@ export async function run({ browser, base, out }) {
     ok(`${name}: With a guest brings the guest step back, Solo show takes it away`);
 
     // ---- Viewer chat: switched off with its reason until an agent is connected, and with a stream that is not Restream.
-    assert.deepEqual(await button("#chatBtn"), { text: "i Connect Restream chat", state: null, off: "true", tip: "Connect your agent first (step 2)." }, `${name}: switched off until an agent is connected`);
+    assert.deepEqual(await button("#chatBtn"), { text: "i Connect Restream chat", state: null, off: "true", tip: "Connect your agent first (step 3)." }, `${name}: switched off until an agent is connected`);
     await press(page.locator('#streamSeg [data-v="obs"]'));
     assert.equal((await button("#chatBtn")).tip, "Viewer chat works with Restream streams only.", `${name}: Restream only`);
     assert.equal(await page.locator("#sChat").getAttribute("data-done"), "", `${name}: not needed with OBS, so the step is done`);
@@ -205,6 +205,18 @@ export async function run({ browser, base, out }) {
     assert.equal(ctx.guestName, undefined, `${name}: and names no guest`);
     ok(`${name}: the list reads as points, the top bar says solo, the agent hears it is a solo show`);
 
+    // Another stream ends the chat (the agent hears it is off); back on Restream a press connects it again.
+    await press(page.locator('#streamSeg [data-v="obs"]'));
+    assert.match((await relayCall("post_chat", { messages: [] })).error, /switched it off/, `${name}: OBS ends the chat: the agent hears it is off`);
+    await press(page.locator('#streamSeg [data-v="restream"]'));
+    assert.equal(await text("#chatBtn"), "Connect Restream chat", `${name}: back on Restream, ready to connect again`);
+    await press(page.locator("#chatBtn"));
+    assert.equal(await text("#chatBtn"), "Connecting chat…", `${name}: connecting again`);
+    // A viewer asks before the show starts: its time says so, not a show time.
+    await relayCall("post_chat", { messages: [{ author: "Person 5", platform: "YouTube", text: "Is this the security stream?" }] });
+    assert.equal(await text("#chatBtn"), "Restream chat connected ✓", `${name}: connected`);
+    ok(`${name}: another stream ends the chat; back on Restream it connects again`);
+
     // ---- The producer screen: the microphone, the speech model, open.
     await press(page.locator("#micBtn"));
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -217,8 +229,12 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(await card(), { title: "Your next point", q: "The late call", why: "Next in your plan.", src: "Point 1 of 3 · your plan", done: "Said", alts: [["Look first, then act", "Point 2"], ["Where your job stops", "Point 3"]] }, `${name}: Your next point with Said and Skip`);
     assert.equal(await page.locator("#nextFoot").isVisible(), false, `${name}: no Suggest now on a solo show (as the prototype)`);
     assert.equal(await page.locator("#chat").isVisible(), true, `${name}: the viewer chat panel shows`);
-    assert.equal(await text("#chatState"), "Waiting for your live stream", `${name}: and waits for the live stream`);
+    assert.equal(await text("#chatList .msg .msg__t"), "before", `${name}: a message from before Start says "before", never a show time`);
     await press(page.locator("#runBtn")); // Start
+    const other = page.locator('#modeSeg [data-v="guest"]');
+    assert.deepEqual([await other.getAttribute("aria-disabled"), await other.getAttribute("data-tip")], ["true", "The show has started, so the show type stays as it is."], `${name}: once the clock runs the show type is fixed`);
+    await pressOff(other);
+    assert.equal(await page.locator('#modeSeg [aria-pressed="true"]').getAttribute("data-v"), "solo", `${name}: and a press changes nothing`);
     ok(`${name}: the producer screen: Your next point, Said and Skip, the viewer chat waiting for the live stream`);
 
     // ---- The chat arrives: plain chat quiet, questions bold with their buttons; the agent's pick waits on the card with Use.
@@ -228,13 +244,14 @@ export async function run({ browser, base, out }) {
     assert.equal(await page.locator("#chatState").isVisible(), false, `${name}: no state line once messages show`);
     const rows = await page.locator("#chatList .msg").evaluateAll((els) => els.map((el) => [el.querySelector(".msg__who").textContent, el.querySelector(".msg__x").textContent, el.hasAttribute("data-q"), [...el.querySelectorAll(".msg__act button:not([hidden])")].map((b) => b.textContent)]));
     assert.deepEqual(rows, [
+      ["Person 5", "Is this the security stream?", true, ["Use", "Answered", "Skip"]],
       ["Person 1", "Hello from Accra", false, []],
       ["Person 2", "How often do you test a restore?", true, ["Use", "Answered", "Skip"]],
       ["Person 3", "Who tells the client at night?", true, ["Use", "Answered", "Skip"]],
       ["Person 4", "<b>bold</b> <img src=x onerror=alert(1)>", false, []],
     ], `${name}: each message with who and what; a question carries Use, Answered and Skip`);
     assert.equal(await page.locator("#chatList img, #chatList b").count(), 0, `${name}: a viewer's words never become markup`);
-    assert.equal(await text("#openChip"), "2 open", `${name}: two questions wait`);
+    assert.equal(await text("#openChip"), "3 open", `${name}: three questions wait`);
     const withPick = await card();
     assert.deepEqual(withPick.alts[0], ["Who tells the client at night?", "Use"], `${name}: the agent's pick waits on the card, with Use`);
     assert.equal(await page.locator("#alts .alt").first().locator(".alt__why").textContent(), "AI pick: fits Look first, then act · Person 3 · YouTube", `${name}: with the agent's few words why`);
@@ -253,6 +270,11 @@ export async function run({ browser, base, out }) {
     });
     assert.equal(said.position.next, "Point 1: The late call", `${name}: the cue names the next point, so the agent can pick a question that fits`);
     assert.equal(said.guestName, undefined, `${name}: no guest's name on a solo show`);
+    assert.equal(said.solo, true, `${name}: the cue says it is a solo show`);
+    // An answer with suggestions never changes the host's next point on a solo show: the agent offers viewer questions instead.
+    await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 1000, suggestions: [{ text: "Agent's own question?" }, { question: 3 }] }); }, said.seq);
+    await page.waitForTimeout(100);
+    assert.deepEqual([(await card()).q, (await card()).why], ["The late call", "Next in your plan."], `${name}: the agent's suggestions leave the solo card alone`);
     ok(`${name}: each cue names the next point on the card`);
 
     // ---- Use: the pick goes on the card as the viewer question; Back to your point; Answered.
@@ -262,21 +284,21 @@ export async function run({ browser, base, out }) {
     await shot("viewer-on-card", "#next");
     await press(page.locator("#alts .alt").first());
     assert.equal((await card()).title, "Your next point", `${name}: Back to your point takes it off again`);
-    await press(page.locator('#chatList .msg:nth-child(3) [data-act="card"]'));
+    await press(page.locator('#chatList .msg:nth-child(4) [data-act="card"]'));
     assert.equal((await card()).q, "Who tells the client at night?", `${name}: Use in the chat does the same`);
     await page.clock.fastForward(65_000);
     await press(page.locator("#askedBtn"));
     assert.equal((await card()).q, "The late call", `${name}: Answered: back to the next point`);
-    assert.match(await text('#chatList .msg:nth-child(3) [data-act="answered"]'), /^Answered ✓ · 1:0\d$/, `${name}: Answered ✓ with the show time on the chat's button`);
-    assert.equal(await text("#openChip"), "1 open", `${name}: one question left`);
+    assert.match(await text('#chatList .msg:nth-child(4) [data-act="answered"]'), /^Answered ✓ · 1:0\d$/, `${name}: Answered ✓ with the show time on the chat's button`);
+    assert.equal(await text("#openChip"), "2 open", `${name}: two questions left`);
     ok(`${name}: Use (on the card or in the chat) puts the viewer question on the card; Back to your point; Answered marks it with its time`);
 
     // ---- Skip in the chat; Questions only; Said moves the plan on.
-    await press(page.locator('#chatList .msg:nth-child(2) [data-act="skipped"]'));
-    assert.equal(await text('#chatList .msg:nth-child(2) [data-act="skipped"]'), "Skipped", `${name}: Skipped on the button`);
-    assert.equal(await text("#openChip"), "0 open", `${name}: none open`);
+    await press(page.locator('#chatList .msg:nth-child(3) [data-act="skipped"]'));
+    assert.equal(await text('#chatList .msg:nth-child(3) [data-act="skipped"]'), "Skipped", `${name}: Skipped on the button`);
+    assert.equal(await text("#openChip"), "1 open", `${name}: one open`);
     await press(page.locator("#qOnlyBtn"));
-    assert.equal(await page.locator("#chatList .msg:not([hidden])").count(), 2, `${name}: Questions only hides the hellos`);
+    assert.equal(await page.locator("#chatList .msg:not([hidden])").count(), 3, `${name}: Questions only hides the hellos`);
     await press(page.locator("#qOnlyBtn"));
     await press(page.locator("#askedBtn"));
     assert.equal((await card()).q, "Look first, then act", `${name}: Said moves to the next point`);
@@ -290,10 +312,10 @@ export async function run({ browser, base, out }) {
     const stats = await page.locator("#reportStats .stat").evaluateAll((els) => els.map((el) => [...el.children].map((c) => c.textContent).join(" ").replace(/\s+/g, " ").trim()));
     assert.equal(stats[1], "1 of 3 points said", `${name}: points said`);
     assert.equal(stats[2], "1 viewer questions answered", `${name}: viewer questions answered`);
-    assert.equal(stats[3], "1 viewer questions not answered · 1 skipped", `${name}: not answered, and how many skipped`);
+    assert.equal(stats[3], "2 viewer questions not answered · 1 skipped", `${name}: not answered, and how many skipped`);
     const listOf = (sel) => page.locator(`${sel} li`).evaluateAll((els) => els.map((el) => [...el.children].map((c) => c.textContent.replace(/\s+/g, " ").trim()).join(" | ")));
     assert.match((await listOf("#ansList"))[0], /^1:0\d \| Who tells the client at night\?Person 3 · YouTube \| answered$/, `${name}: the answered question with its time and viewer`);
-    assert.deepEqual(await listOf("#notAnsList"), ["0:00 | How often do you test a restore?Person 2 · LinkedIn | skipped"], `${name}: the skipped question`);
+    assert.deepEqual(await listOf("#notAnsList"), ["before | Is this the security stream?Person 5 · YouTube | no time", "0:00 | How often do you test a restore?Person 2 · LinkedIn | skipped"], `${name}: the questions not answered, in the chat's order`);
     assert.deepEqual(await listOf("#notSaidList"), ["Point 2 | Look first, then act | no time", "Point 3 | Where your job stops | no time"], `${name}: the points not said`);
     for (const id of ["#clipsPanel", "#topicsPanel", "#notAskedPanel"]) assert.equal(await page.locator(id).isVisible(), false, `${name}: no ${id} on a solo report (as the prototype)`);
     const after = await relayCall("post_chat", { messages: [{ author: "Person 9", text: "Late?" }] });

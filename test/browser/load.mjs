@@ -115,7 +115,7 @@ export async function run({ browser, base, out }) {
     };
 
     // Off with its reason until an agent is connected.
-    assert.deepEqual(await button(), { text: "i Let my agent load it", state: null, off: "true", tip: "Connect your agent first (step 2)." }, `${name}: switched off, with its reason`);
+    assert.deepEqual(await button(), { text: "i Let my agent load it", state: null, off: "true", tip: "Connect your agent first (step 3)." }, `${name}: switched off, with its reason`);
     assert.equal(await load.getAttribute("class"), "tb tb--primary", `${name}: the orange look of a primary button`);
     await pressOff(load);
     assert.equal(await page.evaluate(() => window.__relay.sockets.length), 0, `${name}: a press on the switched-off button asks nobody`);
