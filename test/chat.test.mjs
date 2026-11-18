@@ -127,6 +127,25 @@ test("Use, Answered and Skip: one question on the card; each press again undoes 
   assert.equal(chat.mark(chat.view().messages.at(-1).id, "card"), false, "plain chat has no buttons");
 });
 
+test("a message's time: the stamp the page gives for each message (its own time against the show clock), else the arrival", () => {
+  const { chat } = connected();
+  const stamp = (m) => (m.time === "2026-12-01T19:01:00Z" ? "1:00" : m.time === "2026-12-01T18:59:00Z" ? "before" : "41:10");
+  chat.agentPost({ messages: [msg("Old one?", { time: "2026-12-01T19:01:00Z" }), msg("Earlier?", { time: "2026-12-01T18:59:00Z" }), msg("No time?", { time: undefined })] }, stamp);
+  assert.deepEqual(chat.view().messages.map((m) => m.at), ["1:00", "before", "41:10"]);
+});
+
+test("Back to your point lets the agent's pick go: it comes back only when the agent picks it again", () => {
+  const { chat } = connected();
+  chat.agentPost({ messages: [msg("Who tells the client?", { pick: "fits Room 4" })] });
+  const { id } = chat.view().pick;
+  chat.mark(id, "card");
+  chat.mark(id, "card");
+  assert.equal(chat.view().pick, null, "taken off the card: no pick row");
+  assert.equal(chat.view().messages[0].s, "open", "still an open question in the chat");
+  chat.agentPost({ messages: [msg("Who tells the client?", { pick: "fits Room 4 again" })] });
+  assert.equal(chat.view().pick.pick, "fits Room 4 again");
+});
+
 test("waiting for the live stream, a problem, and no answer in time", async () => {
   const { chat, timers } = connected();
   chat.agentPost({ messages: [], waiting: "no live stream yet" });

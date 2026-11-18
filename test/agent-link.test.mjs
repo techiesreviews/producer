@@ -753,6 +753,18 @@ test("a solo show's cue says so, so the agent knows to pick viewer questions rat
   link.disconnect();
 });
 
+test("a chat request the agent has not picked up is taken back when the host switches the chat off", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  await call("get_context");
+  link.send({ cue: CUE_NAMES.chat, transcript: [] }); // seq 1, not picked up yet
+  link.unsend(CUE_NAMES.chat);
+  link.send(CUE); // seq 2
+  const next = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([next.cue, next.seq], ["pause", 2], "the agent never hears the request that was taken back");
+  link.disconnect();
+});
+
 test("the chat cue goes alone, is not a question on the card, and never takes suggestions as an answer", async () => {
   const { link, call, connect, flush } = setup();
   link.onSuggestions(() => assert.fail("a chat cue has no suggestions"));
