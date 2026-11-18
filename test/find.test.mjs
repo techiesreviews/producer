@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { findQuestions, findWords, markWords } from "../src/find.mjs";
+import { readFileSync } from "node:fs";
 import { readPlan } from "../src/runorder.mjs";
 
 const PLAN = readPlan([
@@ -63,9 +64,16 @@ test("a plan that puts no question under two different parts says no part (an op
   assert.deepEqual(readPlan("3 Intro\n1. Why?\n8 Story").questionParts, [null], "questions under one part only");
 });
 
+test("a plan with every part first, its questions after and a bonus part with one question of its own says no part", () => {
+  assert.deepEqual(readPlan("3 A\n4 B\n5 C\n1. X?\n2. Y?\n6 Bonus\n3. Z?").questionParts, [null, null, null]);
+  assert.deepEqual(readPlan("3 Intro\n8 Story\n1. Why?\n4 Demo\n2. How?\n5 Close\n3. Next?").questionParts, [1, 2, 3], "a part with no questions (Intro) still groups the rest");
+});
+
 test("the Livestream 3 layout at full size (10 parts first, then 72 numbered questions): matches in show order, no headings, well under a second", () => {
-  const lines = ["Show: Stand-in", "Guest: Sam Example", ...Array.from({ length: 10 }, (_, p) => `${p + 3} Part ${p + 1}`)];
-  for (let n = 1; n <= 72; n++) lines.push(`${n}. Question ${n} about ${n === 6 || n === 8 ? "the cookie" : "something"}?`);
+  // A stand-in with the real plan's shape and quirks (blank lines, a part ending in ?, apostrophes, 2FA); the real plan
+  // names a guest and stays out of this public repo (PRODUCER_PLAN_FIXTURE runs the next test on it).
+  const lines = ["Show: Stand-in", "Guest: Sam Example", "", ...Array.from({ length: 10 }, (_, p) => (p === 2 ? "4 Is This A Risk For You?" : `${p + 3} Part ${p + 1}`)), ""];
+  for (let n = 1; n <= 72; n++) lines.push(`${n}. Question ${n}: what's ${n === 6 || n === 8 ? "the cookie" : n === 2 ? "2FA worth" : "Sam's view"}?`);
   const plan = readPlan(lines.join("\n"));
   assert.deepEqual([plan.parts.length, plan.questions.length], [10, 72]);
   const t0 = performance.now();
@@ -73,6 +81,23 @@ test("the Livestream 3 layout at full size (10 parts first, then 72 numbered que
   const ms = performance.now() - t0;
   assert.deepEqual(ns(r), [[null, [6, 8]]]);
   assert.ok(ms < 50, `the search took ${ms.toFixed(2)} ms`);
+  assert.deepEqual(ns(findQuestions({ plan, query: "2fa" })), [[null, [2]]], "2FA in any case");
+  assert.equal(findQuestions({ plan, query: "sam's" }).count, 69, "an apostrophe is plain text");
+  assert.equal(plan.parts[2].name, "Is This A Risk For You?", "a part ending in ? stays a part");
+});
+
+// The real show plan, kept outside this public repo: PRODUCER_PLAN_FIXTURE=<path to the Livestream 3 producer-plan.txt>.
+const REAL = process.env.PRODUCER_PLAN_FIXTURE;
+test("the Livestream 3 plan itself (PRODUCER_PLAN_FIXTURE): 72 questions, 10 parts, matches without headings", { skip: !REAL && "PRODUCER_PLAN_FIXTURE not set" }, () => {
+  const plan = readPlan(readFileSync(REAL, "utf8"));
+  assert.deepEqual([plan.ok, plan.parts.length, plan.questions.length], [true, 10, 72]);
+  assert.ok(plan.questionParts.every((p) => p === null), "parts first, then the questions: no part per question");
+  const t0 = performance.now();
+  const cookie = findQuestions({ plan, query: "cookie" });
+  assert.ok(performance.now() - t0 < 50);
+  assert.deepEqual(ns(cookie), [[null, [6, 8]]]);
+  assert.ok(findQuestions({ plan, query: "2fa" }).count >= 3);
+  assert.ok(findQuestions({ plan, query: "login" }).count >= 3);
 });
 
 test("72 questions over 10 parts: a search takes well under a second", () => {

@@ -235,3 +235,18 @@ test("pick(n) of the question already under a viewer question marks it picked", 
   assert.equal(q.view().main.from, "picked");
   assert.equal(q.pick(1), false, "already picked");
 });
+
+test("under a pick the replaced question survives every agent answer, until Asked, Skip or a swap", () => {
+  const q = createQuestions();
+  q.setPlan(["A?", "B?", "C?", "D?", "E?", "F?", "G?", "H?"]);
+  q.pick(3);
+  q.suggest({ seq: 1, suggestions: [{ question: 5 }, { question: 6 }] });
+  q.suggest({ seq: 2, suggestions: [{ question: 7 }, { question: 8 }] });
+  assert.deepEqual(q.view().alts.map((a) => a.n), [7, 1], "the newest first suggestion, then the replaced question");
+  q.asked();
+  q.pick(2);
+  q.swap(0);
+  q.pick(4);
+  q.suggest({ seq: 3, suggestions: [{ question: 6 }] });
+  assert.deepEqual(q.view().alts.map((a) => a.n), [6, 7], "a new pick after a swap keeps its own replaced question (7, which the swap put on the card)");
+});
