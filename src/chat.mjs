@@ -84,7 +84,7 @@ export function chatStampOf(time, view, now) {
 }
 
 /** A message's state: "" for plain chat; a question is "open", "card" (on the card), "answered" or "skipped". */
-const chatIsQuestion = (text) => /\?\s*$/.test(text);
+const chatIsQuestion = (text) => /[?？؟]\s*$/.test(text); // also the full-width and the Arabic question mark
 
 /**
  * createChat({ waitMs, onChange, timers }): ask(name, send) is the host's press on Connect Restream chat (send() sends
@@ -108,7 +108,7 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
   const failed = (reason) => { stopTimer(); Object.assign(link, { phase: "failed", reason, note: "" }); };
 
   function add(m, stamp) {
-    const key = `${m.author}\n${m.time ?? ""}\n${m.text}`.toLowerCase();
+    const key = `${m.author}\n${m.platform ?? ""}\n${m.time ?? ""}\n${m.text}`.toLowerCase();
     let got = byKey.get(key);
     const question = m.question ?? (got ? got.q : chatIsQuestion(m.text));
     if (!got) {

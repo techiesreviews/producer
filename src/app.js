@@ -334,7 +334,7 @@ const chatState = $("chatState");
 const openChip = $("openChip");
 const qOnlyBtn = $("qOnlyBtn");
 const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } });
-/** The panel's own Connect (or try again) while the chat is off during the show: the setup's button is out of sight there. */
+/** The panel's own chat button during the show (the setup's button is out of sight there): connect, try again or disconnect. */
 const chatRetry = Object.assign(document.createElement("button"), { type: "button", className: "tb tb--small" });
 /** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
 const chatRows = new Map();
@@ -453,22 +453,22 @@ function renderChat() {
   for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); }
   for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
   chatList.hidden = !v.messages.length;
-  // The line under the panel's head: what the chat waits for, or the panel's own Connect (or try again) while the chat
-  // is off during the show, with the setup button's words and reason. The button stays while it connects (busy on
-  // itself), and the line is rebuilt only when it changes, so a focused button keeps the keyboard.
-  const retrying = v.phase === "off" || v.phase === "failed" || (v.phase === "asking" && chatState.dataset.key === "retry");
+  // The line under the panel's head: the panel's own chat button, the setup button's twin, through every state
+  // (connect, connecting, waiting for the live stream, connected ✓, try again; a press on a connected chat disconnects
+  // it), because the setup is out of sight during the show; with what the list waits for beside it. With no agent the
+  // line says where to connect. The line is rebuilt only when it changes, so a focused button keeps the keyboard.
+  const link = agent.view().state;
   let state = null;
   let key = "";
   if (!restream) [state, key] = [[offMark(), "Restream streams only"], "obs"];
-  else if (v.phase === "waiting") [state, key] = [[dot("think"), "Waiting for your live stream"], "waiting"];
-  else if (retrying && agent.view().state === "on") {
-    const said = chatButton({ stream: streamName(), agent: "on", chat: v, name: AGENT_WAYS[agentKey()].name });
-    label(chatRetry, said.state, said.tip || null, ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
-    [state, key] = [[chatRetry], "retry"];
-  } else if (v.phase === "asking") [state, key] = [[dot("think"), "Connecting…"], "asking"];
-  else if (v.phase === "off" || v.phase === "failed") [state, key] = [[offMark(), "Not connected · connect it in Set up"], "off"];
-  else if (!v.messages.length) [state, key] = [["No messages yet"], "empty"];
-  else if (questionsOnly && !v.messages.some((m) => m.q)) [state, key] = [["No questions yet"], "noq"];
+  else if ((v.phase === "off" || v.phase === "failed") && link !== "on") [state, key] = [[offMark(), "Not connected · connect it in Set up"], "off"];
+  else {
+    const said = chatButton({ stream: streamName(), agent: link, chat: v, name: AGENT_WAYS[agentKey()].name });
+    label(chatRetry, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
+    switchOff(chatRetry, said.off);
+    const note = v.phase === "on" && !v.messages.length ? "No messages yet" : questionsOnly && v.messages.length && !v.messages.some((m) => m.q) ? "No questions yet" : "";
+    [state, key] = [[chatRetry, ...(note ? [make("span", "", note)] : [])], `button:${note}`];
+  }
   chatState.hidden = !state;
   if (key !== (chatState.dataset.key ?? "")) {
     if (chatState.contains(document.activeElement) || chatRetry.getAttribute("aria-describedby") === "tip") tooltip.hide();
