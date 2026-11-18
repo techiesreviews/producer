@@ -175,3 +175,47 @@ test("marked(): the host's own presses for the end report: prepared questions as
   q.setPlan(PLAN.slice(0, 2));
   assert.deepEqual(q.marked(), { asked: [1], skipped: [2], newAsked: 1 }, "only the questions of the plan as it is now");
 });
+
+test("pick(n): the host's pick from the search takes the card and stays there until Asked or Skip", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  assert.equal(q.pick(3), true);
+  let v = q.view();
+  assert.deepEqual(v.main, { n: 3, text: "What went wrong?", from: "picked" });
+  assert.equal(v.alts[0].n, 1, "the question it replaced comes first to swap back");
+  assert.equal(q.pick(3), false, "already on the card");
+  assert.equal(q.pick(9), false, "not in the plan");
+  // The agent's answer does not take a picked card: its suggestions wait below to swap in.
+  q.suggest({ seq: 1, suggestions: [{ question: 2, why: "fits" }] });
+  v = q.view();
+  assert.equal(v.main.n, 3);
+  assert.equal(v.alts[0].n, 2);
+  q.asked();
+  assert.deepEqual(q.marked().asked, [3]);
+  assert.notEqual(q.view().main.from, "picked", "after Asked the card moves on as usual");
+});
+
+test("pick(n) of an asked or skipped question takes it back onto the card and out of the count", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.asked();
+  assert.deepEqual(q.marked().asked, [1]);
+  q.pick(1);
+  assert.equal(q.view().main.n, 1);
+  assert.deepEqual(q.marked().asked, []);
+  assert.equal(q.view().counts.left, 4);
+});
+
+test("a picked question swapped away is an ordinary alternative; a new plan keeps the pick", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.pick(4);
+  q.setPlan(PLAN);
+  assert.deepEqual(q.view().main, { n: 4, text: "What is next?", from: "picked" });
+  q.swap(0);
+  const v = q.view();
+  assert.equal(v.main.n, 1);
+  assert.equal(v.alts.find((a) => a.n === 4).from, "list");
+  q.suggest({ seq: 1, suggestions: [{ question: 2 }] });
+  assert.equal(q.view().main.n, 2, "with no pick on the card the agent's answer takes it again");
+});
