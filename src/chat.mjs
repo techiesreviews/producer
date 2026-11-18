@@ -70,7 +70,7 @@ const chatIsQuestion = (text) => /\?\s*$/.test(text);
  * createChat({ waitMs, onChange, timers }): ask(name, send) is the host's press on Connect Restream chat (send() sends
  * the cue and says whether the agent took it); agentPost(args, at) the agent's post_chat (at: the show time now, "m:ss",
  * or ""), giving { result } or { error }; disconnect() the host's press on a connected button; agentLink(state, name)
- * the agent link's state. mark(id, what, at) is a question's buttons: "card" (Use), "answered" or "skipped".
+ * the agent link's state; `at` may be a function of the message (its own time against the show clock). mark(id, what, at) is a question's buttons: "card" (Use), "answered" or "skipped".
  * view() gives { phase, name, reason, note, messages, card, pick, open, asked }, phase being off, asking, waiting, on or
  * failed. onChange is called when the wait runs out on its own.
  */
@@ -87,14 +87,14 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
   const stopTimer = () => timers.clearTimeout(link.timer);
   const failed = (reason) => { stopTimer(); Object.assign(link, { phase: "failed", reason, note: "" }); };
 
-  function add(m, at) {
+  function add(m, stamp) {
     const key = `${m.author}\n${m.time ?? ""}\n${m.text}`.toLowerCase();
     let got = byKey.get(key);
     const question = m.question ?? (got ? got.q : chatIsQuestion(m.text));
     if (!got) {
       // A plain message past the cap is let go; a question is always kept.
       if (!question && !m.pick && messages.length >= CHAT_KEPT) return false;
-      got = { id: nextId++, key, who: m.author, where: m.platform ?? "", text: m.text, at, q: false, s: "", doneAt: "", done: 0, pick: "", picked: 0 };
+      got = { id: nextId++, key, who: m.author, where: m.platform ?? "", text: m.text, at: typeof stamp === "function" ? stamp(m) : stamp, q: false, s: "", doneAt: "", done: 0, pick: "", picked: 0 };
       messages.push(got);
       byKey.set(key, got);
     }
@@ -155,7 +155,8 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
       const m = find(id);
       if (!m?.q) return false;
       if (what === "card") {
-        if (m.s === "card") { m.s = "open"; card = null; return true; }
+        // Off the card again: the agent's pick on it is let go (it comes back only if the agent picks it again).
+        if (m.s === "card") { Object.assign(m, { s: "open", pick: "" }); card = null; return true; }
         const old = card !== null ? find(card) : null;
         if (old && old !== m) old.s = "open";
         Object.assign(m, { s: "card", doneAt: "", done: 0 });

@@ -328,6 +328,11 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
       return true;
     },
 
+    /** Takes back a request of this cue (the chat request, say) the agent has not picked up yet: the host switched it off. */
+    unsend(name) {
+      cues = cues.filter((c) => c.test || c.cue !== name);
+    },
+
     /** Called once with each new answer from the agent: { seq, cue, suggestions, ms } (ms since its cue went). */
     onSuggestions(fn) {
       suggested = fn;
