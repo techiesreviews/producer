@@ -30,8 +30,8 @@ export function findQuestions({ plan, query }) {
 
 /**
  * The question's own text in pieces, the searched words marked: [{ text, hit }]. Every hit is marked, overlapping ones
- * too. It searches a lower-cased copy, as findQuestions does, that remembers where each of its characters came from,
- * so a letter that grows when lower-cased (İ) shifts nothing.
+ * too. It searches the text lower-cased as findQuestions does, with where each character of it came from, so a letter
+ * that grows when lower-cased (İ) shifts nothing.
  */
 export function markWords(text, words) {
   let lower = "";
@@ -44,6 +44,9 @@ export function markWords(text, words) {
     i += ch.length;
   }
   from.push(text.length);
+  // The whole text lower-cased at once, as findQuestions does (a final Σ becomes ς); it lines up with the copy letter by letter.
+  const whole = text.toLowerCase();
+  if (whole.length === lower.length) lower = whole;
   const hit = new Array(text.length).fill(false);
   for (const w of words) {
     for (let at = lower.indexOf(w); at >= 0; at = lower.indexOf(w, at + 1)) {
