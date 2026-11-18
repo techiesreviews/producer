@@ -17,7 +17,8 @@ const ALTS = 2;
  * controls; pick(n) puts prepared question n on the card (the search's click or Enter; an asked or skipped one opens
  * again); view() gives { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first
  * prepared question still open; marked() gives the host's own presses for the end report: { asked, skipped }
- * (prepared question numbers) and newAsked (new questions asked). A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
+ * (prepared question numbers) and newAsked (new questions asked).
+ * A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
  */
 export function createQuestions() {
   let plan = [];
