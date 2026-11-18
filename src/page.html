@@ -128,6 +128,15 @@
         <button class="tb tb--ink" type="button" id="askedBtn">Said</button>
         <button class="tb" type="button" id="skipBtn">Skip</button>
       </div>
+      <div class="pool" id="pool" hidden>
+        <label class="find">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="findIn" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Search all questions" aria-label="Search all questions" aria-controls="findList">
+          <button class="tb tb--quiet" type="button" id="findX" aria-label="Clear search" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </label>
+        <div class="pool__head" id="findHead" hidden><h3 id="findTitle"></h3><span class="chip num" id="findCount"></span></div>
+        <div class="pool__list" id="findList" role="group" aria-labelledby="findTitle" hidden></div>
+      </div>
       <div class="alts" id="alts" role="group" aria-label="Swap in"></div>
       <div class="next__foot" id="nextFoot" hidden>
         <button class="tb tb--primary" type="button" id="suggestBtn">Suggest now</button>

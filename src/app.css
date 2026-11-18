@@ -164,6 +164,27 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .alt__q { font-weight: 600; overflow-wrap: anywhere; }
 .alt__why { grid-column: 1; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
 .alt .chip { grid-row: 1; grid-column: 2; align-self: start; }
+/* The search box over the whole question list (TOOLS-344), under Asked and Skip: while it holds words, the matches
+   replace the rows to swap in, grouped by part; a row's state shows on the row ("On card", "Asked ✓", "Skipped"). */
+.pool { display: grid; padding-block: 0.75rem 0.25rem; border-block-start: 1px solid var(--line); }
+.pool + .alts { border-block-start: 0; }
+.find {
+  display: flex; align-items: center; gap: 0.5rem; margin-inline: 0.85rem; padding-inline: 0.65rem 0.25rem; min-block-size: 2.4rem;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); color: var(--muted);
+}
+.find:focus-within { outline: 2px solid var(--accent-ink); outline-offset: 1px; color: var(--text); }
+.find input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 0.95rem; padding: 0.4rem 0; }
+.find input::placeholder { color: var(--muted); opacity: 1; }
+.find .tb { min-block-size: 1.75rem; padding-inline: 0.4rem; }
+@media (pointer: coarse) { .find { min-block-size: 2.75rem; } .find input { font-size: 16px; } .find .tb { min-block-size: 2.5rem; padding-inline: 0.7rem; } }
+.pool__head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; padding: 0.75rem 1.1rem 0.1rem; }
+.pool__head h3 { font-size: 0.85rem; font-weight: 650; overflow-wrap: anywhere; }
+.pool__list { display: grid; align-content: start; padding: 0 0.5rem 0.5rem; max-block-size: 26rem; overflow-y: auto; overscroll-behavior: contain; }
+.grp { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.4rem; padding: 0.6rem 0.6rem 0.15rem; color: var(--muted); font-size: 0.75rem; font-weight: 650; }
+.alt[data-s="card"] { background: var(--accent-faint); cursor: default; }
+.alt[data-s="asked"] .alt__q, .alt[data-s="skipped"] .alt__q { color: var(--muted); font-weight: 500; }
+.alt mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 0.1em; }
+.pool__state { padding: 0.9rem 0.6rem; color: var(--muted); }
 .next__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 0.85rem; border-block-start: 1px solid var(--line); background: var(--raised); }
 .next__foot .end { margin-inline-start: auto; }
 /* Suggest now keeps one width through Thinking… and the seconds to wait, so the switch beside it stays put. While the

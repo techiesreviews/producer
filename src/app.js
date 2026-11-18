@@ -9,6 +9,7 @@ import { CUE, readReport } from "./protocol.mjs";
 import { chatButton, chatStampOf, createChat } from "./chat.mjs";
 import { createCues } from "./cues.mjs";
 import { createQuestions, isThinking, suggestButton, THINK_MS, thinkLight, turnsText } from "./questions.mjs";
+import { findQuestions, markWords } from "./find.mjs";
 import { buildReport, REPORT_EMPTY, REPORT_WAIT_MS, reportFileName, reportMarkdown } from "./report.mjs";
 import { installTooltip } from "./ui/tooltip.mjs";
 import { AGENT_WAYS, LOCK_TIP, mcpLine, NO_MCP_TIP, TEST_TIP } from "./agent-ways.mjs";
@@ -593,6 +594,7 @@ function renderRun() {
     tip = `Show time, ${words}.`;
   }
   if (clock.dataset.tip !== tip) clock.dataset.tip = tip;
+  renderFind(); // the search's "on now" follows the part on now
 }
 
 runBtn.addEventListener("click", () => {
@@ -718,7 +720,8 @@ function renderCard() {
   qMain.toggleAttribute("data-empty", !viewer && !main);
   const why = viewer
     ? [viewer.who, viewer.where, viewer.at === "before" ? "asked before the show" : viewer.at && `asked at ${viewer.at}`].filter(Boolean).join(" · ")
-    : main?.why ?? (main?.from === "list" && main.n === first ? (solo ? "Next in your plan." : "Next on your list.") : "");
+    : main?.from === "picked" ? `Picked by you. Stays here until ${solo ? "Said" : "Asked"} or Skip.`
+      : main?.why ?? (main?.from === "list" && main.n === first ? (solo ? "Next in your plan." : "Next on your list.") : "");
   qWhy.textContent = why;
   qWhy.hidden = !why;
   qSrc.parentElement.hidden = !viewer && !main;
@@ -779,7 +782,120 @@ function renderCard() {
   clearTimeout(asking.timer);
   const wait = busy ? asking.since + THINK_MS - now : suggestInMs > 0 ? suggestInMs % 1000 || 1000 : 0;
   if (wait > 0 && phase.live()) asking.timer = setTimeout(renderCard, wait + 10);
+  renderFind();
 }
+
+// ---- The search box over the whole question list (TOOLS-344, src/find.mjs): the host types a word and the matching
+// prepared questions show at once under the card, grouped by part, in place of the rows to swap in. A click (or Enter for
+// the first match) puts one on the card; Asked, Said or Skip clears the search. A plain text search in this page: no AI,
+// nothing sent, nothing stored. ----
+const pool = $("pool");
+const findIn = $("findIn");
+const findX = $("findX");
+const findHead = $("findHead");
+const findTitle = $("findTitle");
+const findCount = $("findCount");
+const findList = $("findList");
+const found = { key: "", plan: null, card: null, first: null };
+
+function renderFind() {
+  const total = show.plan?.questions.length ?? 0;
+  pool.hidden = !total;
+  const hint = `Search all ${total} ${solo ? (total === 1 ? "point" : "points") : total === 1 ? "question" : "questions"}`;
+  if (findIn.placeholder !== hint) {
+    findIn.placeholder = hint;
+    findIn.setAttribute("aria-label", hint);
+  }
+  findX.hidden = !findIn.value;
+  const result = findQuestions({ plan: total ? show.plan : null, query: findIn.value });
+  const searching = result.words.length > 0;
+  findHead.hidden = !searching;
+  findList.hidden = !searching;
+  altsBox.hidden = searching;
+  // The question on the card (none while a viewer question holds it), and what the host already asked or skipped.
+  found.card = viewers.view().card ? null : questions.view().main?.n ?? null;
+  found.first = result.groups.flatMap((g) => g.items).find((n) => n !== found.card) ?? null;
+  if (!searching) {
+    found.key = "";
+    return;
+  }
+  const marks = questions.marked();
+  const now = show.run?.view(Date.now()).rows.findIndex((row) => row.state === "now") ?? -1;
+  // Rebuilt only when it changes, so a focused row keeps the keyboard and a screen reader hears no churn.
+  const key = JSON.stringify([findIn.value, found.card, marks, now, solo]);
+  if (key === found.key && found.plan === show.plan) return;
+  found.key = key;
+  found.plan = show.plan;
+  const asked = new Set(marks.asked);
+  const skipped = new Set(marks.skipped);
+  const typed = findIn.value.trim();
+  findTitle.textContent = `Matches for “${typed}”`;
+  findCount.textContent = `${result.count} of ${total}`;
+  const focused = [...findList.querySelectorAll(".alt")].indexOf(document.activeElement);
+  const out = [];
+  for (const group of result.groups) {
+    if (group.part !== null) {
+      const head = make("div", "grp", `Part ${group.part + 1} · ${group.name}`);
+      if (group.part === now) head.append(make("span", "chip chip--accent", "on now"));
+      out.push(head);
+    }
+    for (const n of group.items) {
+      const state = n === found.card ? "card" : asked.has(n) ? "asked" : skipped.has(n) ? "skipped" : "";
+      const row = make("button", "alt");
+      row.type = "button";
+      row.dataset.n = String(n);
+      if (state) row.dataset.s = state;
+      if (state === "card") row.setAttribute("aria-current", "true");
+      const text = Object.assign(make("span", "alt__q"), { dir: "auto" });
+      for (const piece of markWords(show.plan.questions[n - 1], result.words)) text.append(piece.hit ? make("mark", "", piece.text) : piece.text);
+      const chip = state === "card" ? "On card" : state === "asked" ? (solo ? "Said ✓" : "Asked ✓") : state === "skipped" ? "Skipped" : solo ? `Point ${n}` : `Q${n}`;
+      row.append(text, make("span", state === "card" ? "chip chip--accent" : "chip num", chip));
+      out.push(row);
+    }
+  }
+  if (!result.count) out.push(make("p", "pool__state", `No ${solo ? "point" : "question"} with “${typed}”.`));
+  findList.replaceChildren(...out);
+  if (focused >= 0) {
+    const rows = findList.querySelectorAll(".alt");
+    (rows[focused] ?? rows[rows.length - 1] ?? findIn).focus();
+  }
+}
+
+/** A match goes on the card: a viewer question on it goes back to the chat's list, the plan's question to swap back. */
+function pickFound(n) {
+  const viewer = viewers.view().card;
+  if (viewer) markViewer(viewer.id, "card");
+  if (questions.pick(n) || viewer) renderCard();
+}
+
+function clearFind() {
+  findIn.value = "";
+  findList.scrollTop = 0;
+}
+
+findIn.addEventListener("input", () => {
+  findList.scrollTop = 0;
+  renderFind();
+});
+findIn.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && findIn.value) {
+    e.preventDefault();
+    clearFind();
+    renderFind();
+  } else if (e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    if (found.first) pickFound(found.first);
+  }
+});
+findX.addEventListener("click", () => {
+  clearFind();
+  renderFind();
+  findIn.focus();
+});
+findList.addEventListener("click", (e) => {
+  const row = e.target.closest(".alt");
+  if (row && row.dataset.s !== "card") pickFound(Number(row.dataset.n));
+});
 
 /** A cue went (a pause, or Suggest now): the light breathes until the agent's turn on it ends (answered, passed, or a minute). */
 function cueWent() {
@@ -799,6 +915,7 @@ agent.onSettled(renderCard);
 const pressable = (button) => button.getAttribute("aria-disabled") !== "true" && button.dataset.state !== "busy";
 // Said (Asked) and Skip move the plan on, or mark the viewer question on the card.
 function cardPress(kind) {
+  clearFind(); // the pick is done: the search clears
   const viewer = viewers.view().card;
   if (viewer) markViewer(viewer.id, kind === "asked" ? "answered" : "skipped");
   else if (kind === "asked") questions.asked();

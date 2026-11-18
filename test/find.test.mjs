@@ -69,7 +69,7 @@ test("72 questions over 10 parts: a search takes well under a second", () => {
   for (let i = 0; i < 100; i++) findQuestions({ plan, query: "cookies sessions part 7" });
   const each = (performance.now() - t0) / 100;
   assert.ok(each < 50, `one search took ${each.toFixed(2)} ms`);
-  assert.equal(findQuestions({ plan, query: "part 7" }).groups.length, 1);
+  assert.deepEqual(findQuestions({ plan, query: "of part 10" }).groups.map((g) => g.name), ["Part number 10"]);
 });
 
 test("markWords: the searched words marked in the question's own text, case kept", () => {
