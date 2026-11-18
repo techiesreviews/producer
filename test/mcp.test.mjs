@@ -57,10 +57,10 @@ test("notifications get 202 with no body; ping answers", async () => {
   assert.deepEqual((await s.rpc("ping")).body.result, {});
 });
 
-test("tools/list: the six tools, each with a schema; the readers are marked read-only", async () => {
+test("tools/list: the seven tools, each with a schema; the readers are marked read-only", async () => {
   const s = await setup();
   const { result } = (await s.rpc("tools/list")).body;
-  assert.deepEqual(result.tools.map((t) => t.name), ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report", "load_show"]);
+  assert.deepEqual(result.tools.map((t) => t.name), ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report", "load_show", "post_chat"]);
   assert.deepEqual(result.tools, TOOLS);
   for (const t of result.tools) assert.equal(t.inputSchema.type, "object", t.name);
   for (const name of ["get_context", "get_new_transcript"]) assert.equal(result.tools.find((t) => t.name === name).annotations.readOnlyHint, true);
@@ -668,4 +668,78 @@ test("wait_for_cue: a line's show time rides along in brackets, so the agent can
   assert.deepEqual(r.structuredContent.transcript, [{ speaker: "host", text: "So how did it start?", at: "0:12" }, { speaker: "guest", text: "With a van.", at: "125:03" }, { speaker: "guest", text: "No time" }, { speaker: "guest", text: "Odd" }]);
   const tools = (await s.rpc("tools/list")).body.result.tools;
   assert.match(tools.find((t) => t.name === "post_report").description, /show time/);
+});
+
+// ---- TOOLS-336: the viewer chat through the agent's own Restream connection, and the solo show ----
+
+test("post_chat: the agent's chat messages reach the page cleaned, and the agent hears what was shown", async () => {
+  const s = await setup();
+  const r = await s.call("post_chat", { messages: [{ author: " Person 1 ", platform: "YouTube", text: "How often do you\ntest a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }] });
+  assert.equal(r.isError, undefined);
+  assert.deepEqual(s.page.chat, { messages: [{ author: "Person 1", platform: "YouTube", text: "How often do you test a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }], waiting: "", problem: "" });
+  assert.deepEqual(r.structuredContent, { ok: true, shown: 1 });
+  assert.match(r.content[0].text, /Shown on the host's screen: 1 message/);
+  assert.match(r.content[0].text, /wait_for_cue/);
+});
+
+test("post_chat: a bad message or an unknown field is refused with a plain reason and never reaches the page", async () => {
+  const s = await setup();
+  for (const args of [{ messages: [{ text: "no author" }] }, { messages: "hi" }, { guestAgreed: true }, { messages: [{ author: "A", text: "x", url: "https://example.com" }] }]) {
+    const r = await s.call("post_chat", args);
+    assert.equal(r.isError, true, JSON.stringify(args));
+  }
+  assert.equal(s.page.calls.filter((c) => c.tool === "post_chat").length, 0);
+});
+
+test("post_chat: the schema lists the message fields, a pick and the waiting and problem lines", async () => {
+  const tool = TOOLS.find((t) => t.name === "post_chat");
+  assert.deepEqual(Object.keys(tool.inputSchema.properties), ["messages", "waiting", "problem"]);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties.messages.items.properties), ["author", "platform", "text", "time", "question", "pick"]);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+  assert.match(tool.description, /Restream/);
+  assert.match(tool.description, /pick/);
+});
+
+test("post_chat: the page's own refusal (the host switched the chat off) reaches the agent as a plain line", async () => {
+  const s = await setup();
+  s.page.chatError = "The host has not connected the viewer chat, or switched it off. Stop reading the chat until a cue says read_chat.";
+  const r = await s.call("post_chat", { messages: [] });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /switched it off/);
+});
+
+test("the cue Connect Restream chat sends tells the agent how to read the chat and pick the good questions", async () => {
+  const s = await setup();
+  s.page.cue({ cue: "read_chat", transcript: [] });
+  const cue = await s.call("wait_for_cue", { seq: 0 });
+  assert.equal(cue.structuredContent.cue, "read_chat");
+  const text = cue.content[0].text;
+  assert.match(text, /host pressed Connect Restream chat/);
+  assert.match(text, /own Restream connection/);
+  assert.match(text, /post_chat/);
+  assert.match(text, /pick/);
+  assert.match(text, /waiting/);
+  assert.match(text, /problem/);
+  assert.match(text, /then call wait_for_cue with seq 1/);
+  assert.doesNotMatch(text, /with seq 1 and your suggestions/, "a chat cue takes no suggestions");
+});
+
+test("the server's instructions name post_chat and the chat's reading loop", async () => {
+  const s = await setup();
+  const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
+  assert.match(body.result.instructions, /read_chat/);
+  assert.match(body.result.instructions, /post_chat/);
+});
+
+test("a solo show: get_context says so, and each cue names the host's next point", async () => {
+  const s = await setup();
+  s.page.solo = true;
+  const ctx = await s.call("get_context");
+  assert.match(ctx.content[0].text, /Solo show: no guest\. The numbered list is the host's own points/);
+  assert.equal(ctx.structuredContent.solo, true);
+  s.page.next = "Point 3: Room 5, where your job stops";
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "So the hosting company." }] });
+  const cue = await s.call("wait_for_cue", { seq: 0 });
+  assert.match(cue.content[0].text, /Next on the card: Point 3: Room 5, where your job stops/);
+  assert.equal(cue.structuredContent.position.next, "Point 3: Room 5, where your job stops");
 });

@@ -43,11 +43,11 @@ function pageLink(now = { t: 1_000_000 }) {
 }
 
 test("one tool list: the Worker offers, checks and answers exactly the protocol's tools, in its order", () => {
-  assert.deepEqual(TOOL_NAMES, ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report", "load_show"]);
+  assert.deepEqual(TOOL_NAMES, ["get_context", "wait_for_cue", "post_suggestions", "get_new_transcript", "post_report", "load_show", "post_chat"]);
   assert.deepEqual(TOOL_NAMES, Object.values(TOOL));
   assert.deepEqual(TOOLS.map((t) => t.name), TOOL_NAMES, "tools/list names each protocol tool once");
   assert.deepEqual(Object.keys(TOOL_CALLS).sort(), [...TOOL_NAMES].sort(), "one handler per tool, none extra");
-  assert.deepEqual(Object.values(CUE).sort(), ["end_report", "load_show", "pause", "suggest_now"]);
+  assert.deepEqual(Object.values(CUE).sort(), ["end_report", "load_show", "pause", "read_chat", "suggest_now"]);
 });
 
 test("one tool list: the page answers every protocol tool (none falls through to Unknown tool), and refuses others", async () => {

@@ -63,6 +63,8 @@ test("the paste button says what was read, or what is wrong, on itself", () => {
   assert.deepEqual(planButton(readPlan("5 Intro\n1. Why?")), { state: "ok", text: "1 question · 1 part ✓", tip: "Click to change the plan." });
   assert.equal(planButton(readPlan("5 A\n5 B\n1. a?\n2. b?")).text, "2 questions · 2 parts ✓");
   assert.equal(planButton(readPlan("5 A\n5 B")).text, "2 parts ✓", "no questions: only the parts");
+  assert.equal(planButton(readPlan("5 A\n5 B\n1. a?\n2. b?"), { solo: true }).text, "2 points · 2 parts ✓", "a solo show's list is the host's points");
+  assert.equal(planButton(readPlan("5 A\n1. a?"), { solo: true }).text, "1 point · 1 part ✓");
   const bad = planButton(readPlan("5 A\nhello there"));
   assert.deepEqual([bad.state, bad.text], ["error", "Line 2 not clear"]);
   assert.match(bad.tip, /^Line 2: "hello there"\. /);
@@ -74,6 +76,8 @@ test("the paste button says what was read, or what is wrong, on itself", () => {
 test("the show line in the top bar", () => {
   assert.equal(showLine(null), "· no show loaded yet");
   assert.equal(showLine(readPlan("Show: Techies Live\nGuest: Jane Doe\n5 Intro")), "· Techies Live · guest Jane Doe");
+  assert.equal(showLine(readPlan("Show: Techies Live\nGuest: Jane Doe\n5 Intro"), { solo: true }), "· Techies Live · solo", "a solo show names no guest");
+  assert.equal(showLine(readPlan("5 Intro"), { solo: true }), "· 1 part · solo");
   assert.equal(showLine(readPlan("Show: Techies Live\n5 Intro")), "· Techies Live");
   assert.equal(showLine(readPlan("Guest: Jane Doe\n5 Intro")), "· guest Jane Doe");
   assert.equal(showLine(readPlan("5 Intro\n5 Outro")), "· 2 parts");

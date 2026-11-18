@@ -150,6 +150,7 @@ test("the button: asking, loaded (as in the mock-up), and failed", () => {
   const loaded = loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan } });
   assert.equal(loaded.state, "ok");
   assert.equal(loaded.text, "Loaded by Claude Code · 12 questions · 5 parts");
+  assert.equal(loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan }, solo: true }).text, "Loaded by Claude Code · 12 points · 5 parts", "a solo show's list is the host's points");
   assert.equal(loaded.tip, "Show: Sample Show. Guest: Sample Guest. 12 questions, 5 parts, guest notes.");
   assert.equal(loaded.primary, false);
   // The agent leaving does not undo what it loaded.

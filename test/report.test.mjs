@@ -201,3 +201,65 @@ test("readReport takes what the Worker takes: a report at every limit of post_re
   assert.equal(readReport(full).ok, true);
   for (const [key, over] of [["topics", [...full.topics, "t"]], ["asked", [...full.asked, 1]], ["clips", [...full.clips, full.clips[0]]]]) assert.equal(readReport({ ...full, [key]: over }).ok, false, `${key} past its limit`);
 });
+
+// ---- TOOLS-336: the solo show's report, with the viewer questions from the chat ----
+
+const CHAT = {
+  asked: true,
+  messages: [
+    { id: 1, who: "Person 1", where: "YouTube", text: "Is there a template?", at: "2:00", q: true, s: "answered", doneAt: "3:10", done: 2 },
+    { id: 2, who: "Person 2", where: "LinkedIn", text: "Hello from Accra", at: "2:30", q: false, s: "" },
+    { id: 3, who: "Person 3", where: "YouTube", text: "Email security next?", at: "4:00", q: true, s: "skipped", doneAt: "4:20", done: 3 },
+    { id: 4, who: "Person 2", where: "LinkedIn", text: "How often do you test a restore?", at: "5:00", q: true, s: "open", doneAt: "" },
+    { id: 5, who: "Person 4", where: "Twitch", text: "Who tells the client?", at: "1:00", q: true, s: "answered", doneAt: "2:05", done: 1 },
+  ],
+};
+
+test("a solo show: points said, the viewer questions answered and not answered, and the points not said", () => {
+  const r = buildReport(base({ solo: true, chat: CHAT, marks: { asked: [1, 2], skipped: [3], newAsked: 0 } }));
+  assert.equal(r.solo, true);
+  assert.equal(r.chip, "Techies Live · solo · 9 Nov 2026", "no guest on a solo show");
+  assert.deepEqual(r.stats, [
+    { value: "12:20", label: "show time", note: "+1:20 over", tone: "late" },
+    { value: "2 of 4", label: "points said" },
+    { value: "2", label: "viewer questions answered" },
+    { value: "2", label: "viewer questions not answered", note: "1 skipped" },
+  ]);
+  assert.deepEqual(r.answered, [
+    { at: "2:05", text: "Who tells the client?", who: "Person 4 · Twitch" },
+    { at: "3:10", text: "Is there a template?", who: "Person 1 · YouTube" },
+  ], "in the order they were answered");
+  assert.deepEqual(r.notAnswered, [
+    { at: "4:00", text: "Email security next?", who: "Person 3 · YouTube", why: "skipped" },
+    { at: "5:00", text: "How often do you test a restore?", who: "Person 2 · LinkedIn", why: "no time" },
+  ]);
+  assert.deepEqual(r.notSaid, [{ n: "Point 3", text: "What went wrong?", why: "skipped" }, { n: "Point 4", text: "What is next?", why: "no time" }]);
+  assert.equal(r.runs.length, 3);
+});
+
+test("a solo show with no chat: the viewer numbers are zero and its lists say None", () => {
+  const r = buildReport(base({ solo: true, chat: { asked: false, messages: [] } }));
+  assert.deepEqual(r.stats.slice(2), [{ value: "0", label: "viewer questions answered" }, { value: "0", label: "viewer questions not answered" }]);
+  assert.deepEqual([r.answered, r.notAnswered], [[], []]);
+  const md = reportMarkdown(r);
+  assert.match(md, /## Viewer questions answered\n\nNone\./);
+  assert.match(md, /## Viewer questions not answered\n\nNone\./);
+});
+
+test("the solo file holds what the solo screen shows, in its order, the viewers' words escaped", () => {
+  const chat = { asked: true, messages: [{ id: 1, who: "Person [1]", where: "YouTube", text: "Is ![x](y) safe?", at: "2:00", q: true, s: "answered", doneAt: "3:10", done: 1 }] };
+  const md = reportMarkdown(buildReport(base({ solo: true, chat })));
+  assert.match(md, /^# End report · Techies Live · solo · 9 Nov 2026\n/);
+  assert.match(md, /- Points said: 2 of 4\n- Viewer questions answered: 1\n- Viewer questions not answered: 0\n/);
+  const order = ["## Viewer questions answered", "## Viewer questions not answered", "## Run order · plan vs real", "## Points not said", "## What was heard"].map((h) => md.indexOf(h));
+  assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), "the screen's order");
+  assert.match(md, /- 3:10 · Is \\!\\\[x\\\]\(y\) safe\? · Person \\\[1\\\] · YouTube · answered/);
+  assert.match(md, /- Point 3 · What went wrong\? · skipped/);
+  assert.doesNotMatch(md, /Clip moments|Topics covered/, "a solo report has no agent topics or clip moments");
+});
+
+test("a show with a guest: the viewer number counts the chat's answered questions once the chat was connected", () => {
+  const r = buildReport(base({ chat: CHAT }));
+  assert.deepEqual(r.stats[3], { value: "2", label: "viewer questions used" });
+  assert.deepEqual(buildReport(base({ chat: { asked: false, messages: [] } })).stats[3], { value: "—", label: "viewer questions used", note: "no viewer chat yet" });
+});
