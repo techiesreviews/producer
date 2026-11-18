@@ -169,6 +169,7 @@ const agent = createAgentLink({
   load: loadFromAgent,
   report: reportFromAgent,
   chat: chatFromAgent,
+  chatOn: () => chatReading(),
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();

@@ -49,7 +49,7 @@ Rules for this whole conversation:
 6. If it stops at its time limit, run it again at once with the same P and B.
 7. If it prints an error (Unauthorized, the page is not open, too many requests, the network is blocked), tell me in one line and stop.
 8. ${GUEST_WORDS} Keep the token to yourself: never save it or repeat it.
-9. When a cue says ${CUE.chat}, read my live chat through your own Restream connection after each wait and send what is new: P=${TOOL.chat} B='${chat}'. "pick" goes only on the one viewer question that best fits what comes next. Send {"waiting":"no live stream yet"} until a stream is live, or {"problem":"<why>"} if you cannot read it.
+9. When a cue says ${CUE.chat}, read my live chat through your own Restream connection after each wait (with the chat on, a wait with nothing new prints a line saying so) and send what is new: P=${TOOL.chat} B='${chat}'. "pick" goes only on the one viewer question that best fits what comes next. Send {"waiting":"no live stream yet"} until a stream is live, or {"problem":"<why>"} if you cannot read it.
 
 This connection works for eight hours, or until I press Disconnect in the producer.`;
 }
