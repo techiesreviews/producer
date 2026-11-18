@@ -24,7 +24,7 @@ export const CUE_RULES = {
 export const speakerOf = (source) => (source === "guest" ? "guest" : "host");
 
 /**
- * createCues({ send, context, now, ...rules }): context() gives { position?, guestName?, solo? } at the moment a cue goes.
+ * createCues({ send, context, now, ...rules }): context() gives { position?, guestName?, solo?, chatOn? } at the moment a cue goes.
  * heard(line) takes each final line ({ source, text, start, end, at? }: seconds, and the show time "m:ss" it was heard
  * at, which rides along); talking(source) a draft (someone is speaking); pause(source) is the speech worker's pause (of
  * that source; of all when none is named) and sends a cue when the rules allow it (true when one went); suggestNow()
@@ -46,11 +46,12 @@ export function createCues({ send, context = () => ({}), now = () => Date.now(),
   const suggestInMs = () => Math.max(0, last + spaced(o.manualEveryMs) - now());
 
   function fire(cue) {
-    const { position, guestName, solo } = context() ?? {};
+    const { position, guestName, solo, chatOn } = context() ?? {};
     const item = { cue, transcript: lines.map((l) => ({ ...l })) };
     if (position) item.position = position;
     if (guestName) item.guestName = guestName;
     if (solo) item.solo = true;
+    if (chatOn) item.chatOn = true;
     if (!send(item)) return false;
     lines = [];
     chars = 0;

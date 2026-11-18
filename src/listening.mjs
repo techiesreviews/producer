@@ -31,7 +31,7 @@ const TAB_ASK = {
  * - media: the browser's mediaDevices (getUserMedia, getDisplayMedia); openTap(getStream, onChunk) of src/audio-tap.mjs;
  *   newWorker() starts the speech model's worker; Recognition is the browser's SpeechRecognition class, which
  *   createService (createBrowserSpeech of src/web-speech.mjs) wraps.
- * - features: { tabSound, webSpeech } of src/browser.mjs; stream() is the way of streaming picked in step 1.
+ * - features: { tabSound, webSpeech } of src/browser.mjs; stream() is the way of streaming picked in "I stream with".
  * - onChange(view) after every change; onLevel(source, fill) moves a level meter; onText(piece) and onPause(source, at)
  *   are what either engine heard, each labelled with its source; onFail(engine, reason) says an engine failed
  *   ("local" the model, "browser" the service) before the session falls back, so the page can bring the setup back.

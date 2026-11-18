@@ -27,7 +27,7 @@ export const DEMO_SHOW = {
 };
 
 /**
- * Step 3's "Load demo show" for the state it is in. loaded: the demo is in the plan box and has not been edited;
+ * The plan step's "Load demo show" for the state it is in. loaded: the demo is in the plan box and has not been edited;
  * locked: the show clock runs, so the plan stays as it is; confirm: the host pressed it over a plan of their own and the
  * second press will replace it. Gives { state, text, tip, off }: off is the reason the button is switched off ("" when
  * it is ready).
