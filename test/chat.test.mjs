@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fakeTimers } from "./fakes.mjs";
-import { CHAT_LIMITS, CHAT_WAIT_MS, chatButton, createChat, readChat } from "../src/chat.mjs";
+import { CHAT_LIMITS, CHAT_WAIT_MS, chatButton, chatStampOf, createChat, readChat } from "../src/chat.mjs";
 
 const msg = (text, over = {}) => ({ author: "Person 1", platform: "YouTube", text, time: "2026-12-01T19:20:00Z", ...over });
 
@@ -132,6 +132,28 @@ test("a message's time: the stamp the page gives for each message (its own time 
   const stamp = (m) => (m.time === "2026-12-01T19:01:00Z" ? "1:00" : m.time === "2026-12-01T18:59:00Z" ? "before" : "41:10");
   chat.agentPost({ messages: [msg("Old one?", { time: "2026-12-01T19:01:00Z" }), msg("Earlier?", { time: "2026-12-01T18:59:00Z" }), msg("No time?", { time: undefined })] }, stamp);
   assert.deepEqual(chat.view().messages.map((m) => m.at), ["1:00", "before", "41:10"]);
+});
+
+test("chatStampOf: a message's own ISO time against the show clock; before Start, unreadable or later times fall back", () => {
+  const start = Date.parse("2026-12-01T19:00:00Z");
+  const now = start + 300_000; // five minutes in
+  const run = { started: true, clock: 300 };
+  assert.equal(chatStampOf("2026-12-01T19:01:00Z", { started: false, clock: 0 }, now), "before", "before Start");
+  assert.equal(chatStampOf("2026-12-01T18:58:00Z", run, now), "before", "an ISO time before Start");
+  assert.equal(chatStampOf("2026-12-01T18:59:50Z", run, now), "0:00", "a few seconds before Start (clocks drift): the start");
+  assert.equal(chatStampOf("2026-12-01T19:01:00Z", run, now), "1:00", "60 s after Start");
+  assert.equal(chatStampOf("2026-12-01T20:01:00+01:00", run, now), "1:00", "with a time zone");
+  assert.equal(chatStampOf("2026-12-01T19:09:00Z", run, now), "5:00", "later than now: now");
+  for (const odd of ["Dec 1 19:01", "2 min ago", "19:01", "", undefined]) assert.equal(chatStampOf(odd, run, now), "5:00", `unreadable ${JSON.stringify(odd)}: the time it came`);
+});
+
+test("Use on another question lets the pick on the card go too", () => {
+  const { chat } = connected();
+  chat.agentPost({ messages: [msg("A?", { pick: "fits" }), msg("B?")] });
+  const [a, b] = chat.view().messages.map((m) => m.id);
+  chat.mark(a, "card");
+  chat.mark(b, "card");
+  assert.equal(chat.view().pick, null, "the turned-down pick does not come back");
 });
 
 test("Back to your point lets the agent's pick go: it comes back only when the agent picks it again", () => {
