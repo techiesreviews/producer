@@ -358,5 +358,28 @@ export async function run({ browser, base, out }) {
     ok(`${name}: nothing stored, only this site, no console errors`);
     await context.close();
   }
+  // No agent on the producer screen: the chat panel's own button is switched off with a reason that never points to the
+  // setup (out of sight there), and no word on the producer screen sends the host to "Set up".
+  {
+    const context = await browser.newContext(ownAddress(VIEWS[2]));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await page.locator("#micBtn").tap();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await page.locator("#speechBtn").tap();
+    await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    await page.locator("#goBtn").tap();
+    const button = page.locator("#chatState button");
+    assert.deepEqual([await button.innerText(), await button.getAttribute("aria-disabled"), await button.getAttribute("data-tip")], ["i Connect Restream chat", "true", "Your agent is not connected. The chat comes through your agent."], "no agent: the panel's button is off with its reason");
+    const words = await page.locator("#live").evaluate((el) => `${el.innerText} ${[...el.querySelectorAll("[data-tip]")].map((n) => n.dataset.tip).join(" ")}`);
+    assert.doesNotMatch(words, /set ?up|step \d/i, "nothing on the producer screen points to the setup");
+    const path = join(out, "solo-phone-no-agent.png");
+    await page.screenshot({ path });
+    screenshots.push(path);
+    ok("no agent: the chat panel's button is off with a reason that never points to the setup");
+    await context.close();
+  }
+
   return { checks, screenshots };
 }

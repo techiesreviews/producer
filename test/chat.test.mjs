@@ -231,6 +231,16 @@ test("the agent going away ends the chat; a quiet loop does not", () => {
   assert.equal(moved.chat.view().phase, "failed");
 });
 
+test("the panel's chat button on the producer screen never points to the setup (it is out of sight there)", () => {
+  const chat = { phase: "off", name: "", reason: "", note: "" };
+  for (const [agent, phase] of [["off", "off"], ["waiting", "off"], ["off", "failed"], ["off", "asking"]]) {
+    const said = chatButton({ stream: "restream", agent, chat: { ...chat, phase }, name: "Claude Code", inPanel: true });
+    assert.equal(said.off, "Your agent is not connected. The chat comes through your agent.", `${agent}/${phase}`);
+    assert.doesNotMatch(`${said.text} ${said.tip} ${said.off}`, /set ?up|step \d/i, `${agent}/${phase}: no word about the setup`);
+  }
+  assert.equal(chatButton({ stream: "restream", agent: "off", chat, name: "Claude Code" }).off, "Connect your agent first (step 3).", "the setup's own button still names its step");
+});
+
 test("Connect Restream chat: switched off with its reason, then ready, connecting, connected, waiting or failed", () => {
   const chat = (over = {}) => ({ phase: "off", name: "", reason: "", note: "", ...over });
   const name = "Claude Code";
