@@ -224,9 +224,10 @@ export async function run({ browser, base, out }) {
     assert.deepEqual((await rows())[0], "# Part 1 · Part about welcomeon now", `${name}: the part on now says so`);
     if (!phone) {
       // The clock ticks every second: the list is not rebuilt, so a focused row keeps the keyboard; a pick by Space keeps it on its row.
-      await page.locator('#findList .alt[data-n="13"]').focus();
+      const row = await page.$('#findList .alt[data-n="13"]');
+      await row.focus();
       await page.waitForTimeout(1500);
-      assert.equal(await page.evaluate(() => document.activeElement?.dataset.n), "13", `${name}: the focused row keeps the keyboard while the clock runs`);
+      assert.deepEqual(await row.evaluate((el) => [el.isConnected, document.activeElement === el]), [true, true], `${name}: the clock does not rebuild the list: the same focused row keeps the keyboard`);
       await page.keyboard.press("Space");
       assert.deepEqual(await page.evaluate(() => [document.activeElement?.dataset.n, document.activeElement?.dataset.s]), ["13", "card"], `${name}: after the pick the keyboard stays on the row, now On card`);
     }
