@@ -340,6 +340,12 @@ const chatRetry = Object.assign(document.createElement("button"), { type: "butto
 const chatNote = document.createElement("span");
 /** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
 const chatRows = new Map();
+/** What each row shows now (its state, the time it was marked, hidden or not): a refresh touches only rows that changed. */
+const chatShown = new Map();
+const chatSay = $("chatSay");
+/** A screen reader hears new viewer questions in one short polite line, at most one line every CHAT_SAY_MS. */
+const CHAT_SAY_MS = 10_000;
+const said = { seen: 0, at: -Infinity, timer: 0 };
 let questionsOnly = false;
 
 /** The agent reads the chat now (connected, or watching for the live stream): the cues and get_context say so. */
@@ -366,7 +372,8 @@ function pressChat(button) {
   const { phase: chatPhase } = viewers.view();
   if (chatPhase === "asking") return; // the agent is on its way: the button says so
   if (chatPhase === "on" || chatPhase === "waiting") chatOff();
-  else viewers.ask(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.chat, transcript: [] }));
+  // The request carries where the show is (the current point, a solo show), so the agent's first pick fits it at once.
+  else viewers.ask(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.chat, transcript: [], ...cueContext() }));
   renderChatBtn();
   renderChat();
 }
@@ -425,6 +432,9 @@ function chatRow(m, fresh) {
     }
     li.append(act);
   }
+  const shown = `${m.q}|${m.s}|${m.doneAt}|${questionsOnly && !m.q}`;
+  if (chatShown.get(m.id) === shown) return;
+  chatShown.set(m.id, shown);
   li.dataset.s = m.s;
   if (m.q) {
     const [use, answered, skip] = li.querySelectorAll(".msg__act button");
@@ -441,18 +451,37 @@ function chatRow(m, fresh) {
   li.hidden = questionsOnly && !m.q;
 }
 
+/** New viewer questions since the last line, said politely to a screen reader on the producer screen; a busy chat waits
+ * out CHAT_SAY_MS and then gets one line for all that came meanwhile. Nothing visible changes. */
+function sayQuestions(count) {
+  if (!phase.live()) { said.seen = count; return; }
+  if (count <= said.seen || said.timer) return;
+  const speak = () => {
+    said.timer = 0;
+    const v = viewers.view();
+    const fresh = v.messages.filter((m) => m.q).length - said.seen;
+    if (fresh <= 0) return;
+    said.seen += fresh;
+    said.at = Date.now();
+    chatSay.textContent = `${fresh === 1 ? "New viewer question" : `${fresh} new viewer questions`} · ${v.open} open`;
+  };
+  const wait = said.at + CHAT_SAY_MS - Date.now();
+  if (wait <= 0) speak(); else said.timer = setTimeout(speak, wait);
+}
+
 /** The chat panel: shown on a solo show, and with a guest once the host connected the chat. */
 function renderChat() {
   const v = viewers.view();
   chatPanel.hidden = !(solo || v.asked);
   if (chatPanel.hidden) return;
+  sayQuestions(v.messages.filter((m) => m.q).length);
   const restream = streamName() === "restream";
   // Kept at the bottom while the host reads the newest messages; left alone while they scroll back.
   const atEnd = chatList.hidden || chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 60;
   const fresh = chatRows.size > 0;
   // Past the cap the oldest plain messages leave the list (src/chat.mjs): their rows go too.
   const kept = new Set(v.messages.map((m) => m.id));
-  for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); }
+  for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); chatShown.delete(id); }
   for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
   chatList.hidden = !v.messages.length;
   // The line under the panel's head: the panel's own chat button, the setup button's twin, through every state
