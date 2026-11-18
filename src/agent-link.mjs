@@ -38,9 +38,9 @@ const UNCONFIRMED_CHARS = 20_000;
  * show() gives what get_context hands the agent: { showTitle?, guestName?, questions: [{ n, text }],
  * segments: [{ title, plannedMinutes, live? }], notes? }, or nothing before a plan is loaded. load(args) takes what the
  * agent's load_show sent and gives { result } or { error } (a plain line) for the agent; report(args) the same for
- * post_report, chat(args) for post_chat.
+ * post_report, chat(args) for post_chat; chatOn() says whether the agent reads the viewer chat now.
  */
-export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), chat = () => ({ error: "This page shows no viewer chat." }), now = () => Date.now(), timers = globalThis }) {
+export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), chat = () => ({ error: "This page shows no viewer chat." }), chatOn = () => false, now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
@@ -98,7 +98,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     const end = fresh.findIndex((c) => c.kind !== fresh[0].kind);
     const group = end < 0 ? fresh : fresh.slice(0, end);
     const last = group.at(-1);
-    if (!last) return reply(id, { result: { idle: true, seq: after } });
+    if (!last) return reply(id, idle(after));
     if (last.seq === cue?.seq) cue.deliveredAt ??= now();
     handed = Math.max(handed, last.seq);
     const result = { idle: false, cue: last.cue, seq: last.seq, transcript: group.flatMap((c) => c.transcript), chat: [] };
@@ -108,6 +108,10 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (last.chatOn) result.chatOn = true;
     reply(id, { result });
   }
+
+  // Nothing new: idle, saying so when the agent reads the viewer chat, so it reads the chat on quiet stretches too (a
+  // copied curl loop ends on it rather than waiting on).
+  const idle = (after) => ({ result: { idle: true, seq: after, ...(chatOn() ? { chatOn: true } : {}) } });
 
   function queue(item, test = false) {
     seq += 1;
@@ -169,7 +173,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     cues = cues.filter((c) => c.seq > after); // the agent has seen these
     if (cues.length) return deliver(id, after);
     const hold = Math.min(Math.max(Number(args.holdMs) || WAIT_HOLD_MS, 1_000), WAIT_HOLD_MS);
-    const timer = timers.setTimeout(() => { held = null; reply(id, { result: { idle: true, seq: after } }); }, hold);
+    const timer = timers.setTimeout(() => { held = null; reply(id, idle(after)); }, hold);
     held = { id, timer, after };
   }
 

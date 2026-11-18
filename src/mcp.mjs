@@ -251,8 +251,10 @@ function positionLine(p) {
 
 function shapeCue(page, sent) {
   if (page.idle === true) {
-    // An answer after the page's own hold, or the Worker's: nothing new. The seq stays the agent's own.
+    // An answer after the page's own hold, or the Worker's: nothing new. The seq stays the agent's own. With the viewer
+    // chat on it says so in words, so the agent reads the chat now (the short route then answers this line, not "idle").
     const seq = asSeq(page.seq ?? sent);
+    if (page.chatOn === true) return { content: [text(`Nothing new from the show. The viewer chat is on: read what is new and send it with ${TOOL.chat}, then call ${TOOL.wait} with seq ${seq}.`)], structuredContent: { idle: true, seq, chatOn: true } };
     return { content: [text(`Nothing new yet (idle). Call ${TOOL.wait} again at once with seq ${seq}, with no text.`)], structuredContent: { idle: true, seq } };
   }
   const cue = typeof page.cue === "string" && /^[a-z_]{1,30}$/.test(page.cue) ? page.cue : "cue";
@@ -504,10 +506,11 @@ const unauthorized = (short) => (short
 
 /**
  * The short route's answer for a tool's result: the text the agent would read, as plain text. A wait with nothing new
- * is the one word "idle" (so a loop can compare the whole answer), a tool error is a 400 with its message.
+ * is the one word "idle" (so a loop can compare the whole answer; with the viewer chat on it is a line asking the agent
+ * to read the chat, so the loop ends and the agent can), a tool error is a 400 with its message.
  */
 function shortAnswer(result) {
-  if (result.structuredContent?.idle === true) return plainText("idle");
+  if (result.structuredContent?.idle === true && result.structuredContent.chatOn !== true) return plainText("idle");
   return plainText(result.content.map((c) => c.text).join("\n"), result.isError ? 400 : 200);
 }
 

@@ -25,8 +25,9 @@ const chatLine = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() :
 const chatFits = (v, max) => typeof v === "string" && chatLine(v) !== "" && chatLine(v).length <= max;
 
 /**
- * The agent's post_chat, checked: { ok: true, chat: { messages: [{ author, platform, text, time, question?, pick }],
- * waiting, problem } } with every line made one line, or { ok: false, reason } (a plain line for the agent).
+ * The agent's post_chat, checked: { ok: true, chat: { messages: [{ author, text, platform?, time?, question?, pick? }],
+ * waiting?, problem? } } with every line made one line and an optional field only when it was given, so what the Worker
+ * passes on passes the page's own check again unchanged; or { ok: false, reason } (a plain line for the agent).
  */
 export function readChat(args) {
   const no = (reason) => ({ ok: false, reason });
@@ -51,14 +52,15 @@ export function readChat(args) {
     if (m.pick !== undefined && !chatFits(m.pick, CHAT_LIMITS.pick)) return no(`"pick" is a few words why this question fits what comes next, at most ${CHAT_LIMITS.pick} characters.`);
     messages.push({
       author: chatLine(m.author),
-      platform: chatLine(m.platform),
+      ...(m.platform !== undefined ? { platform: chatLine(m.platform) } : {}),
       text: chatLine(m.text),
-      time: chatLine(m.time),
+      ...(m.time !== undefined ? { time: chatLine(m.time) } : {}),
       ...(m.question !== undefined ? { question: m.question } : {}),
-      pick: chatLine(m.pick),
+      ...(m.pick !== undefined ? { pick: chatLine(m.pick) } : {}),
     });
   }
-  return { ok: true, chat: { messages, waiting: chatLine(args.waiting), problem: chatLine(args.problem) } };
+  const notes = Object.fromEntries(["waiting", "problem"].filter((k) => args[k] !== undefined).map((k) => [k, chatLine(args[k])]));
+  return { ok: true, chat: { messages, ...notes } };
 }
 
 /** A message's state: "" for plain chat; a question is "open", "card" (on the card), "answered" or "skipped". */
@@ -86,13 +88,13 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
   const failed = (reason) => { stopTimer(); Object.assign(link, { phase: "failed", reason, note: "" }); };
 
   function add(m, at) {
-    const key = `${m.author}\n${m.time}\n${m.text}`.toLowerCase();
+    const key = `${m.author}\n${m.time ?? ""}\n${m.text}`.toLowerCase();
     let got = byKey.get(key);
     const question = m.question ?? (got ? got.q : chatIsQuestion(m.text));
     if (!got) {
       // A plain message past the cap is let go; a question is always kept.
       if (!question && !m.pick && messages.length >= CHAT_KEPT) return false;
-      got = { id: nextId++, key, who: m.author, where: m.platform, text: m.text, at, q: false, s: "", doneAt: "", done: 0, pick: "", picked: 0 };
+      got = { id: nextId++, key, who: m.author, where: m.platform ?? "", text: m.text, at, q: false, s: "", doneAt: "", done: 0, pick: "", picked: 0 };
       messages.push(got);
       byKey.set(key, got);
     }
