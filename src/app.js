@@ -901,6 +901,14 @@ findIn.addEventListener("keydown", (e) => {
     if (found.first) pickFound(found.first);
   }
 });
+// Escape from a result row empties the box too, and the keyboard goes back to it.
+findList.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !findIn.value) return;
+  e.preventDefault();
+  clearFind();
+  renderFind();
+  findIn.focus();
+});
 findX.addEventListener("click", () => {
   clearFind();
   renderFind();

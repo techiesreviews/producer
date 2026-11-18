@@ -28,12 +28,15 @@ export function findQuestions({ plan, query }) {
   return found;
 }
 
-/** The question's own text in pieces, the searched words marked: [{ text, hit }]. Where two words overlap, both are marked as one. */
+/**
+ * The question's own text in pieces, the searched words marked: [{ text, hit }]. Where two words overlap, both are
+ * marked as one. Matched case-blind on the text itself, so a letter that grows when lower-cased (İ) shifts nothing.
+ */
 export function markWords(text, words) {
-  const lower = text.toLowerCase();
   const hit = new Array(text.length).fill(false);
   for (const w of words) {
-    for (let at = lower.indexOf(w); at >= 0; at = lower.indexOf(w, at + 1)) hit.fill(true, at, at + w.length);
+    const find = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+    for (const m of text.matchAll(find)) if (m[0]) hit.fill(true, m.index, m.index + m[0].length);
   }
   const pieces = [];
   for (let i = 0; i < text.length; i++) {
