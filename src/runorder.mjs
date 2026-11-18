@@ -9,9 +9,9 @@
 //                             a line that starts with minutes is a part even when it ends with ? ("10 Any questions?")
 //   1. How did it start?      a question: numbered (1. or 1)), or any other line ending with a question mark
 // A question written under a part belongs to that part (the search groups by it), once the plan puts questions under at
-// least two different parts and under more than half of the parts up to the last question. A plan that lists every part
-// first and the questions after them (or adds a part or a bonus part after them, or opens with a question above the
-// parts) says nothing about it, so its questions belong to no part.
+// least two different parts. A plan that lists most of its parts (more than half) before its first question lists the
+// parts first and says nothing about it (also with a part or a bonus part added after the questions), so its questions
+// belong to no part.
 
 /** The short example under the paste box: one line of each kind. */
 export const PLAN_EXAMPLE = ["Show: Techies Live", "Guest: Jane Doe", "10 Intro", "20 Her story", "1. How did it start?"];
@@ -46,9 +46,10 @@ export function readPlan(text) {
   }
   if (!any) return { ok: false, empty: true };
   if (!plan.parts.length) return { ok: false, noParts: true };
-  // Questions under two parts or more, and under more than half of the parts up to the last one with a question.
+  // Questions under two parts or more, and not most of the parts listed before the first question.
   const holding = new Set(under.filter((i) => i >= 0)).size;
-  const grouped = holding >= 2 && holding * 2 > Math.max(...under) + 1;
+  const partsFirst = under.length > 0 && (under[0] + 1) * 2 > plan.parts.length;
+  const grouped = holding >= 2 && !partsFirst;
   plan.questionParts = under.map((i) => (grouped && i >= 0 ? i : null));
   return plan;
 }
