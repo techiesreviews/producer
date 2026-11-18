@@ -151,6 +151,23 @@ export async function run({ browser, base, out }) {
     assert.ok(findBox.y > askedBox.y + askedBox.height, `${name}: the box sits under Asked and Skip`);
     ok(`${name}: the search box under Asked and Skip says "Search all 72 questions"`);
 
+    // The question already on the card (from the list) can be locked there too: its row reads On card, and a click or
+    // Enter makes it the host's pick.
+    await press(find);
+    await find.fill("welcome thing");
+    assert.equal(await text('#findList .alt[data-n="1"] .chip'), "On card", `${name}: Q1 on the card reads On card`);
+    await page.keyboard.press("Enter");
+    assert.deepEqual([await text("#qMain"), await text("#qWhy")], ["Question 1: what about the welcome thing?", "Picked by you. Stays here until Asked or Skip."], `${name}: Enter locks the card's own question as the pick`);
+    // The result count is said politely once typing stops.
+    await page.waitForFunction(() => document.querySelector("#findSay").textContent !== "");
+    assert.equal(await text("#findSay"), "8 matches", `${name}: a screen reader hears the count once typing stops`);
+    if (phone) {
+      const x = await page.locator("#findX").boundingBox();
+      assert.ok(x.height >= 44 && x.width >= 44, `${name}: the clear button is at least 44 x 44 on a phone (${x.width} x ${x.height})`);
+    }
+    await press(page.locator("#findX"));
+    ok(`${name}: the card's own question can be locked as the pick; the count is said; the clear button is big enough to tap`);
+
     // A word: the matches at once, grouped by part, the words marked, in place of the rows to swap in. Typed key by key,
     // the time from the last key to the list on screen.
     const sent = requests.length;
