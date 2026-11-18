@@ -250,3 +250,13 @@ test("under a pick the replaced question survives every agent answer, until Aske
   q.suggest({ seq: 3, suggestions: [{ question: 6 }] });
   assert.deepEqual(q.view().alts.map((a) => a.n), [6, 7], "a new pick after a swap keeps its own replaced question (7, which the swap put on the card)");
 });
+
+test("a pick that a shorter plan dropped leaves nothing behind to swap back", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.pick(4);
+  q.setPlan(PLAN.slice(0, 3));
+  q.pick(q.view().main.n);
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }] });
+  assert.deepEqual(q.view().alts.map((a) => a.n), [3, 2], "the suggestion, then the list: no leftover question");
+});

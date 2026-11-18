@@ -67,6 +67,7 @@ test("a plan that puts no question under two different parts says no part (an op
 test("a plan with every part first, its questions after and a bonus part with one question of its own says no part", () => {
   assert.deepEqual(readPlan("3 A\n4 B\n5 C\n1. X?\n2. Y?\n6 Bonus\n3. Z?").questionParts, [null, null, null]);
   assert.deepEqual(readPlan("3 Intro\n8 Story\n1. Why?\n4 Demo\n2. How?\n5 Close\n3. Next?").questionParts, [1, 2, 3], "a part with no questions (Intro) still groups the rest");
+  assert.deepEqual(readPlan("10 Intro\n20 Story\n1. Q?\n5 Break\n20 Demo\n2. R?\n10 Close").questionParts, [1, 3], "an intro, a break and a close with no questions");
 });
 
 test("the Livestream 3 layout at full size (10 parts first, then 72 numbered questions): matches in show order, no headings, well under a second", () => {

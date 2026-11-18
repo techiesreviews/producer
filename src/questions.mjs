@@ -14,10 +14,9 @@ const ALTS = 2;
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card or its rows to swap in); asked(), skip() and swap(i) are the card's
- * controls; pick(n) puts
- * prepared question n on the card (the search's click or Enter; an asked or skipped one opens again); view() gives
- * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
- * open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
+ * controls; pick(n) puts prepared question n on the card (the search's click or Enter; an asked or skipped one opens
+ * again); view() gives { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first
+ * prepared question still open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
  * newAsked (new questions asked). A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
  */
 export function createQuestions() {
@@ -67,7 +66,7 @@ export function createQuestions() {
       plan = [...texts];
       const again = (q) => (q && q.n ? prepared(q.n, q.why ? { why: q.why, from: q.from } : { from: q.from }) : q);
       main = again(main);
-      replaced = again(replaced);
+      replaced = main?.from === "picked" ? again(replaced) : null; // a pick a shorter plan dropped leaves nothing behind
       alts = alts.map(again).filter(Boolean);
       fill();
     },
@@ -110,8 +109,9 @@ export function createQuestions() {
       const q = prepared(n, { from: "picked" });
       if (!q || (main?.n === n && main.from === "picked")) return false;
       if (main?.n === n) {
-        // The card's own question (under a viewer question, say) becomes the host's pick.
+        // The card's own question (under a viewer question, say) becomes the host's pick; it replaced nothing.
         main = q;
+        replaced = null;
         return true;
       }
       done.delete(n);
