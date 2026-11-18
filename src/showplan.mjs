@@ -23,7 +23,8 @@ export const DEMO_CONFIRM_MS = 8000;
  * in plain words; askAgent(name, send) the host's press on "Let my agent load it" (send() sends the cue and says if it
  * went); agentLink(state) the agent link's state, so a wait ends when the agent goes; lock(now) Start.
  * What it holds: text, read (the last read, for the plan button), plan (null unless clear), run, notes, locked.
- * The views: demoView() and loadView(link, name) for the two buttons, name being the agent picked now.
+ * The views: demoView() and loadView(link, name, solo) for the two buttons, name being the agent picked now (solo: the
+ * list is the host's own points).
  */
 export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, readBack = readPlan, onChange = () => {} } = {}) {
   const plan = { text: "", read: null, plan: null, run: null, parts: "", notes: "", notesFor: null, locked: false };
@@ -153,6 +154,6 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
     },
 
     demoView: () => demoButton({ loaded: demoState.loaded, locked: plan.locked, confirm: demoState.confirm }),
-    loadView: (link, name) => loadButton({ agent: link, locked: plan.locked, load: { ...load, name: load.name || name } }),
+    loadView: (link, name, solo = false) => loadButton({ agent: link, locked: plan.locked, solo, load: { ...load, name: load.name || name } }),
   };
 }

@@ -90,11 +90,12 @@ export function planText(plan) {
  * (why it failed) }; locked: the show clock runs, so the plan stays as it is. Gives { state, text, tip, off, primary }:
  * off is the reason the button is switched off; primary is the orange look, only for the button ready to press.
  */
-export function loadButton({ agent, load, locked = false }) {
+export function loadButton({ agent, load, locked = false, solo = false }) {
   const label = "Let my agent load it";
   if (load.phase === "loaded") {
     const { plan } = load;
-    const counts = [plan.questions.length ? loadPlural(plan.questions.length, "question") : "", loadPlural(plan.parts.length, "part")].filter(Boolean);
+    // On a solo show the numbered list is the host's own points.
+    const counts = [plan.questions.length ? loadPlural(plan.questions.length, solo ? "point" : "question") : "", loadPlural(plan.parts.length, "part")].filter(Boolean);
     const tip = [plan.show && `Show: ${plan.show}.`, plan.guest && `Guest: ${plan.guest}.`, `${counts.join(", ")}${plan.notes ? ", guest notes" : ""}.`].filter(Boolean).join(" ");
     return { state: "ok", text: `Loaded by ${load.name} · ${counts.join(" · ")}`, tip, off: "", primary: false };
   }

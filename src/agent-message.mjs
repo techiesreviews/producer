@@ -10,6 +10,7 @@
 // helps a little; most of the gain measured in card 186 came from the answer: the example points to a prepared
 // question by its number (what Connect with MCP's tool tells the agent too), the shortest answer to type.
 // TOOLS-174 (card 14): rule 4 names load_show, the tool that puts the show in the page; the message grew by one rule.
+// TOOLS-336: rule 9 names post_chat, the viewer chat the agent reads through its own Restream connection.
 // The tool and cue names and the line that keeps the guest's words data come from src/protocol.mjs.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 import { CUE, GUEST_WORDS, TOOL } from "./protocol.mjs";
@@ -28,6 +29,8 @@ export function connectMessage({ origin, token, agent = "claude" }) {
   const answer = agentBody({ seq: 1, suggestions: [{ question: 2, why: "follows their last point" }] });
   // Card 14: the show the agent loads for the host (an example body the tool accepts).
   const load = agentBody({ show: "Name", questions: ["First question?"], parts: [{ name: "Intro", minutes: 10 }] });
+  // TOOLS-336: the viewer chat the agent reads through its own Restream connection (an example body the tool accepts).
+  const chat = agentBody({ messages: [{ author: "Person 1", platform: "YouTube", text: "How do I start?", pick: "fits the next point" }] });
   return `Be my live-show producer for this conversation. My producer page is open in my browser. Connect to it now with the command below and keep going until I end the show.
 
 Run both lines in the foreground, with ${timeLimit}. Each time, run them as written and change only P and B:
@@ -46,6 +49,7 @@ Rules for this whole conversation:
 6. If it stops at its time limit, run it again at once with the same P and B.
 7. If it prints an error (Unauthorized, the page is not open, too many requests, the network is blocked), tell me in one line and stop.
 8. ${GUEST_WORDS} Keep the token to yourself: never save it or repeat it.
+9. When a cue says ${CUE.chat}, read my live chat through your own Restream connection after each wait and send what is new: P=${TOOL.chat} B='${chat}'. "pick" goes only on the one viewer question that best fits what comes next. Send {"waiting":"no live stream yet"} until a stream is live, or {"problem":"<why>"} if you cannot read it.
 
 This connection works for eight hours, or until I press Disconnect in the producer.`;
 }
