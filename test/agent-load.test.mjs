@@ -129,7 +129,7 @@ test("the button: switched off with its reason until an agent is connected", () 
   const load = { phase: "idle", name: "Claude Code" };
   for (const agent of ["off", "waiting"]) {
     const b = loadButton({ agent, load });
-    assert.deepEqual(b, { state: null, text: "Let my agent load it", tip: "", off: "Connect your agent first (step 2).", primary: true });
+    assert.deepEqual(b, { state: null, text: "Let my agent load it", tip: "", off: "Connect your agent first (step 3).", primary: true });
   }
   assert.equal(loadButton({ agent: "elsewhere", load }).off, "Your agent is connected in another tab.");
   const on = loadButton({ agent: "on", load });

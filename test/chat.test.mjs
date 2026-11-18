@@ -72,7 +72,7 @@ test("messages: a question ends with a question mark or is marked by the agent; 
   assert.equal(v.messages[1].where, "YouTube");
 });
 
-test("the agent's pick: the newest pick still open is the one to Use; a pick on a done question is let go", () => {
+test("the agent's pick: only its newest pick is offered; an older pick never comes back; a pick on a done question is let go", () => {
   const { chat } = connected();
   chat.agentPost({ messages: [msg("Who tells the client at night?", { pick: "fits Room 4: tell the client" }), msg("Does it work for one person?")] });
   assert.equal(chat.view().pick.text, "Who tells the client at night?");
@@ -81,12 +81,13 @@ test("the agent's pick: the newest pick still open is the one to Use; a pick on 
   chat.agentPost({ messages: [msg("Does it work for one person?", { pick: "fits the recap" })] });
   assert.equal(chat.view().pick.text, "Does it work for one person?");
   const id = chat.view().pick.id;
+  assert.equal(chat.view().messages.find((m) => m.text === "Who tells the client at night?").pick, "", "the older pick is let go: it was for a point that has passed");
   chat.mark(id, "card");
-  assert.equal(chat.view().pick.text, "Who tells the client at night?", "the pick on the card leaves the pick row; the older pick comes back");
+  assert.equal(chat.view().pick, null, "the pick on the card leaves the pick row, and no older pick comes back");
   chat.mark(id, "answered", "20:10");
-  const first = chat.view().pick.id;
+  assert.equal(chat.view().pick, null);
+  const first = chat.view().messages.find((m) => m.text === "Who tells the client at night?").id;
   chat.mark(first, "skipped", "20:11");
-  assert.equal(chat.view().pick, null, "no open pick left");
   chat.agentPost({ messages: [msg("Who tells the client at night?", { pick: "again" })] });
   assert.equal(chat.view().pick, null, "a skipped question is not picked again");
   chat.agentPost({ messages: [msg("Great stream", { pick: "a thank-you worth a word" })] });
@@ -158,7 +159,7 @@ test("Connect Restream chat: switched off with its reason, then ready, connectin
   const chat = (over = {}) => ({ phase: "off", name: "", reason: "", note: "", ...over });
   const name = "Claude Code";
   assert.deepEqual(chatButton({ stream: "obs", agent: "on", chat: chat(), name }), { state: null, text: "Connect Restream chat", tip: "", off: "Viewer chat works with Restream streams only." });
-  assert.equal(chatButton({ stream: "restream", agent: "off", chat: chat(), name }).off, "Connect your agent first (step 2).");
+  assert.equal(chatButton({ stream: "restream", agent: "off", chat: chat(), name }).off, "Connect your agent first (step 3).");
   assert.equal(chatButton({ stream: "restream", agent: "elsewhere", chat: chat(), name }).off, "Your agent is connected in another tab.");
   const ready = chatButton({ stream: "restream", agent: "on", chat: chat(), name });
   assert.deepEqual([ready.text, ready.off, ready.state], ["Connect Restream chat", "", null]);

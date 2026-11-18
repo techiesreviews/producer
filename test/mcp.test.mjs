@@ -742,4 +742,5 @@ test("a solo show: get_context says so, and each cue names the host's next point
   const cue = await s.call("wait_for_cue", { seq: 0 });
   assert.match(cue.content[0].text, /Next on the card: Point 3: Room 5, where your job stops/);
   assert.equal(cue.structuredContent.position.next, "Point 3: Room 5, where your job stops");
+  assert.match(ctx.content[0].text, /send no suggestions/, "a solo show takes no suggestions: the agent picks viewer questions instead");
 });
