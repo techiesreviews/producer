@@ -1,4 +1,4 @@
-// The built-in demo show (a card after 14, TOOLS-193): one click on step 3's "Load demo show" fills the plan box with a
+// The built-in demo show (a card after 14, TOOLS-193): one click on the plan step's "Load demo show" fills the plan box with a
 // short made-up show, so anyone can try the whole screen (the Next question card, the run order, End & report) without
 // writing a plan. It is a constant in the page: nothing is fetched, stored or sent, and the guest and everything else in
 // it is invented (this repository is public). The host can edit it like any plan. Plain facts in, words out.

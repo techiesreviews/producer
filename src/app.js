@@ -337,12 +337,10 @@ const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } 
 const chatRows = new Map();
 let questionsOnly = false;
 
-/** The show time now ("12:03") once the clock runs, else the time of day ("20:15"): when a message came or was answered. */
+/** The show time now ("12:03") once the clock runs, else "before": when a message came or was answered. */
 function chatTime() {
   const view = show.run?.view(Date.now());
-  if (view?.started) return clockText(view.clock);
-  const d = new Date();
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return view?.started ? clockText(view.clock) : "before";
 }
 
 function renderChatBtn() {
@@ -537,7 +535,7 @@ runBtn.addEventListener("click", () => {
   renderRun();
 });
 // Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
-// so step 3's button always describes the run order on the producer screen.
+// so the plan step's button always describes the run order on the producer screen.
 function lockPlan(now) {
   show.lock(now);
   planIn.readOnly = true;
@@ -566,7 +564,8 @@ function renderMode() {
   for (const step of $("steps").children) if (!step.hidden) step.querySelector(".step__n").textContent = String(++n);
   $("thinkEnd").hidden = solo;
   $("nextFoot").hidden = solo;
-  if (show.read) renderPlan(); // nothing read yet: the plan button keeps its first words
+  if (show.read) renderPlan();
+  else planBtn.dataset.tip = planButton({}, { solo }).tip; // nothing read yet: the first words, for this show type
   renderLoad();
   renderChat();
 }
@@ -586,6 +585,7 @@ function cueContext() {
   const { main } = questions.view();
   const next = main ? `${main.n ? `${solo ? "Point" : "Question"} ${main.n}: ` : ""}${main.text}` : "";
   if (position || next) context.position = { ...position, ...(next ? { next } : {}) };
+  if (solo) context.solo = true;
   return context;
 }
 
@@ -716,7 +716,10 @@ function cueWent() {
   renderCard();
 }
 
+// On a solo show the host follows the plan: the agent's suggestions never change "Your next point" (it helps with the
+// viewer chat's pick instead, which the host takes with Use).
 agent.onSuggestions((answer) => {
+  if (solo) return;
   questions.suggest(answer);
   renderCard();
 });

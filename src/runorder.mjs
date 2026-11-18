@@ -57,7 +57,7 @@ export function planButton(plan, { solo = false } = {}) {
   }
   if (plan.noParts) return { state: "error", text: "No parts with minutes", tip: `Add the run order, one part per line. ${PLAN_HOW}` };
   if (plan.line) return { state: "error", text: `Line ${plan.line} not clear`, tip: `Line ${plan.line}: "${cutLine(plan.text)}". ${PLAN_HOW}` };
-  return { state: null, text: "Paste it myself", tip: "Paste your show name, guest, questions and run order." };
+  return { state: null, text: "Paste it myself", tip: solo ? "Paste your show name, points and run order." : "Paste your show name, guest, questions and run order." };
 }
 
 /** The top bar's show line: the show and the guest when the plan names them; a solo show says "solo" instead of a guest. */

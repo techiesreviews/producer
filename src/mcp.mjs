@@ -134,7 +134,7 @@ export const TOOLS = [
               author: { type: "string", maxLength: CHAT_LIMITS.author, description: "The name the chat shows for the viewer." },
               platform: { type: "string", maxLength: CHAT_LIMITS.platform, description: "Where it was written: YouTube, LinkedIn, Twitch…" },
               text: { type: "string", maxLength: CHAT_LIMITS.text },
-              time: { type: "string", maxLength: CHAT_LIMITS.time, description: "The message's time as the chat gave it." },
+              time: { type: "string", maxLength: CHAT_LIMITS.time, description: "The message's time as the chat gave it: it tells a repeat apart from a new message." },
               question: { type: "boolean", description: "True for a viewer question (a line ending in ? counts without it)." },
               pick: { type: "string", maxLength: CHAT_LIMITS.pick, description: "Only for the one question you pick: a few words why it fits what comes next." },
             },
@@ -261,8 +261,10 @@ function shapeCue(page, sent) {
   const chat = cleanChat(page.chat);
   const position = cleanPosition(page.position);
   const guestName = cleanName(page.guestName);
+  const solo = page.solo === true;
   const structured = { idle: false, cue, seq, transcript, chat };
   if (guestName) structured.guestName = guestName;
+  if (solo) structured.solo = true;
   if (position) structured.position = position;
   if (truncated) structured.truncated = true;
   const lines = [`Cue: ${cue} (seq ${seq})`];
@@ -278,7 +280,9 @@ function shapeCue(page, sent) {
     ? `Next: call ${TOOL.load}, then call ${TOOL.wait} with seq ${seq}.`
     : cue === CUE.chat
       ? `Next: call ${TOOL.chat}, then call ${TOOL.wait} with seq ${seq}.`
-      : `Next: call ${TOOL.wait} with seq ${seq}${cue === CUE.endReport ? "" : " and your suggestions"}.`);
+      : solo && cue !== CUE.endReport
+        ? `Next: call ${TOOL.wait} with seq ${seq}. A solo show takes no suggestions: put the viewer question that fits what comes next in ${TOOL.chat} as a pick.`
+        : `Next: call ${TOOL.wait} with seq ${seq}${cue === CUE.endReport ? "" : " and your suggestions"}.`);
   return { content: [text(lines.join("\n\n"))], structuredContent: structured };
 }
 
@@ -302,7 +306,7 @@ function shapeContext(page) {
   if (solo) structured.solo = true;
   const lines = [];
   if (showTitle) lines.push(`Show: ${showTitle}`);
-  if (solo) lines.push("Solo show: no guest. The numbered list is the host's own points, in the order of the plan: a suggestion names a point by its number.");
+  if (solo) lines.push(`Solo show: no guest. The numbered list is the host's own points, in the order of the plan. On a solo show send no suggestions: the host follows the plan, and you help by reading the viewer chat (${TOOL.chat}) and picking the viewer question that fits what comes next.`);
   else if (guestName) lines.push(`Guest: ${guestName}`);
   lines.push(questions.length ? `Prepared questions:\n${questions.map((q) => `${q.n}. ${q.text}`).join("\n")}` : "Prepared questions: none yet.");
   if (segments.length) lines.push(`Run order:\n${segments.map((s, i) => `${i + 1}. ${s.title}${s.plannedMinutes !== undefined ? ` (${s.plannedMinutes} min)` : ""}${s.live ? " (live now)" : ""}`).join("\n")}`);
