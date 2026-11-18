@@ -27,6 +27,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 | `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text, at? }] }` |
 | `post_report` | `{ topics, asked?, skipped?, clips? }` | `{ ok: true }` |
 | `load_show` | `{ show?, guest?, questions?, parts: [{ name, minutes }], notes? }` | `{ loaded: true, questions, parts }`, or a plain refusal |
+| `post_chat` | `{ messages?: [{ author, text, platform?, time?, question?, pick? }], waiting?, problem? }` | `{ shown }`, or a plain refusal |
 
 A suggestion is `{ question }` (a prepared question number), `{ text }` (a short new question, 160 characters at most) or both, and optionally `{ why }` (120 characters at most). The Worker checks every call from the agent before the page hears it and passes on only these fields.
 
@@ -78,7 +79,11 @@ while o=$(curl -sS -m 40 -H "Authorization: Bearer $T" -d "$B" "$U/$P") && [ "$o
 
 The same relay serves Connect with MCP (Claude Code, Codex) and the message for Claude Code, Codex and T3 Code; see [the ways](agent-ways.md). The page's token, Test and Disconnect work the same for every way.
 
+`post_chat` (TOOLS-336) carries the viewer chat. There is no Restream app and no Restream login on this site: test links change their address (a quick tunnel's name is new each time), so a Restream login that must return to a fixed address cannot work yet. Instead the host's own agent reads the live chat through its own Restream connection (for Claude Code, the Restream connector: the live event, then its chat messages) and hands the messages to the page. The host presses "Connect Restream chat" in the setup, which sends the cue `read_chat`; from then on the agent sends what is new once after each `wait_for_cue`. It marks the one viewer question that fits what comes next with `pick` and a few words why (each cue names the next point on the card, `position.next`), so the page can offer it on the card with Use; the host presses Use. While no stream is live it sends `waiting`; when it cannot read the chat it sends `problem` with the reason. The Worker and the page check it with the same rules (`src/chat.mjs`: at most 50 messages a call, 500 characters a message, only these fields), the page refuses it until the host connected the chat and after the host switched it off or ended the show, and nothing is kept: the messages live in the page's memory and leave it only in a saved report. The chat reaches the page about as fast as the agent's loop turns: up to half a minute when nothing else happens.
+
 ## Not verified yet
+
+- The chat through the agent's Restream connection in a real live stream: the connector's chat list was read for a finished stream (anonymous viewer names such as "Person 1", the platform and the time), not yet while a stream is live. The rehearsal checks it.
 
 - The 30 second hold on a real Cloudflare deploy. The tests run the relay object and the Worker locally with a fake page and fake timers. The first deploy of the preview (TOOLS-144, the lead's step) must be checked with a real wait of 25 to 30 seconds, and with the Durable Object limit of the free plan in mind.
 - Nothing here is deployed, and no Cloudflare setting was changed.

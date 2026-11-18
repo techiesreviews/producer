@@ -47,9 +47,25 @@ Each entry:
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-setup-12 Show type: a solo show first
+- Try: Open the page; read step 1 "Show type"; pick With a guest, then Solo show again, by mouse, tap and keyboard; press Start on the producer screen and come back to the setup.
+- Good: As the solo prototype (TOOLS-338): Solo show is picked on arrival and the step is green. A solo show has no Guest agreed step and no "Share the studio tab with sound" button, step 4 reads "Show, points & plan" and its button counts points ("3 points · 2 parts ✓"), the top bar says "· <show> · solo", and the steps number in order. With a guest brings the guest step and the tab button back (numbered again) and the list reads as questions. Once the show clock runs the other choice is switched off with the round "i" and its reason. No explainer text.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/runorder.mjs`, `src/agent-load.mjs`, `src/showplan.mjs`, `src/listen.mjs`
+- Phone: yes
+- Spec: `test/browser/solo.mjs`, `test/browser/page.mjs`
+- Steps: none yet (no kit shots command)
+
+### F-setup-13 Viewer chat: Connect Restream chat through your own agent
+- Try: Before any agent is connected, hover or tap Connect Restream chat; pick OBS; pick Restream Studio, connect Claude Code (step 3) and press Connect Restream chat; let the agent answer "waiting" (no stream live), then send messages; press the connected button; let the agent say it cannot read the chat.
+- Good: Switched off with the round "i" and "Connect your agent first (step 2)." until an agent is connected, and "Viewer chat works with Restream streams only." with another stream (the step is then green: not needed). Ready, its tooltip says the agent reads the chat with its own Restream connection and nothing is stored. A press reads "Connecting chat…" (breathing dot); the agent's waiting line reads "Chat · waiting for your live stream" (the step turns green); messages make it "Restream chat connected ✓" in green; a press disconnects. A problem or no answer in 2 minutes reads "Chat not connected · try again" in orange with the reason in its tooltip. No toast, no explainer.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/chat.mjs`, `src/agent-link.mjs`, `src/mcp.mjs`, `src/agent-message.mjs`
+- Phone: yes
+- Spec: `test/browser/solo.mjs`, `test/chat.test.mjs`
+- Steps: none yet (no kit shots command)
+
 ### F-setup-03 Guest agreed
-- Try: Pick Yes, No · my mic only or Solo show by mouse, tap and keyboard; hover the step's label and the answers.
-- Good: Nothing is picked on arrival; one answer at a time; the step turns green once answered. Only the host picks it. "Open producer screen" stays switched off until it is answered, its tooltip saying so.
+- Try: Pick With a guest at Show type; pick Yes or No · my mic only by mouse, tap and keyboard; hover the step's label and the answers.
+- Good: Shown only for a show with a guest. Nothing is picked on arrival; one answer at a time; the step turns green once answered. Only the host picks it. "Open producer screen" stays switched off until it is answered, its tooltip saying so.
 - Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/listen.mjs`
 - Phone: yes
 - Spec: `test/browser/page.mjs`, `test/browser/speech.mjs`
@@ -137,12 +153,21 @@ Each entry:
 - Spec: `test/browser/runorder.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-live-05 Solo show: Your next point, the viewer chat and the agent's pick
+- Try: On a solo show with a plan and the chat connected, open the producer screen; let the agent send chat (hellos, questions, one with a pick); press Use on the card's pick, then Back to your point; press Use in the chat, then Answered; press Skip on another question; switch Questions only on and off; press Said and Skip on the card; on a phone scroll to the chat.
+- Good: As the solo prototype (TOOLS-338): the card reads "Your next point" with the point large, "Next in your plan.", the chip "Point 1 of 3 · your plan", Said and Skip, and the next two points to swap in; no Suggest now or thinking light. The viewer chat sits under the run order (under the card on a phone): each message with who, where and the show time; plain chat quiet, a question bold with Use, Answered and Skip; "N open" counts the questions waiting; Questions only hides the rest. The agent's pick waits on top of the rows under the card with a small orange Use and "AI pick: <why> · <viewer>"; it never takes the card by itself. Use puts the viewer question on the card ("Viewer question", the viewer and the time it was asked, "From the chat", Answered and Skip, and "Back to your point" below); in the chat its Use reads "On card". Answered reads "Answered ✓ · 1:05" on the chat's button, Skip "Skipped"; each press again reopens it. A viewer's words never become markup. Before the stream is live the panel reads "Waiting for your live stream"; not connected it reads "Not connected · connect it in Set up" (with OBS "Restream streams only"). No toast, no sound, no explainer; nothing is stored.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/chat.mjs`, `src/questions.mjs`, `src/mcp.mjs`
+- Phone: yes
+- Spec: `test/browser/solo.mjs`
+- Steps: none yet (no kit shots command)
+
 ### F-live-04 End & report and Save report
 - Try: With a plan pasted and Claude Code connected, open the producer screen, press Start, talk a little, press Asked and Skip once each, then press End & report in the top bar ("End" on a phone). Wait for the agent's report; press Copy, then Save report. Open What was heard. Try again with no agent connected, once where the agent never answers (two minutes), and once where the agent stays connected but its loop has gone quiet for a minute (the agent button reads "Waiting for Claude Code…").
 - Good: As the mock-up's screen 4: listening stops at once (the browser's microphone and sharing lights go out) and the End report shows at once with the show, guest and date; four numbers (show time with how far over or under the plan, list questions asked, new questions from the agent asked, viewer questions "—" with "no viewer chat yet"); Clip moments with their show time; Run order plan against real (−0:20 green, +1:40 orange, "not reached"); Topics covered; Questions not asked ("skipped" or "no time"); What was heard (folded, each line with its show time and who said it). While the agent works, Clip moments and Topics read "Waiting for Claude Code…" with a breathing dot; its report fills them in. A connected agent whose loop went quiet is waited for the same way (it hears End when its loop comes back); only with no agent connected do they read "No agent was connected when the show ended." With no agent, or after two minutes, they are switched off with the round "i" and the reason; a late report still fills them. Copy reads "Copied ✓" for a moment; Save report asks where to save (Chrome, Edge) or downloads producer-report-DATE.md, then reads "Saved ✓ · producer-report-DATE.md"; the file holds exactly what the screen shows. Nothing of the show is left in the browser after the tab closes; no toast, no explainer.
-- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/report.mjs`, `src/cues.mjs`, `src/questions.mjs`, `src/agent-link.mjs`, `src/mcp.mjs`, `src/showphase.mjs`
+- Solo show (TOOLS-336, the solo prototype's screen 3): the chip reads "<show> · solo · <date>"; the four numbers are show time, "1 of 3 points said", viewer questions answered, and viewer questions not answered with how many were skipped; then Viewer questions answered (the time it was answered, the question with the viewer under it, "answered" in green), Viewer questions not answered (the time it came, "skipped" or "no time"), Run order · plan vs real and Points not said ("Point 2", "no time" or "skipped"), and What was heard (folded). No clip moments or topics on a solo report. The saved file holds the same. After End the chat stops: the agent hears the chat is off.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/report.mjs`, `src/cues.mjs`, `src/questions.mjs`, `src/agent-link.mjs`, `src/mcp.mjs`, `src/showphase.mjs`, `src/chat.mjs`
 - Phone: yes
-- Spec: `test/browser/report.mjs`
+- Spec: `test/browser/report.mjs`, `test/browser/solo.mjs`
 - Steps: none yet (no kit shots command)
 
 ### F-live-03 The Next question card: Suggest now, Slow down and the thinking light
