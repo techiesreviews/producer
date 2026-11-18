@@ -108,6 +108,7 @@ async function openScreen(page, press, { agent }) {
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     await page.evaluate(() => window.__relay.call("get_context"));
   }
+  await press(page.locator('#modeSeg [data-v="guest"]')); // a show with a guest (TOOLS-336: a solo show is the default)
   await press(page.locator("#guestSeg button").first());
   await press(page.locator("#micBtn"));
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -136,6 +137,7 @@ export async function run({ browser, base, out }) {
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     const press = (locator) => (options.hasTouch ? locator.tap() : locator.click());
     // A switched-off control is still pressed (it shows its reason); Playwright would wait for it to switch on.
     const pressOff = (locator) => (options.hasTouch ? locator.tap({ force: true }) : locator.click({ force: true }));
@@ -313,6 +315,7 @@ export async function run({ browser, base, out }) {
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await openScreen(page, (l) => l.click(), { agent: false });
     assert.equal(await page.locator("#qMain").textContent(), "How did it start?", "no agent: the first prepared question");
     assert.deepEqual([await page.locator("#suggestBtn").textContent(), await page.locator("#suggestBtn").getAttribute("aria-disabled")], ["i Suggest now · no agent", "true"], "no agent: Suggest now off, saying so");
@@ -333,6 +336,7 @@ export async function run({ browser, base, out }) {
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await openScreen(page, (l) => l.click(), { agent: true });
     // A pause after 31 s of speech sends a cue on its own: the light breathes and Suggest now says Thinking….
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }); });
@@ -358,6 +362,8 @@ export async function run({ browser, base, out }) {
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
+    await page.locator('#modeSeg [data-v="guest"]').tap(); // a show with a guest (TOOLS-336: a solo show is the default)
     await page.locator("#guestSeg button").first().tap();
     await page.locator("#micBtn").tap();
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
