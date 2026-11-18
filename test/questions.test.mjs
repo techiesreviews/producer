@@ -219,3 +219,19 @@ test("a picked question swapped away is an ordinary alternative; a new plan keep
   q.suggest({ seq: 1, suggestions: [{ question: 2 }] });
   assert.equal(q.view().main.n, 2, "with no pick on the card the agent's answer takes it again");
 });
+
+test("the agent's answer under a picked card keeps the question the pick replaced to swap back", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.pick(3);
+  q.suggest({ seq: 1, suggestions: [{ question: 2 }, { question: 4 }] });
+  assert.deepEqual(q.view().alts.map((a) => a.n), [2, 1], "the agent's first suggestion, then the replaced question");
+});
+
+test("pick(n) of the question already under a viewer question marks it picked", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  assert.equal(q.pick(1), true, "the card's own question becomes the host's pick");
+  assert.equal(q.view().main.from, "picked");
+  assert.equal(q.pick(1), false, "already picked");
+});

@@ -57,6 +57,24 @@ test("the plan reader: a question belongs to the part written above it, only whe
   assert.deepEqual(readPlan("3 Intro\n1. Why?").questionParts, [null], "one part with its questions after it says nothing new");
 });
 
+test("a plan that puts no question under two different parts says no part (an opening question, or one part added after the questions)", () => {
+  assert.deepEqual(readPlan("1. An opening question?\n3 Intro\n8 Story\n2. Why?\n3. How?").questionParts, [null, null, null], "an opening question above the parts");
+  assert.deepEqual(readPlan("3 Intro\n8 Story\n1. Why?\n2. How?\n5 Only if time").questionParts, [null, null], "one more part after the questions");
+  assert.deepEqual(readPlan("3 Intro\n1. Why?\n8 Story").questionParts, [null], "questions under one part only");
+});
+
+test("the Livestream 3 layout at full size (10 parts first, then 72 numbered questions): matches in show order, no headings, well under a second", () => {
+  const lines = ["Show: Stand-in", "Guest: Sam Example", ...Array.from({ length: 10 }, (_, p) => `${p + 3} Part ${p + 1}`)];
+  for (let n = 1; n <= 72; n++) lines.push(`${n}. Question ${n} about ${n === 6 || n === 8 ? "the cookie" : "something"}?`);
+  const plan = readPlan(lines.join("\n"));
+  assert.deepEqual([plan.parts.length, plan.questions.length], [10, 72]);
+  const t0 = performance.now();
+  const r = findQuestions({ plan, query: "cookie" });
+  const ms = performance.now() - t0;
+  assert.deepEqual(ns(r), [[null, [6, 8]]]);
+  assert.ok(ms < 50, `the search took ${ms.toFixed(2)} ms`);
+});
+
 test("72 questions over 10 parts: a search takes well under a second", () => {
   const lines = [];
   for (let p = 1; p <= 10; p++) {

@@ -222,6 +222,14 @@ export async function run({ browser, base, out }) {
     await press(find);
     await find.fill("question 3:");
     assert.deepEqual((await rows())[0], "# Part 1 · Part about welcomeon now", `${name}: the part on now says so`);
+    if (!phone) {
+      // The clock ticks every second: the list is not rebuilt, so a focused row keeps the keyboard; a pick by Space keeps it on its row.
+      await page.locator('#findList .alt[data-n="13"]').focus();
+      await page.waitForTimeout(1500);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.n), "13", `${name}: the focused row keeps the keyboard while the clock runs`);
+      await page.keyboard.press("Space");
+      assert.deepEqual(await page.evaluate(() => [document.activeElement?.dataset.n, document.activeElement?.dataset.s]), ["13", "card"], `${name}: after the pick the keyboard stays on the row, now On card`);
+    }
     await press(page.locator("#findX"));
     ok(`${name}: "on now" marks the part on now`);
 
@@ -232,20 +240,23 @@ export async function run({ browser, base, out }) {
     await context.close();
   }
 
-  // A solo show whose plan lists every part first and the points after them: the plan says no part, so no headings.
+  // A solo show whose plan lists every part first and the points after them (the Livestream 3 layout, 72 points over 10
+  // parts): the plan says no part, so no headings.
   {
     const context = await browser.newContext(ownAddress(VIEWS[0]));
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
-    const plan = ["Show: Solo Test", "5 Intro", "10 The rooms", "1. The cookie jar?", "2. A late call?", "3. Another cookie?"].join("\n");
+    // The Livestream 3 layout at full size: 10 parts first, then 72 numbered points.
+    const plan = ["Show: Solo Test", ...Array.from({ length: 10 }, (_, p) => `${p + 3} Part ${p + 1}`), ...Array.from({ length: 72 }, (_, i) => `${i + 1}. Point ${i + 1} about ${i === 5 || i === 7 ? "the cookie" : "something"}`)].join("\n");
     await openScreen(page, (l) => l.click(), { plan, guest: false });
     const find = page.locator("#findIn");
-    assert.equal(await find.getAttribute("placeholder"), "Search all 3 points", "solo: it searches points");
+    assert.equal(await find.getAttribute("placeholder"), "Search all 72 points", "solo: it searches points");
     await find.fill("cookie");
     const list = await page.locator("#findList").evaluate((el) => [...el.children].map((c) => `${c.className}: ${c.textContent}`));
-    assert.deepEqual(list, ["alt: The cookie jar?On card", "alt: Another cookie?Point 3"], "no part headings, show order, Point chips (point 1 is on the card)");
-    await page.locator('#findList .alt[data-n="3"]').click();
+    assert.deepEqual(list, ["alt: Point 6 about the cookiePoint 6", "alt: Point 8 about the cookiePoint 8"], "no part headings, show order, Point chips");
+    assert.equal(await page.locator("#findCount").textContent(), "2 of 72", "the count");
+    await page.locator('#findList .alt[data-n="8"]').click();
     assert.equal(await page.locator("#qWhy").textContent(), "Picked by you. Stays here until Said or Skip.", "solo: Said");
     const path = join(out, "search-solo-no-parts.png");
     await page.screenshot({ path });
