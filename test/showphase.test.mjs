@@ -101,3 +101,35 @@ test("End & report: the agent that took the end cue is waited for; else the reas
   assert.deepEqual(endingAgent({ asked: false, link: "waiting", name: "Codex" }), { phase: "off", name: "Codex", reason: "No agent was connected when the show ended." }, "a message copied but never pasted is no agent");
   assert.deepEqual(endingAgent({ asked: false, link: "elsewhere", name: "Codex" }), { phase: "off", name: "Codex", reason: "Your agent is connected in another tab." });
 });
+
+test("Setup on the producer screen (TOOLS-348): the setup while the show keeps running, then Back to producer screen", async () => {
+  const { phase, timers, ticks, changes } = make();
+  assert.equal(phase.away(), false, "no show running yet: nothing to step away from");
+  assert.equal(phase.running(), false);
+  phase.open();
+  phase.clockStarted();
+  assert.equal(phase.away(), true);
+  assert.deepEqual([phase.view(), phase.live(), phase.visiting(), phase.running()], ["setup", false, true, true], "the setup, with the show running");
+  ticks.length = 0;
+  await timers.tick(TICK_MS * 4);
+  assert.equal(ticks.length, 4, "the clock in the top bar keeps ticking on the setup screen");
+  assert.equal(phase.away(), false, "already on the setup screen");
+  assert.equal(phase.open(), true, "Back to producer screen");
+  assert.deepEqual([phase.view(), phase.visiting(), phase.running()], ["live", false, true]);
+  phase.away();
+  assert.equal(phase.end(), true, "End & report from the top bar while on the setup screen");
+  assert.deepEqual([phase.view(), phase.visiting(), phase.running(), phase.ticking()], ["ended", false, false, false]);
+  assert.deepEqual(changes, ["live", "setup", "live", "setup", "ended"]);
+});
+
+test("an engine that fails while the host is on the setup screen ends the visit: the show is no longer running there", () => {
+  const { phase } = make();
+  phase.open();
+  phase.clockStarted();
+  phase.away();
+  assert.equal(phase.back(), true, "an engine failed: the setup stays, the show stops listening");
+  assert.deepEqual([phase.view(), phase.visiting(), phase.running(), phase.ticking()], ["setup", false, false, false]);
+  assert.equal(phase.end(), false, "End & report is not in reach then");
+  assert.equal(phase.open(), true, "Open producer screen again");
+  assert.equal(phase.ticking(), true);
+});
