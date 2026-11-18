@@ -134,7 +134,7 @@ export const TOOLS = [
               author: { type: "string", maxLength: CHAT_LIMITS.author, description: "The name the chat shows for the viewer." },
               platform: { type: "string", maxLength: CHAT_LIMITS.platform, description: "Where it was written: YouTube, LinkedIn, Twitch…" },
               text: { type: "string", maxLength: CHAT_LIMITS.text },
-              time: { type: "string", maxLength: CHAT_LIMITS.time, description: "The message's time as the chat gave it: it tells a repeat apart from a new message." },
+              time: { type: "string", maxLength: CHAT_LIMITS.time, description: "The message's time as the chat gave it, ISO 8601 with its zone (2026-12-01T19:20:00Z): it places the message on the show clock and tells a repeat apart from a new message." },
               question: { type: "boolean", description: "True for a viewer question (a line ending in ? counts without it)." },
               pick: { type: "string", maxLength: CHAT_LIMITS.pick, description: "Only for the one question you pick: a few words why it fits what comes next." },
             },

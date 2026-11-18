@@ -11,6 +11,7 @@
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines), in one
 // scope with the other page files, so its own helpers carry a "chat" name.
 import { CUE, TOOL } from "./protocol.mjs";
+import { clockText } from "./runorder.mjs";
 
 /** What one post_chat may carry: messages in one call, and the characters of each field. */
 export const CHAT_LIMITS = { messages: 50, author: 60, platform: 30, text: 500, time: 40, pick: 120, note: 200 };
@@ -63,14 +64,33 @@ export function readChat(args) {
   return { ok: true, chat: { messages, ...notes } };
 }
 
+/** A full ISO 8601 time with its zone, as Restream gives it ("2026-12-01T19:01:00Z"); anything else is not read as a time. */
+const CHAT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+/** Computer clocks drift from Restream's: a message this little before Start counts as the start. */
+const CHAT_DRIFT_S = 15;
+
+/**
+ * A message's time on the show clock ("1:00"): its own ISO time against the run order's view at `now`, never later than
+ * now; "before" for one from before Start (or any message while the clock has not started); the time it came (now)
+ * when its time is not a full ISO time.
+ */
+export function chatStampOf(time, view, now) {
+  if (!view?.started) return "before";
+  const said = typeof time === "string" && CHAT_ISO.test(time) ? Date.parse(time) : NaN;
+  if (!Number.isFinite(said)) return clockText(view.clock);
+  const since = (said - (now - view.clock * 1000)) / 1000;
+  if (since < -CHAT_DRIFT_S) return "before";
+  return clockText(Math.min(Math.max(0, since), view.clock));
+}
+
 /** A message's state: "" for plain chat; a question is "open", "card" (on the card), "answered" or "skipped". */
 const chatIsQuestion = (text) => /\?\s*$/.test(text);
 
 /**
  * createChat({ waitMs, onChange, timers }): ask(name, send) is the host's press on Connect Restream chat (send() sends
  * the cue and says whether the agent took it); agentPost(args, at) the agent's post_chat (at: the show time now, "m:ss",
- * or ""), giving { result } or { error }; disconnect() the host's press on a connected button; agentLink(state, name)
- * the agent link's state; `at` may be a function of the message (its own time against the show clock). mark(id, what, at) is a question's buttons: "card" (Use), "answered" or "skipped".
+ * or "", or a function of the message: its own time against the show clock), giving { result } or { error }; disconnect() the host's press on a connected button; agentLink(state, name)
+ * the agent link's state. mark(id, what, at) is a question's buttons: "card" (Use), "answered" or "skipped".
  * view() gives { phase, name, reason, note, messages, card, pick, open, asked }, phase being off, asking, waiting, on or
  * failed. onChange is called when the wait runs out on its own.
  */
@@ -158,7 +178,7 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
         // Off the card again: the agent's pick on it is let go (it comes back only if the agent picks it again).
         if (m.s === "card") { Object.assign(m, { s: "open", pick: "" }); card = null; return true; }
         const old = card !== null ? find(card) : null;
-        if (old && old !== m) old.s = "open";
+        if (old && old !== m) Object.assign(old, { s: "open", pick: "" }); // turned down: the pick on it goes too
         Object.assign(m, { s: "card", doneAt: "", done: 0 });
         card = m.id;
         return true;

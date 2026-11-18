@@ -6,7 +6,7 @@ import { createTapOpener } from "./audio-tap.mjs";
 import { createListening } from "./listening.mjs";
 import { clockText, PLAN_EXAMPLE, planButton, runPosition, showLine } from "./runorder.mjs";
 import { CUE, readReport } from "./protocol.mjs";
-import { chatButton, createChat } from "./chat.mjs";
+import { chatButton, chatStampOf, createChat } from "./chat.mjs";
 import { createCues } from "./cues.mjs";
 import { createQuestions, isThinking, suggestButton, THINK_MS, thinkLight, turnsText } from "./questions.mjs";
 import { buildReport, REPORT_EMPTY, REPORT_WAIT_MS, reportFileName, reportMarkdown } from "./report.mjs";
@@ -372,15 +372,10 @@ function chatOff() {
   agent.unsend(CUE.chat);
 }
 
-/** A message's time on the show clock: its own time from the chat when it gives one (a catch-up batch keeps each
- * message's time), never later than now; "before" for one from before Start; else the time it came. */
+/** A message's time on the show clock (src/chat.mjs chatStampOf): a catch-up batch keeps each message's own time. */
 function chatStamp(m) {
-  const view = show.run?.view(Date.now());
-  if (!view?.started) return "before";
-  const said = m.time ? Date.parse(m.time) : NaN;
-  if (!Number.isFinite(said)) return clockText(view.clock);
-  const since = (said - (Date.now() - view.clock * 1000)) / 1000;
-  return since < 0 ? "before" : clockText(Math.min(since, view.clock));
+  const now = Date.now();
+  return chatStampOf(m.time, show.run?.view(now), now);
 }
 
 /** The agent's post_chat (src/chat.mjs checks it again and gives the answer the agent hears). */
