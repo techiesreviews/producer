@@ -235,7 +235,7 @@ export async function run({ browser, base, out }) {
       await find.fill("cookie");
       await page.locator("#findList .alt").first().focus();
       await page.keyboard.press("Escape");
-      assert.deepEqual([await find.inputValue(), await page.evaluate(() => document.activeElement?.id)], ["", "findIn"], `${name}: Escape on a result row empties the box and goes back to it`);
+      assert.deepEqual([await find.inputValue(), await page.evaluate(() => document.activeElement?.id), await page.locator("#findList").isHidden(), await page.locator("#alts").isVisible()], ["", "findIn", true, true], `${name}: Escape on a result row empties the box, closes the list and goes back to the box`);
       await find.fill("zebra");
     }
     await press(page.locator("#findX"));

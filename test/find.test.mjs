@@ -132,3 +132,11 @@ test("markWords: the searched words marked in the question's own text, case kept
 test("markWords: a letter that grows when lower-cased (İ) does not shift the marks after it", () => {
   assert.deepEqual(markWords("İstanbul risk?", ["risk"]), [{ text: "İstanbul ", hit: false }, { text: "risk", hit: true }, { text: "?", hit: false }]);
 });
+
+test("markWords: overlapping hits of one word are all marked; a typed İ marks the same question the list shows", () => {
+  assert.deepEqual(markWords("banana", ["ana"]), [{ text: "b", hit: false }, { text: "anana", hit: true }]);
+  const words = findWords("İstanbul risk");
+  assert.deepEqual(markWords("İstanbul risk?", words), [{ text: "İstanbul", hit: true }, { text: " ", hit: false }, { text: "risk", hit: true }, { text: "?", hit: false }]);
+  const plan = readPlan("3 Intro\n1. İstanbul risk?");
+  assert.equal(findQuestions({ plan, query: "İstanbul risk" }).count, 1, "the list shows it too");
+});
