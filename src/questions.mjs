@@ -13,7 +13,7 @@ const ALTS = 2;
 
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
- * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; pick(n) puts
+ * agent's answer (true when it changed the card or its rows to swap in); asked(), skip() and swap(i) are the card's controls; pick(n) puts
  * prepared question n on the card (the search's click or Enter; an asked or skipped one opens again); view() gives
  * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
  * open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
@@ -78,9 +78,9 @@ export function createQuestions() {
         return text ? { text, ...why, from: "agent" } : null;
       }).filter((q) => q && open(q));
       if (!fresh.length) return false;
-      // The host's pick stays on the card: the agent's suggestions wait first below it.
+      // The host's pick stays on the card: the agent's first suggestion waits below it, then the question the pick replaced.
       if (main?.from === "picked") {
-        alts = [...fresh, ...alts];
+        alts = [fresh[0], ...alts, ...fresh.slice(1)];
         fill();
         return true;
       }
@@ -103,7 +103,12 @@ export function createQuestions() {
 
     pick(n) {
       const q = prepared(n, { from: "picked" });
-      if (!q || main?.n === n) return false;
+      if (!q || (main?.n === n && main.from === "picked")) return false;
+      if (main?.n === n) {
+        // The card's own question (under a viewer question, say) becomes the host's pick.
+        main = q;
+        return true;
+      }
       done.delete(n);
       // The question it replaced comes first to swap back.
       alts = [unpicked(main), ...alts].filter(Boolean);

@@ -8,8 +8,9 @@
 //   10 Intro                  a part of the run order: its planned minutes, then its name ("10 min Intro" too);
 //                             a line that starts with minutes is a part even when it ends with ? ("10 Any questions?")
 //   1. How did it start?      a question: numbered (1. or 1)), or any other line ending with a question mark
-// A question written under a part belongs to that part (the search groups by it). A plan that lists every part first
-// and the questions after them says nothing about it, so its questions belong to no part.
+// A question written under a part belongs to that part (the search groups by it), once the plan puts questions under at
+// least two different parts. A plan that lists every part first and the questions after them (or adds one part after
+// them, or opens with a question above the parts) says nothing about it, so its questions belong to no part.
 
 /** The short example under the paste box: one line of each kind. */
 export const PLAN_EXAMPLE = ["Show: Techies Live", "Guest: Jane Doe", "10 Intro", "20 Her story", "1. How did it start?"];
@@ -27,7 +28,6 @@ const PLAN_PART = /^([1-9]\d{0,2})\s*(?:minutes|minute|mins|min|m)?\.?\s+(\S.*)$
 export function readPlan(text) {
   const plan = { ok: true, show: "", guest: "", parts: [], questions: [], questionParts: [] };
   const under = []; // per question, the index of the last part above it (-1 for none)
-  let between = false; // a question sits above a part line: the plan puts questions under their parts
   const lines = String(text).split(/\r?\n/);
   let any = false;
   for (const [i, raw] of lines.entries()) {
@@ -39,13 +39,15 @@ export function readPlan(text) {
     const part = line.match(PLAN_PART);
     if (named && named[2].trim()) plan[named[1].toLowerCase()] = named[2].trim();
     else if (numbered) { plan.questions.push(numbered[1].trim()); under.push(plan.parts.length - 1); }
-    else if (part) { if (plan.questions.length) between = true; plan.parts.push({ name: part[2].trim(), minutes: Number(part[1]) }); }
+    else if (part) plan.parts.push({ name: part[2].trim(), minutes: Number(part[1]) });
     else if (line.endsWith("?")) { plan.questions.push(line); under.push(plan.parts.length - 1); }
     else return { ok: false, line: i + 1, text: raw.trim() };
   }
   if (!any) return { ok: false, empty: true };
   if (!plan.parts.length) return { ok: false, noParts: true };
-  plan.questionParts = under.map((i) => (between && i >= 0 ? i : null));
+  // Questions under two parts or more: the plan puts questions under their parts.
+  const grouped = new Set(under.filter((i) => i >= 0)).size >= 2;
+  plan.questionParts = under.map((i) => (grouped && i >= 0 ? i : null));
   return plan;
 }
 
