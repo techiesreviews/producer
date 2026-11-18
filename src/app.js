@@ -65,7 +65,7 @@ const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"
 // viewer chat is Restream's: another stream ends it.
 choices(document.getElementById("streamSeg"), () => {
   session.streamChanged();
-  if (streamName() !== "restream") viewers.disconnect();
+  if (streamName() !== "restream") chatOff();
   renderChatBtn();
   renderChat();
 });
@@ -360,15 +360,32 @@ chatBtn.addEventListener("click", () => {
   if (chatBtn.getAttribute("aria-disabled") === "true") return;
   const { phase: chatPhase } = viewers.view();
   if (chatPhase === "asking") return; // the agent is on its way: the button says so
-  if (chatPhase === "on" || chatPhase === "waiting") viewers.disconnect();
+  if (chatPhase === "on" || chatPhase === "waiting") chatOff();
   else viewers.ask(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.chat, transcript: [] }));
   renderChatBtn();
   renderChat();
 });
 
+/** The chat goes off: a request the agent has not picked up yet is taken back, so it never hears one the page then refuses. */
+function chatOff() {
+  viewers.disconnect();
+  agent.unsend(CUE.chat);
+}
+
+/** A message's time on the show clock: its own time from the chat when it gives one (a catch-up batch keeps each
+ * message's time), never later than now; "before" for one from before Start; else the time it came. */
+function chatStamp(m) {
+  const view = show.run?.view(Date.now());
+  if (!view?.started) return "before";
+  const said = m.time ? Date.parse(m.time) : NaN;
+  if (!Number.isFinite(said)) return clockText(view.clock);
+  const since = (said - (Date.now() - view.clock * 1000)) / 1000;
+  return since < 0 ? "before" : clockText(Math.min(since, view.clock));
+}
+
 /** The agent's post_chat (src/chat.mjs checks it again and gives the answer the agent hears). */
 function chatFromAgent(args) {
-  const answer = viewers.agentPost(args, chatTime());
+  const answer = viewers.agentPost(args, chatStamp);
   renderChatBtn();
   renderChat();
   renderCard();
@@ -439,6 +456,7 @@ function renderChat() {
   else if (v.phase === "asking") state = [dot("think"), "Connecting…"];
   else if (v.phase === "off" || v.phase === "failed") state = [offMark(), "Not connected · connect it in Set up"];
   else if (!v.messages.length) state = ["No messages yet"];
+  else if (questionsOnly && !v.messages.some((m) => m.q)) state = ["No questions yet"];
   chatState.hidden = !state;
   if (state) chatState.replaceChildren(...state);
   openChip.hidden = !v.messages.length;
@@ -1053,7 +1071,7 @@ endBtn.addEventListener("click", () => {
   ending.run = show.run ? show.run.view(now) : null;
   session.end();
   // The chat stops with the show: what came is kept for the report, and the agent hears the chat is off.
-  viewers.disconnect();
+  chatOff();
   renderChatBtn();
   const name = AGENT_WAYS[agentKey()].name;
   // A connected agent whose loop went quiet takes the end cue too, and is waited for the same time.
