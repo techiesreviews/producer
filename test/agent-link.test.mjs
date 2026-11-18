@@ -17,7 +17,7 @@ const SITE = "https://producer.test";
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false, show, load, report } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat } = {}) {
   const now = { t: Date.now() };
   const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
@@ -31,6 +31,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show, load, report } = {
     show,
     load,
     report,
+    chat,
     now: () => now.t,
     timers,
   });
@@ -703,4 +704,44 @@ test("B5: the answers already taken are bounded: the newest ANSWERS_KEPT stay, a
   assert.equal(link.answersHeld(), ANSWERS_KEPT);
   link.disconnect();
   assert.equal(link.answersHeld(), 0, "Disconnect lets them all go");
+});
+
+// ---- TOOLS-336: the viewer chat ----
+
+test("post_chat: the page's chat takes what the agent sent, and the answer goes back to the agent", async () => {
+  const got = [];
+  const { link, call, connect } = setup({ chat: (args) => { got.push(args); return { result: { shown: args.messages.length } }; } });
+  await connect();
+  const ok = await call("post_chat", { messages: [{ author: "Person 1", text: "How often do you test a restore?" }] });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(got, [{ messages: [{ author: "Person 1", platform: "", text: "How often do you test a restore?", time: "", pick: "" }], waiting: "", problem: "" }]);
+  assert.deepEqual(ok.body.result.structuredContent, { ok: true, shown: 1 });
+  assert.equal(link.view().state, "on", "a chat post counts as the agent's own call");
+  link.disconnect();
+});
+
+test("post_chat on a page with no chat: a plain refusal, never a crash", async () => {
+  const { link, call, connect } = setup();
+  await connect();
+  const r = await call("post_chat", { messages: [] });
+  assert.equal(r.body.result.isError, true);
+  assert.match(r.body.result.content[0].text, /chat/i);
+  link.disconnect();
+});
+
+test("the chat cue goes alone, is not a question on the card, and never takes suggestions as an answer", async () => {
+  const { link, call, connect, flush } = setup();
+  link.onSuggestions(() => assert.fail("a chat cue has no suggestions"));
+  await connect();
+  await call("get_context");
+  link.send({ cue: CUE_NAMES.chat, transcript: [] }); // seq 1
+  assert.equal(link.asking(), false, "reading the chat is not a question on the card");
+  link.send(CUE); // seq 2
+  const first = (await call("wait_for_cue", { seq: 0 })).body.result.structuredContent;
+  assert.deepEqual([first.cue, first.seq, first.transcript], ["read_chat", 1, []], "alone: the pause cue's words do not hide it");
+  const second = (await call("wait_for_cue", { seq: 1, suggestions: [{ text: "Not an answer to the chat cue" }] })).body.result.structuredContent;
+  assert.deepEqual([second.cue, second.seq], ["pause", 2]);
+  assert.equal(link.suggestion(), null);
+  await flush();
+  link.disconnect();
 });
