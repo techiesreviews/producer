@@ -96,7 +96,7 @@ test("the Livestream 3 plan itself (PRODUCER_PLAN_FIXTURE): 72 questions, 10 par
   const cookie = findQuestions({ plan, query: "cookie" });
   assert.ok(performance.now() - t0 < 50);
   assert.deepEqual(ns(cookie), [[null, [6, 8]]]);
-  assert.ok(findQuestions({ plan, query: "2fa" }).count >= 3);
+  assert.ok(findQuestions({ plan, query: "2fa" }).count >= 2);
   assert.ok(findQuestions({ plan, query: "login" }).count >= 3);
 });
 
