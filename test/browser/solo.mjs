@@ -371,7 +371,7 @@ export async function run({ browser, base, out }) {
     await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
     await page.locator("#goBtn").tap();
     const button = page.locator("#chatState button");
-    assert.deepEqual([await button.innerText(), await button.getAttribute("aria-disabled"), await button.getAttribute("data-tip")], ["i Connect Restream chat", "true", "Your agent is not connected. The chat comes through your agent."], "no agent: the panel's button is off with its reason");
+    assert.deepEqual([(await button.innerText()).replace(/\s+/g, " "), await button.getAttribute("aria-disabled"), await button.getAttribute("data-tip")], ["i Connect Restream chat", "true", "Your agent is not connected. The chat comes through your agent."], "no agent: the panel's button is off with its reason");
     const words = await page.locator("#live").evaluate((el) => `${el.innerText} ${[...el.querySelectorAll("[data-tip]")].map((n) => n.dataset.tip).join(" ")}`);
     assert.doesNotMatch(words, /set ?up|step \d/i, "nothing on the producer screen points to the setup");
     const path = join(out, "solo-phone-no-agent.png");

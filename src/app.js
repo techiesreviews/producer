@@ -457,15 +457,15 @@ function renderChat() {
   chatList.hidden = !v.messages.length;
   // The line under the panel's head: the panel's own chat button, the setup button's twin, through every state
   // (connect, connecting, waiting for the live stream, connected ✓, try again; a press on a connected chat disconnects
-  // it), because the setup is out of sight during the show; with what the list waits for beside it. With no agent the
-  // line says where to connect. The line is rebuilt only when it changes, so a focused button keeps the keyboard.
+  // it), because the setup is out of sight during the show; with what the list waits for beside it. With no agent it is
+  // switched off with a reason that never points to the setup. The line is rebuilt only when it changes, so a focused
+  // button keeps the keyboard.
   const link = agent.view().state;
   let state = null;
   let key = "";
   if (!restream) [state, key] = [[offMark(), "Restream streams only"], "obs"];
-  else if ((v.phase === "off" || v.phase === "failed") && link !== "on") [state, key] = [[offMark(), "Not connected · connect it in Set up"], "off"];
   else {
-    const said = chatButton({ stream: streamName(), agent: link, chat: v, name: AGENT_WAYS[agentKey()].name });
+    const said = chatButton({ stream: streamName(), agent: link, chat: v, name: AGENT_WAYS[agentKey()].name, inPanel: true });
     label(chatRetry, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
     switchOff(chatRetry, said.off);
     chatNote.textContent = v.phase === "on" && !v.messages.length ? "No messages yet" : questionsOnly && v.messages.length && !v.messages.some((m) => m.q) ? "No questions yet" : "";
