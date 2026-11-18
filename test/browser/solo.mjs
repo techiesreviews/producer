@@ -273,6 +273,7 @@ export async function run({ browser, base, out }) {
     assert.equal(said.position.next, "Point 1: The late call", `${name}: the cue names the next point, so the agent can pick a question that fits`);
     assert.equal(said.guestName, undefined, `${name}: no guest's name on a solo show`);
     assert.equal(said.solo, true, `${name}: the cue says it is a solo show`);
+    assert.equal(said.chat, true, `${name}: and that the viewer chat is connected`);
     // An answer with suggestions never changes the host's next point on a solo show: the agent offers viewer questions instead.
     await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 1000, suggestions: [{ text: "Agent's own question?" }, { question: 3 }] }); }, said.seq);
     await page.waitForTimeout(100);
@@ -286,6 +287,9 @@ export async function run({ browser, base, out }) {
     await shot("viewer-on-card", "#next");
     await press(page.locator("#alts .alt").first());
     assert.equal((await card()).title, "Your next point", `${name}: Back to your point takes it off again`);
+    await press(page.locator('#chatList .msg:nth-child(1) [data-act="card"]'));
+    assert.equal((await card()).why, "Person 5 · YouTube · asked before the show", `${name}: a question from before Start says so on the card`);
+    await press(page.locator('#chatList .msg:nth-child(1) [data-act="card"]'));
     await press(page.locator('#chatList .msg:nth-child(4) [data-act="card"]'));
     assert.equal((await card()).q, "Who tells the client at night?", `${name}: Use in the chat does the same`);
     await page.clock.fastForward(65_000);

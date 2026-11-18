@@ -738,9 +738,23 @@ test("a solo show: get_context says so, and each cue names the host's next point
   assert.match(ctx.content[0].text, /Solo show: no guest\. The numbered list is the host's own points/);
   assert.equal(ctx.structuredContent.solo, true);
   s.page.next = "Point 3: Room 5, where your job stops";
-  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "So the hosting company." }] });
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "So the hosting company." }], solo: true });
   const cue = await s.call("wait_for_cue", { seq: 0 });
   assert.match(cue.content[0].text, /Next on the card: Point 3: Room 5, where your job stops/);
   assert.equal(cue.structuredContent.position.next, "Point 3: Room 5, where your job stops");
-  assert.match(ctx.content[0].text, /send no suggestions/, "a solo show takes no suggestions: the agent picks viewer questions instead");
+  assert.match(ctx.content[0].text, /send no suggestions/, "a solo show takes no suggestions");
+  assert.doesNotMatch(ctx.content[0].text, /post_chat/, "with no chat connected, the agent is not sent to post_chat");
+  assert.doesNotMatch(cue.content[0].text, /post_chat/, "nor by a cue");
+  assert.match(cue.content[0].text, /A solo show takes no suggestions\./);
+});
+
+test("a solo show with the viewer chat connected: get_context and each cue send the agent to post_chat with a pick", async () => {
+  const s = await setup();
+  Object.assign(s.page, { solo: true, chatOn: true });
+  const ctx = await s.call("get_context");
+  assert.match(ctx.content[0].text, /picking the viewer question that fits what comes next with post_chat/);
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "Next up, the rooms." }], solo: true, chat: true });
+  const cue = await s.call("wait_for_cue", { seq: 0 });
+  assert.equal(cue.structuredContent.chat, true);
+  assert.match(cue.content[0].text, /put the viewer question that fits what comes next in post_chat as a pick/);
 });
