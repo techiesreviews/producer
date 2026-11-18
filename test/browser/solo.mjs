@@ -174,7 +174,7 @@ export async function run({ browser, base, out }) {
 
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
-    await relayCall("get_context", {});
+    assert.equal((await relayCall("get_context", {})).result.chatOn, undefined, `${name}: before Connect Restream chat the agent is not told the chat is on`);
     await page.waitForFunction(() => document.querySelector("#chatBtn").getAttribute("aria-disabled") === null);
     const ready = await button("#chatBtn");
     assert.deepEqual([ready.text, ready.state, ready.off], ["Connect Restream chat", null, null], `${name}: ready once the agent is connected`);
