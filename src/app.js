@@ -6,6 +6,7 @@ import { createTapOpener } from "./audio-tap.mjs";
 import { createListening } from "./listening.mjs";
 import { clockText, PLAN_EXAMPLE, planButton, runPosition, showLine } from "./runorder.mjs";
 import { CUE, readReport } from "./protocol.mjs";
+import { chatButton, createChat } from "./chat.mjs";
 import { createCues } from "./cues.mjs";
 import { createQuestions, isThinking, suggestButton, THINK_MS, thinkLight, turnsText } from "./questions.mjs";
 import { buildReport, REPORT_EMPTY, REPORT_WAIT_MS, reportFileName, reportMarkdown } from "./report.mjs";
@@ -46,10 +47,28 @@ function choices(group, onPick = () => {}) {
   });
 }
 
-// Step 1 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
+// The show type (TOOLS-336): a solo show (the default) or a show with a guest. A solo show has no guest step and no
+// guest tab; the list in step 4 is the host's own points and the viewer questions take the guest's place. Fixed once
+// the show clock runs.
+const modeSeg = $("modeSeg");
+let solo = true;
+choices(modeSeg, (v) => {
+  solo = v === "solo";
+  // The guest step's own answer comes back with a guest; a solo show is never listened to past the host's microphone.
+  session.answerGuest(solo ? "solo" : document.querySelector('#guestSeg [aria-pressed="true"]')?.dataset.v ?? null);
+  renderMode();
+});
+
+// Step 2 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
 const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"]').dataset.v;
-// OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again (src/listening.mjs).
-choices(document.getElementById("streamSeg"), () => session.streamChanged());
+// OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again (src/listening.mjs). The
+// viewer chat is Restream's: another stream ends it.
+choices(document.getElementById("streamSeg"), () => {
+  session.streamChanged();
+  if (streamName() !== "restream") viewers.disconnect();
+  renderChatBtn();
+  renderChat();
+});
 
 // Step 2, the AI agent. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
 // the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
@@ -145,10 +164,11 @@ const agent = createAgentLink({
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: (view) => { show.agentLink(view.state); renderAgent(view); renderLoad(); renderCard(); renderEnding(view.state); },
+  onChange: (view) => { show.agentLink(view.state); viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
   report: reportFromAgent,
+  chat: chatFromAgent,
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();
@@ -204,7 +224,7 @@ testBtn.addEventListener("click", () => agent.test());
 // left working for whoever holds the message.
 addEventListener("pagehide", () => agent.disconnect());
 
-// Step 4: the host's own answer for the guest. Nothing else sets it. A guest who said no, or a solo show, is never
+// Step 5 (with a guest only): the host's own answer for the guest. Nothing else sets it. A guest who said no, or a solo show, is never
 // listened to: a tab that was already shared stops, and Listen will not ask for it again (src/listening.mjs).
 choices($("guestSeg"), (answer) => session.answerGuest(answer));
 
@@ -226,7 +246,7 @@ for (const line of PLAN_EXAMPLE) $("planEg").append(" ", Object.assign(document.
 let drawnRun = null;
 /** What the text in the box was read as: the plan button, the run order, the show line and the question card. */
 function renderPlan() {
-  const said = planButton(show.read);
+  const said = planButton(show.read, { solo });
   label(planBtn, said.state, said.tip, said.text);
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
@@ -234,7 +254,7 @@ function renderPlan() {
     drawnRun = show.run;
     buildRuns(show.plan?.parts ?? []);
   }
-  $("showLine").textContent = showLine(show.plan);
+  $("showLine").textContent = showLine(show.plan, { solo });
   done("sPlan", Boolean(show.plan));
   questions.setPlan(show.plan?.questions ?? []);
   renderCard();
@@ -275,7 +295,7 @@ demoBtn.addEventListener("click", () => {
 // tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show only:
 // nothing here reads or sets "Guest agreed", the microphone or the tab sharing.
 function renderLoad() {
-  const said = show.loadView(agent.view().state, AGENT_WAYS[agentKey()].name);
+  const said = show.loadView(agent.view().state, AGENT_WAYS[agentKey()].name, solo);
   label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
   switchOff(loadBtn, said.off);
   loadBtn.className = said.primary ? "tb tb--primary" : "tb";
@@ -300,6 +320,143 @@ loadBtn.addEventListener("click", () => {
 });
 renderDemo();
 renderLoad();
+
+// ---- The viewer chat (TOOLS-336, src/chat.mjs). There is no Restream login on this site: "Connect Restream chat" asks
+// the host's own agent (a read_chat cue) to read the live chat through its own Restream connection, and the agent hands
+// the messages over with post_chat, marking the viewer question that fits what comes next as its pick. On the producer
+// screen the chat sits under the run order; Use puts a question on the card, Answered and Skip mark it. The chat lives
+// in this page's memory only. ----
+const chatBtn = $("chatBtn");
+const chatPanel = $("chat");
+const chatList = $("chatList");
+const chatState = $("chatState");
+const openChip = $("openChip");
+const qOnlyBtn = $("qOnlyBtn");
+const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } });
+/** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
+const chatRows = new Map();
+let questionsOnly = false;
+
+/** The show time now ("12:03") once the clock runs, else the time of day ("20:15"): when a message came or was answered. */
+function chatTime() {
+  const view = show.run?.view(Date.now());
+  if (view?.started) return clockText(view.clock);
+  const d = new Date();
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function renderChatBtn() {
+  const name = AGENT_WAYS[agentKey()].name;
+  const said = chatButton({ stream: streamName(), agent: agent.view().state, chat: viewers.view(), name });
+  label(chatBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
+  switchOff(chatBtn, said.off);
+  const { phase: chatPhase } = viewers.view();
+  done("sChat", streamName() !== "restream" || chatPhase === "on" || chatPhase === "waiting");
+}
+
+chatBtn.addEventListener("click", () => {
+  if (chatBtn.getAttribute("aria-disabled") === "true") return;
+  const { phase: chatPhase } = viewers.view();
+  if (chatPhase === "asking") return; // the agent is on its way: the button says so
+  if (chatPhase === "on" || chatPhase === "waiting") viewers.disconnect();
+  else viewers.ask(AGENT_WAYS[agentKey()].name, () => agent.send({ cue: CUE.chat, transcript: [] }));
+  renderChatBtn();
+  renderChat();
+});
+
+/** The agent's post_chat (src/chat.mjs checks it again and gives the answer the agent hears). */
+function chatFromAgent(args) {
+  const answer = viewers.agentPost(args, chatTime());
+  renderChatBtn();
+  renderChat();
+  renderCard();
+  return answer;
+}
+
+/** A question's buttons (and the card's): Use, Answered or Skip, each again to undo. */
+function markViewer(id, what) {
+  if (!viewers.mark(id, what, chatTime())) return;
+  renderChat();
+  renderCard();
+}
+
+/** One message's row: who, where and when, the words, and a question's three buttons with their state on them. */
+function chatRow(m, fresh) {
+  let li = chatRows.get(m.id);
+  if (!li) {
+    li = make("li", "msg");
+    li.dataset.id = String(m.id);
+    const meta = make("div", "msg__meta");
+    meta.append(Object.assign(make("span", "msg__who", m.who), { dir: "auto" }), make("span", "", m.where), make("span", "msg__t num", m.at));
+    li.append(meta, Object.assign(make("p", "msg__x", m.text), { dir: "auto" }));
+    if (fresh) li.classList.add("msg--new");
+    chatRows.set(m.id, li);
+    chatList.append(li);
+  }
+  if (m.q && !li.querySelector(".msg__act")) {
+    li.dataset.q = "";
+    const act = make("div", "msg__act");
+    for (const what of ["card", "answered", "skipped"]) {
+      const b = make("button", "tb tb--small");
+      b.type = "button";
+      b.dataset.act = what;
+      act.append(b);
+    }
+    li.append(act);
+  }
+  li.dataset.s = m.s;
+  if (m.q) {
+    const [use, answered, skip] = li.querySelectorAll(".msg__act button");
+    use.hidden = m.s === "answered" || m.s === "skipped";
+    answered.hidden = m.s === "skipped";
+    skip.hidden = m.s === "answered";
+    label(use, null, m.s === "card" ? "On your card now. Press to take it off." : "Puts this question on your card.", m.s === "card" ? "On card" : "Use");
+    use.setAttribute("aria-pressed", String(m.s === "card"));
+    label(answered, m.s === "answered" ? "ok" : null, m.s === "answered" ? "Press to reopen." : null, m.s === "answered" ? `Answered ✓ · ${m.doneAt}` : "Answered");
+    answered.setAttribute("aria-pressed", String(m.s === "answered"));
+    label(skip, m.s === "skipped" ? "quiet" : null, m.s === "skipped" ? "Press to reopen." : null, m.s === "skipped" ? "Skipped" : "Skip");
+    skip.setAttribute("aria-pressed", String(m.s === "skipped"));
+  }
+  li.hidden = questionsOnly && !m.q;
+}
+
+/** The chat panel: shown on a solo show, and with a guest once the host connected the chat. */
+function renderChat() {
+  const v = viewers.view();
+  chatPanel.hidden = !(solo || v.asked);
+  if (chatPanel.hidden) return;
+  const restream = streamName() === "restream";
+  // Kept at the bottom while the host reads the newest messages; left alone while they scroll back.
+  const atEnd = chatList.hidden || chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 60;
+  const fresh = chatRows.size > 0;
+  for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
+  chatList.hidden = !v.messages.length;
+  let state = null;
+  if (!restream) state = [offMark(), "Restream streams only"];
+  else if (v.phase === "waiting") state = [dot("think"), "Waiting for your live stream"];
+  else if (v.phase === "asking") state = [dot("think"), "Connecting…"];
+  else if (v.phase === "off" || v.phase === "failed") state = [offMark(), "Not connected · connect it in Set up"];
+  else if (!v.messages.length) state = ["No messages yet"];
+  chatState.hidden = !state;
+  if (state) chatState.replaceChildren(...state);
+  openChip.hidden = !v.messages.length;
+  openChip.textContent = `${v.open} open`;
+  openChip.className = v.open ? "chip num chip--accent" : "chip num";
+  openChip.dataset.tip = v.open === 1 ? "1 viewer question waits for you." : `${v.open} viewer questions wait for you.`;
+  if (atEnd && !chatList.hidden) chatList.scrollTop = chatList.scrollHeight;
+}
+
+chatList.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (b) markViewer(Number(b.closest(".msg").dataset.id), b.dataset.act);
+});
+qOnlyBtn.addEventListener("click", () => {
+  questionsOnly = !questionsOnly;
+  qOnlyBtn.setAttribute("aria-checked", String(questionsOnly));
+  renderChat();
+  chatList.scrollTop = chatList.scrollHeight;
+});
+renderChatBtn();
 
 // ---- The run order and the show clock on the producer screen. Start starts the clock with the first part; Next
 // part ends the current part at that moment and starts the next. Shown only when a plan is loaded. ----
@@ -387,6 +544,31 @@ function lockPlan(now) {
   label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
   renderLoad();
   renderDemo();
+  lockMode();
+}
+
+// The show type stays as it is once the show clock runs: the other choice is switched off with its reason.
+function lockMode() {
+  for (const b of modeSeg.querySelectorAll("button")) {
+    if (b.getAttribute("aria-pressed") === "true") continue;
+    b.prepend(offMark(), " ");
+    switchOff(b, "The show has started, so the show type stays as it is.");
+  }
+}
+
+/** What the show type changes: the guest step and the guest tab, the words for the list, the steps' numbers, the card,
+ * the chat panel and what the agent hears. */
+function renderMode() {
+  $("sGuest").hidden = solo;
+  $("tabSource").hidden = solo;
+  $("planLabel").textContent = solo ? "Show, points & plan" : "Show, questions & plan";
+  let n = 0;
+  for (const step of $("steps").children) if (!step.hidden) step.querySelector(".step__n").textContent = String(++n);
+  $("thinkEnd").hidden = solo;
+  $("nextFoot").hidden = solo;
+  if (show.read) renderPlan(); // nothing read yet: the plan button keeps its first words
+  renderLoad();
+  renderChat();
 }
 
 // ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
@@ -395,12 +577,15 @@ function lockPlan(now) {
 // stored. ----
 const cues = createCues({ send: (item) => agent.send(item), context: cueContext });
 
-/** Where the show is when a cue goes: the current part of the run order, and the guest the plan names. */
+/** Where the show is when a cue goes: the current part of the run order, what is next on the card (so the agent can
+ * pick a viewer question that fits it) and the guest the plan names (none on a solo show). */
 function cueContext() {
   const context = {};
-  if (show.plan?.guest) context.guestName = show.plan.guest;
+  if (show.plan?.guest && !solo) context.guestName = show.plan.guest;
   const position = show.run && runPosition(show.run.view(Date.now()));
-  if (position) context.position = position;
+  const { main } = questions.view();
+  const next = main ? `${main.n ? `${solo ? "Point" : "Question"} ${main.n}: ` : ""}${main.text}` : "";
+  if (position || next) context.position = { ...position, ...(next ? { next } : {}) };
   return context;
 }
 
@@ -410,7 +595,7 @@ function agentShow() {
   const rows = show.run?.view(Date.now()).rows ?? [];
   return {
     showTitle: show.plan.show,
-    guestName: show.plan.guest,
+    ...(solo ? { solo: true } : { guestName: show.plan.guest }),
     questions: show.plan.questions.map((text, i) => ({ n: i + 1, text })),
     segments: show.plan.parts.map((part, i) => ({ title: part.name, plannedMinutes: part.minutes, ...(rows[i]?.state === "now" ? { live: true } : {}) })),
     ...(show.notes ? { notes: show.notes } : {}),
@@ -446,35 +631,58 @@ function renderCard() {
   const busy = link === "on" && agent.asking() && isThinking(asking.since, now);
   if (!busy) asking.since = 0;
   const { main, alts, first, counts } = questions.view();
+  // A viewer question the host put on the card (Use) takes it until it is answered, skipped or taken off; else the
+  // agent's pick waits above the two to swap in (TOOLS-336).
+  const { card: viewer, pick } = viewers.view();
+  const total = show.plan?.questions.length ?? 0;
+  const listChip = (q) => (q.n ? (solo ? `Point ${q.n}` : `Q${q.n} · your list`) : "New");
+  const title = viewer ? "Viewer question" : solo ? "Your next point" : "Next question";
+  if ($("nextTitle").textContent !== title) $("nextTitle").textContent = title;
 
   // The question, a few words why and where it came from; text is replaced only when it changes (a screen reader
   // hears each new question once).
-  const said = main ? main.text : counts.asked + counts.skipped > 0 && !counts.left ? "No questions left" : "No question yet";
+  const empty = counts.asked + counts.skipped > 0 && !counts.left ? (solo ? "No points left" : "No questions left") : solo ? "No point yet" : "No question yet";
+  const said = viewer ? viewer.text : main ? main.text : empty;
   if (qMain.textContent !== said) qMain.textContent = said;
-  qMain.toggleAttribute("data-empty", !main);
-  const why = main?.why ?? (main?.from === "list" && main.n === first ? "Next on your list." : "");
+  qMain.toggleAttribute("data-empty", !viewer && !main);
+  const why = viewer
+    ? [viewer.who, viewer.where, viewer.at && `asked at ${viewer.at}`].filter(Boolean).join(" · ")
+    : main?.why ?? (main?.from === "list" && main.n === first ? (solo ? "Next in your plan." : "Next on your list.") : "");
   qWhy.textContent = why;
   qWhy.hidden = !why;
-  qSrc.parentElement.hidden = !main;
-  if (main) {
-    qSrc.textContent = main.n ? `Q${main.n} · your list` : "New";
+  qSrc.parentElement.hidden = !viewer && !main;
+  if (viewer) {
+    qSrc.textContent = "From the chat";
+    qSrc.className = "chip chip--accent";
+  } else if (main) {
+    qSrc.textContent = main.n && solo ? `Point ${main.n} of ${total} · your plan` : listChip(main);
     qSrc.className = main.n ? "chip chip--accent" : "chip";
   }
-  const none = main ? "" : "No question on the card.";
-  offable(askedBtn, none, "Asked");
+  const none = viewer || main ? "" : solo ? "No point on the card." : "No question on the card.";
+  offable(askedBtn, none, viewer ? "Answered" : solo ? "Said" : "Asked");
   offable(skipBtn, none, "Skip");
 
-  // The two to swap in, rebuilt only when they change, so a focused one keeps the keyboard.
-  const altsKey = JSON.stringify(alts);
+  // The rows under the card, rebuilt only when they change, so a focused one keeps the keyboard: with a viewer question
+  // on the card, the way back to the plan; else the agent's pick (Use) and the two to swap in.
+  const rows = viewer
+    ? (main ? [{ act: "back", text: main.text, why: solo ? "Back to your point" : "Back to your question", chip: listChip(main) }] : [])
+    : [
+      ...(pick ? [{ act: "pick", text: pick.text, why: `AI pick: ${pick.pick} · ${[pick.who, pick.where].filter(Boolean).join(" · ")}` }] : []),
+      ...alts.map((q, i) => ({ act: "swap", i, text: q.text, why: q.why ?? "", chip: listChip(q), list: Boolean(q.n) })),
+    ];
+  const altsKey = JSON.stringify(rows);
   if (altsKey !== asking.alts) {
     const focused = [...altsBox.children].indexOf(document.activeElement);
     asking.alts = altsKey;
-    altsBox.replaceChildren(...alts.map((q, i) => {
+    altsBox.replaceChildren(...rows.map((r) => {
       const b = make("button", "alt");
       b.type = "button";
-      b.dataset.i = String(i);
-      b.append(Object.assign(make("span", "alt__q", q.text), { dir: "auto" }), make("span", q.n ? "chip chip--accent" : "chip", q.n ? `Q${q.n} · your list` : "New"));
-      if (q.why) b.append(Object.assign(make("span", "alt__why", q.why), { dir: "auto" }));
+      b.dataset.act = r.act;
+      if (r.act === "swap") b.dataset.i = String(r.i);
+      b.append(Object.assign(make("span", "alt__q", r.text), { dir: "auto" }));
+      if (r.act === "pick") b.append(make("span", "tb tb--small tb--primary alt__use", "Use"));
+      else b.append(make("span", r.list || r.act === "back" ? "chip chip--accent" : "chip", r.chip));
+      if (r.why) b.append(Object.assign(make("span", "alt__why", r.why), { dir: "auto" }));
       return b;
     }));
     if (focused >= 0) (altsBox.children[focused] ?? altsBox.lastElementChild ?? askedBtn).focus();
@@ -515,11 +723,23 @@ agent.onSuggestions((answer) => {
 agent.onSettled(renderCard);
 
 const pressable = (button) => button.getAttribute("aria-disabled") !== "true" && button.dataset.state !== "busy";
-askedBtn.addEventListener("click", () => { if (pressable(askedBtn)) { questions.asked(); renderCard(); } });
-skipBtn.addEventListener("click", () => { if (pressable(skipBtn)) { questions.skip(); renderCard(); } });
+// Said (Asked) and Skip move the plan on, or mark the viewer question on the card.
+function cardPress(kind) {
+  const viewer = viewers.view().card;
+  if (viewer) markViewer(viewer.id, kind === "asked" ? "answered" : "skipped");
+  else if (kind === "asked") questions.asked();
+  else questions.skip();
+  renderCard();
+}
+askedBtn.addEventListener("click", () => { if (pressable(askedBtn)) cardPress("asked"); });
+skipBtn.addEventListener("click", () => { if (pressable(skipBtn)) cardPress("skipped"); });
 altsBox.addEventListener("click", (e) => {
   const alt = e.target.closest(".alt");
-  if (alt && questions.swap(Number(alt.dataset.i))) renderCard();
+  if (!alt) return;
+  const { card: viewer, pick } = viewers.view();
+  if (alt.dataset.act === "pick" && pick) markViewer(pick.id, "card"); // Use: the agent's pick goes on the card
+  else if (alt.dataset.act === "back" && viewer) markViewer(viewer.id, "card"); // off the card again, back to the plan
+  else if (alt.dataset.act === "swap" && questions.swap(Number(alt.dataset.i))) renderCard();
 });
 suggestBtn.addEventListener("click", () => {
   if (!pressable(suggestBtn)) return;
@@ -799,6 +1019,9 @@ goBtn.addEventListener("click", () => {
 
 // The listening sign shows while the page listens; Stop ends the microphone at once; Listen starts it again.
 stopBtn.addEventListener("click", () => session.pressListen());
+// A solo show from the start (the show type's first choice): only the host's microphone is listened to.
+session.answerGuest("solo");
+renderMode();
 renderListening(session.view());
 
 // ---- End & report (card 12, src/report.mjs): listening stops, the run order is frozen where it is, the agent is asked
@@ -820,6 +1043,9 @@ endBtn.addEventListener("click", () => {
   ending.at = new Date(now);
   ending.run = show.run ? show.run.view(now) : null;
   session.end();
+  // The chat stops with the show: what came is kept for the report, and the agent hears the chat is off.
+  viewers.disconnect();
+  renderChatBtn();
   const name = AGENT_WAYS[agentKey()].name;
   // A connected agent whose loop went quiet takes the end cue too, and is waited for the same time.
   ending.asked = cues.end();
@@ -872,7 +1098,7 @@ function agentRows(part, rows, empty) {
 }
 
 function renderReport() {
-  const model = buildReport({ plan: show.plan, run: ending.run, marks: questions.marked(), agent: ending.agent, heard: heard.lines, date: ending.at });
+  const model = buildReport({ plan: show.plan, run: ending.run, marks: questions.marked(), agent: ending.agent, heard: heard.lines, date: ending.at, solo, chat: viewers.view() });
   const md = reportMarkdown(model);
   if (md === ending.md) return;
   // A saved or copied file no longer holds what the screen shows: the buttons go back to offering it again.
@@ -890,15 +1116,35 @@ function renderReport() {
     }
     return Object.assign(reportRow(make("b", "num", stat.value), words), { className: "stat" });
   }));
-  $("clipList").replaceChildren(...agentRows(model.clips, model.clips.rows.map((c) => reportRow(userText("rows__t", c.at), userText("rows__x", c.text))), REPORT_EMPTY.clips));
   $("realList").replaceChildren(...(model.runs.length ? model.runs.map((r) => {
     // A time against the plan in the mono figures; "not reached" and "not run" in plain words.
     const real = make("span", /\d/.test(r.real) ? "rows__r num" : "rows__r rows__r--words", r.real);
     setTone(real, r.tone);
     return reportRow(make("span", "rows__t num", r.planned), userText("rows__x", r.name), real);
   }) : [oneRow(REPORT_EMPTY.runs)]));
-  $("topicList").replaceChildren(...agentRows(model.topics, model.topics.rows.map((t) => Object.assign(reportRow(userText("rows__x", t)), { className: "rows__one" })), REPORT_EMPTY.topics));
-  $("notAskedList").replaceChildren(...(model.notAsked.length ? model.notAsked.map((q) => reportRow(make("span", "rows__t", q.n), userText("rows__x", q.text), make("span", "chip", q.why))) : [oneRow(model.noQuestions ? REPORT_EMPTY.noQuestions : REPORT_EMPTY.notAsked)]));
+  // A solo show's report (the solo prototype): the viewer questions answered and not answered, the run order and the
+  // points not said; a show with a guest keeps the agent's clip moments and topics and the questions not asked.
+  for (const id of ["ansPanel", "notAnsPanel", "notSaidPanel"]) $(id).hidden = !model.solo;
+  for (const id of ["clipsPanel", "topicsPanel", "notAskedPanel"]) $(id).hidden = Boolean(model.solo);
+  const listRow = (q) => reportRow(make("span", "rows__t", q.n), userText("rows__x", q.text), make("span", "chip", q.why));
+  if (model.solo) {
+    const viewerRow = (q, right, answered) => {
+      const what = userText("rows__x", q.text);
+      what.append(Object.assign(make("small", "", q.who), { dir: "auto" }));
+      const end = make("span", "rows__r rows__r--words", right);
+      if (answered) setTone(end, "early");
+      return reportRow(make("span", "rows__t num", q.at), what, end);
+    };
+    $("ansCount").textContent = String(model.answered.length);
+    $("notAnsCount").textContent = String(model.notAnswered.length);
+    $("ansList").replaceChildren(...(model.answered.length ? model.answered.map((q) => viewerRow(q, "answered", true)) : [oneRow(REPORT_EMPTY.viewers)]));
+    $("notAnsList").replaceChildren(...(model.notAnswered.length ? model.notAnswered.map((q) => viewerRow(q, q.why, false)) : [oneRow(REPORT_EMPTY.viewers)]));
+    $("notSaidList").replaceChildren(...(model.notSaid.length ? model.notSaid.map(listRow) : [oneRow(model.noQuestions ? REPORT_EMPTY.noPoints : REPORT_EMPTY.notAsked)]));
+  } else {
+    $("clipList").replaceChildren(...agentRows(model.clips, model.clips.rows.map((c) => reportRow(userText("rows__t", c.at), userText("rows__x", c.text))), REPORT_EMPTY.clips));
+    $("topicList").replaceChildren(...agentRows(model.topics, model.topics.rows.map((t) => Object.assign(reportRow(userText("rows__x", t)), { className: "rows__one" })), REPORT_EMPTY.topics));
+    $("notAskedList").replaceChildren(...(model.notAsked.length ? model.notAsked.map(listRow) : [oneRow(model.noQuestions ? REPORT_EMPTY.noQuestions : REPORT_EMPTY.notAsked)]));
+  }
   $("heardCount").textContent = `${model.heard.length} ${model.heard.length === 1 ? "line" : "lines"}`;
   $("heardList").replaceChildren(...(model.heard.length ? model.heard.map((l) => {
     const words = userText("rows__x", "");
