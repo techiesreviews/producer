@@ -453,20 +453,28 @@ function renderChat() {
   for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); }
   for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
   chatList.hidden = !v.messages.length;
+  // The line under the panel's head: what the chat waits for, or the panel's own Connect (or try again) while the chat
+  // is off during the show, with the setup button's words and reason. The button stays while it connects (busy on
+  // itself), and the line is rebuilt only when it changes, so a focused button keeps the keyboard.
+  const retrying = v.phase === "off" || v.phase === "failed" || (v.phase === "asking" && chatState.dataset.key === "retry");
   let state = null;
-  if (!restream) state = [offMark(), "Restream streams only"];
-  else if (v.phase === "waiting") state = [dot("think"), "Waiting for your live stream"];
-  else if (v.phase === "asking") state = [dot("think"), "Connecting…"];
-  else if ((v.phase === "off" || v.phase === "failed") && agent.view().state === "on") {
-    // The panel's own Connect (or try again), with the setup button's words and reason.
+  let key = "";
+  if (!restream) [state, key] = [[offMark(), "Restream streams only"], "obs"];
+  else if (v.phase === "waiting") [state, key] = [[dot("think"), "Waiting for your live stream"], "waiting"];
+  else if (retrying && agent.view().state === "on") {
     const said = chatButton({ stream: streamName(), agent: "on", chat: v, name: AGENT_WAYS[agentKey()].name });
-    label(chatRetry, said.state, said.tip || null, said.text);
-    state = [chatRetry];
-  } else if (v.phase === "off" || v.phase === "failed") state = [offMark(), "Not connected · connect it in Set up"];
-  else if (!v.messages.length) state = ["No messages yet"];
-  else if (questionsOnly && !v.messages.some((m) => m.q)) state = ["No questions yet"];
+    label(chatRetry, said.state, said.tip || null, ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
+    [state, key] = [[chatRetry], "retry"];
+  } else if (v.phase === "asking") [state, key] = [[dot("think"), "Connecting…"], "asking"];
+  else if (v.phase === "off" || v.phase === "failed") [state, key] = [[offMark(), "Not connected · connect it in Set up"], "off"];
+  else if (!v.messages.length) [state, key] = [["No messages yet"], "empty"];
+  else if (questionsOnly && !v.messages.some((m) => m.q)) [state, key] = [["No questions yet"], "noq"];
   chatState.hidden = !state;
-  if (state) chatState.replaceChildren(...state);
+  if (key !== (chatState.dataset.key ?? "")) {
+    if (chatState.contains(document.activeElement) || chatRetry.getAttribute("aria-describedby") === "tip") tooltip.hide();
+    chatState.replaceChildren(...(state ?? []));
+    chatState.dataset.key = key;
+  }
   openChip.hidden = !v.messages.length;
   openChip.textContent = `${v.open} open`;
   openChip.className = v.open ? "chip num chip--accent" : "chip num";

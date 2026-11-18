@@ -318,11 +318,10 @@ export async function run({ browser, base, out }) {
     const retry = page.locator("#chatState button");
     assert.equal(await retry.isVisible(), true, `${name}: a failed chat offers its retry in the panel (the setup is out of sight)`);
     assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-tip")], ["Chat not connected · try again", "Restream connection lost."], `${name}: with the reason`);
-    const before = await page.evaluate(() => window.__relay.next);
     await press(retry);
-    assert.equal(await text("#chatState"), "Connecting…", `${name}: the retry connects again`);
+    assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-state")], ["Connecting chat…", "busy"], `${name}: the retry connects again, busy on the button itself`);
     const retried = (await relayCall("wait_for_cue", { seq: 3, holdMs: 25000 })).result;
-    assert.equal(retried.cue, "read_chat", `${name}: the agent hears read_chat (${before})`);
+    assert.equal(retried.cue, "read_chat", `${name}: the agent hears read_chat`);
     await relayCall("post_chat", { messages: [] });
     assert.equal(await page.locator("#chatState").isVisible(), false, `${name}: connected again, the chat shows`);
     assert.equal(await text("#qMain"), "Look first, then act", `${name}: the plan and the card are as they were`);
