@@ -29,14 +29,27 @@ export function findQuestions({ plan, query }) {
 }
 
 /**
- * The question's own text in pieces, the searched words marked: [{ text, hit }]. Where two words overlap, both are
- * marked as one. Matched case-blind on the text itself, so a letter that grows when lower-cased (İ) shifts nothing.
+ * The question's own text in pieces, the searched words marked: [{ text, hit }]. Every hit is marked, overlapping ones
+ * too. It searches a lower-cased copy, as findQuestions does, that remembers where each of its characters came from,
+ * so a letter that grows when lower-cased (İ) shifts nothing.
  */
 export function markWords(text, words) {
+  let lower = "";
+  const from = []; // per character of the copy, its index in the text
+  for (let i = 0; i < text.length;) {
+    const ch = String.fromCodePoint(text.codePointAt(i));
+    const low = ch.toLowerCase();
+    lower += low;
+    for (let k = 0; k < low.length; k++) from.push(i);
+    i += ch.length;
+  }
+  from.push(text.length);
   const hit = new Array(text.length).fill(false);
   for (const w of words) {
-    const find = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
-    for (const m of text.matchAll(find)) if (m[0]) hit.fill(true, m.index, m.index + m[0].length);
+    for (let at = lower.indexOf(w); at >= 0; at = lower.indexOf(w, at + 1)) {
+      const end = from[at + w.length - 1];
+      hit.fill(true, from[at], end + String.fromCodePoint(text.codePointAt(end)).length);
+    }
   }
   const pieces = [];
   for (let i = 0; i < text.length; i++) {
