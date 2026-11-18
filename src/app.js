@@ -336,6 +336,8 @@ const qOnlyBtn = $("qOnlyBtn");
 const viewers = createChat({ onChange: () => { renderChatBtn(); renderChat(); } });
 /** The panel's own chat button during the show (the setup's button is out of sight there): connect, try again or disconnect. */
 const chatRetry = Object.assign(document.createElement("button"), { type: "button", className: "tb tb--small" });
+/** What the list waits for, beside the panel's button ("No messages yet", "No questions yet"), changed in place. */
+const chatNote = document.createElement("span");
 /** One row per message, built once and updated in place, so a focused button keeps the keyboard. */
 const chatRows = new Map();
 let questionsOnly = false;
@@ -466,8 +468,9 @@ function renderChat() {
     const said = chatButton({ stream: streamName(), agent: link, chat: v, name: AGENT_WAYS[agentKey()].name });
     label(chatRetry, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think"), " "] : []), said.text);
     switchOff(chatRetry, said.off);
-    const note = v.phase === "on" && !v.messages.length ? "No messages yet" : questionsOnly && v.messages.length && !v.messages.some((m) => m.q) ? "No questions yet" : "";
-    [state, key] = [[chatRetry, ...(note ? [make("span", "", note)] : [])], `button:${note}`];
+    chatNote.textContent = v.phase === "on" && !v.messages.length ? "No messages yet" : questionsOnly && v.messages.length && !v.messages.some((m) => m.q) ? "No questions yet" : "";
+    chatNote.hidden = !chatNote.textContent;
+    [state, key] = [[chatRetry, chatNote], "button"];
   }
   chatState.hidden = !state;
   if (key !== (chatState.dataset.key ?? "")) {
