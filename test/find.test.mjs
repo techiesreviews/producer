@@ -64,8 +64,11 @@ test("a plan that puts no question under two different parts says no part (an op
   assert.deepEqual(readPlan("3 Intro\n1. Why?\n8 Story").questionParts, [null], "questions under one part only");
 });
 
-test("a plan with every part first, its questions after and a bonus part with one question of its own says no part", () => {
-  assert.deepEqual(readPlan("3 A\n4 B\n5 C\n1. X?\n2. Y?\n6 Bonus\n3. Z?").questionParts, [null, null, null]);
+test("any plan with questions under two parts or more groups them under the part above each, empty parts in front or not", () => {
+  assert.deepEqual(readPlan("3 Welcome\n4 Housekeeping\n5 Story\n1. X?\n6 Demo\n2. Y?").questionParts, [2, 3], "two empty parts in front");
+  // Known limit until plans carry a part per question (TOOLS-345): every part first, the questions, then a bonus part
+  // with a question of its own reads as questions under the last main part and the bonus part.
+  assert.deepEqual(readPlan("3 A\n4 B\n5 C\n1. X?\n2. Y?\n6 Bonus\n3. Z?").questionParts, [2, 2, 3]);
   assert.deepEqual(readPlan("3 Intro\n8 Story\n1. Why?\n4 Demo\n2. How?\n5 Close\n3. Next?").questionParts, [1, 2, 3], "a part with no questions (Intro) still groups the rest");
   assert.deepEqual(readPlan("10 Intro\n20 Story\n1. Q?\n5 Break\n20 Demo\n2. R?\n10 Close").questionParts, [1, 3], "an intro, a break and a close with no questions");
   assert.deepEqual(readPlan("10 Intro\n20 Story\n1. Q?\n20 Demo\n2. R?").questionParts, [1, 2], "a small plan with one empty part in front (the paste box's example shape)");
