@@ -15,11 +15,12 @@ export const TOOL = {
   transcript: "get_new_transcript",
   report: "post_report",
   load: "load_show",
+  chat: "post_chat",
 };
 export const TOOL_NAMES = Object.values(TOOL);
 
-/** Why the page hands the agent a cue: a pause after a point, Suggest now, End report, Let my agent load it. */
-export const CUE = { pause: "pause", suggestNow: "suggest_now", endReport: "end_report", load: "load_show" };
+/** Why the page hands the agent a cue: a pause after a point, Suggest now, End report, Let my agent load it, Connect Restream chat. */
+export const CUE = { pause: "pause", suggestNow: "suggest_now", endReport: "end_report", load: "load_show", chat: "read_chat" };
 
 /** An agent token lives eight hours: the Worker refuses it after that, and the page lets it go. */
 export const TOKEN_MAX_AGE_MS = 8 * 60 * 60 * 1000;

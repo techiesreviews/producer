@@ -49,9 +49,10 @@ const cutLine = (text, max = 60) => (text.length > max ? `${text.slice(0, max - 
 const PLAN_HOW = "A part is minutes, then a name (10 Intro); a question is numbered (1.) or ends with ?.";
 
 /** What the "Paste it myself" button says about the pasted plan: its state, its words and its tooltip. */
-export function planButton(plan) {
+export function planButton(plan, { solo = false } = {}) {
   if (plan.ok) {
-    const what = [plan.questions.length ? plural(plan.questions.length, "question") : "", plural(plan.parts.length, "part")].filter(Boolean);
+    // On a solo show the numbered list is the host's own points.
+    const what = [plan.questions.length ? plural(plan.questions.length, solo ? "point" : "question") : "", plural(plan.parts.length, "part")].filter(Boolean);
     return { state: "ok", text: `${what.join(" · ")} ✓`, tip: "Click to change the plan." };
   }
   if (plan.noParts) return { state: "error", text: "No parts with minutes", tip: `Add the run order, one part per line. ${PLAN_HOW}` };
@@ -59,11 +60,11 @@ export function planButton(plan) {
   return { state: null, text: "Paste it myself", tip: "Paste your show name, guest, questions and run order." };
 }
 
-/** The top bar's show line: the show and the guest when the plan names them. */
-export function showLine(plan) {
+/** The top bar's show line: the show and the guest when the plan names them; a solo show says "solo" instead of a guest. */
+export function showLine(plan, { solo = false } = {}) {
   if (!plan?.ok) return "· no show loaded yet";
-  const parts = [plan.show, plan.guest && `guest ${plan.guest}`].filter(Boolean);
-  return `· ${parts.length ? parts.join(" · ") : plural(plan.parts.length, "part")}`;
+  const parts = [plan.show, !solo && plan.guest && `guest ${plan.guest}`].filter(Boolean);
+  return `· ${parts.length ? parts.join(" · ") : plural(plan.parts.length, "part")}${solo ? " · solo" : ""}`;
 }
 
 /** Whole seconds as minutes and seconds (62:05); with sign, a plus or a minus in front unless it is zero. */

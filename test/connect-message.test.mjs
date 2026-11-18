@@ -9,6 +9,7 @@ import { pageSockets, relayWith } from "./fakes.mjs";
 import { checkToken, TOKEN_RE } from "../src/token.mjs";
 import { AGENT_LOOP, agentBody, connectMessage } from "../src/agent-message.mjs";
 import { createAgentLink } from "../src/agent-link.mjs";
+import { readChat } from "../src/chat.mjs";
 import { readLoad } from "../src/agent-load.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
@@ -35,8 +36,8 @@ test("the message holds the ready-made loop with this page's address and token, 
   assert.doesNotMatch(message, /\bsleep\s+\d|nohup|&\s*$|>\s*\S+\.(sh|py|js)/m, "nothing in it sleeps, runs in the background or writes a script");
   // Every example B is JSON the Worker accepts (the apostrophe rule keeps B inside its single quotes).
   const bodies = [...message.matchAll(/ B='([^']*)'/g)].map((m) => JSON.parse(m[1]));
-  assert.equal(bodies.length, 4, "the first run, the wait, the answer and the load");
-  assert.deepEqual(bodies.map((b) => typeof b), ["object", "object", "object", "object"]);
+  assert.equal(bodies.length, 5, "the first run, the wait, the answer, the load and the chat");
+  assert.deepEqual(bodies.map((b) => typeof b), ["object", "object", "object", "object", "object"]);
   assert.deepEqual(bodies[2].suggestions[0], { question: 2, why: "follows their last point" }, "the example points to a prepared question: the shortest answer");
   // Card 14: the message names the tool that loads the show, with a body the Worker accepts and the page would take.
   assert.match(message, /load_show/);
@@ -45,6 +46,13 @@ test("the message holds the ready-made loop with this page's address and token, 
   assert.match(message, /guest consent|Guest agreed|microphone/i, "and that the host keeps consent, the microphone and the tab");
   const load = readLoad(bodies[3]);
   assert.equal(load.ok, true, "the example plan is one the tool accepts");
+  // TOOLS-336: the viewer chat, read through the agent's own Restream connection, with a body the Worker accepts.
+  assert.match(message, /cue says read_chat/, "it says when to read the chat");
+  assert.match(message, /own Restream connection/);
+  assert.match(message, /P=post_chat B=/);
+  const chat = readChat(bodies[4]);
+  assert.equal(chat.ok, true, "the example chat is one the tool accepts");
+  assert.ok(chat.chat.messages[0].pick, "the example shows a pick");
   assert.match(message, /"question" \(the number of a prepared question in the show you printed: prefer it/);
   assert.match(message, /use it when the show lists no prepared questions or none fits/, "with no plan the agent writes its own text: a question number the plan lacks shows nothing");
 });
@@ -60,7 +68,7 @@ test("the command the agent types after every cue is short: no JSON-RPC, no head
   const typed = settings.replace(FAKE, "").replace("P=get_context; B='{}'", "P=wait_for_cue; B=''") + loop;
   assert.ok(typed.length < 260, `${typed.length} characters without the token and the answer`);
   assert.doesNotMatch(message, /jsonrpc|tools\/call/, "the message never mentions JSON-RPC");
-  assert.ok(message.length < 2400, `${message.length} characters in all`); // card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
+  assert.ok(message.length < 2900, `${message.length} characters in all`); // TOOLS-336 added the viewer chat rule; card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
 });
 
 test("the same message works for the preview: only the address changes", () => {

@@ -26,7 +26,7 @@ export const STYLES = ["src/theme.css", "src/app.css"];
  * page's one scope, so the build checks the name is exported there and drops the line. Any other import form, and an
  * aliased name (`a as b`), stops the build.
  */
-export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/audio-tap.mjs", "src/listening.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs", "src/showphase.mjs"];
+export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/audio-tap.mjs", "src/listening.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/chat.mjs", "src/cues.mjs", "src/questions.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs", "src/showphase.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
 export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];

@@ -8,7 +8,8 @@
 // the newest show cue still waits for the agent's turn (the question card's thinking light). The agent's load_show
 // call goes to load() (card 14): the page checks and takes the show, the link only passes it on and answers. The load
 // cue (the host pressed Let my agent load it) goes alone and is not a question on the card. The agent's post_report
-// goes to report() the same way (card 12).
+// goes to report() the same way (card 12), and its post_chat to chat() (TOOLS-336). The chat cue (the host pressed
+// Connect Restream chat) goes alone like the load cue.
 // Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
 // `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
 // The tool and cue names, the token's age, the wait's hold and the relay's close codes come from src/protocol.mjs,
@@ -37,9 +38,9 @@ const UNCONFIRMED_CHARS = 20_000;
  * show() gives what get_context hands the agent: { showTitle?, guestName?, questions: [{ n, text }],
  * segments: [{ title, plannedMinutes, live? }], notes? }, or nothing before a plan is loaded. load(args) takes what the
  * agent's load_show sent and gives { result } or { error } (a plain line) for the agent; report(args) the same for
- * post_report.
+ * post_report, chat(args) for post_chat.
  */
-export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), now = () => Date.now(), timers = globalThis }) {
+export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), chat = () => ({ error: "This page shows no viewer chat." }), now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
   let ws = null;
   let pending = null; // a token on its way
@@ -108,9 +109,9 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
 
   function queue(item, test = false) {
     seq += 1;
-    const kind = test ? "test" : item.cue === CUE.load ? "load" : "show";
+    const kind = test ? "test" : item.cue === CUE.load ? "load" : item.cue === CUE.chat ? "chat" : "show";
     // A second press while the first request still waits is the same request.
-    if (kind === "load") cues = cues.filter((c) => c.kind !== "load");
+    if (kind === "load" || kind === "chat") cues = cues.filter((c) => c.kind !== kind);
     cues.push({ ...item, seq, test, kind });
     let chars = cues.reduce((n, c) => n + c.transcript.reduce((m, l) => m + l.text.length, 0), 0);
     // The oldest show cue goes first; a waiting Test cue stays, so the Test does not fail for it, and so does a load cue,
@@ -178,6 +179,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     [TOOL.context]: (id) => reply(id, { result: { questions: [], segments: [], ...show(), seq: cues.length ? cues[0].seq - 1 : seq } }),
     [TOOL.load]: (id, a) => reply(id, load(a)),
     [TOOL.report]: (id, a) => reply(id, report(a)),
+    [TOOL.chat]: (id, a) => reply(id, chat(a)),
     [TOOL.transcript](id, a) {
       // The show's own lines only: the Test's made-up talk never joins them.
       const after = Number(a.seq) || 0;
