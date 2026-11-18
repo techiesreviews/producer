@@ -256,7 +256,8 @@ test("a pick that a shorter plan dropped leaves nothing behind to swap back", ()
   q.setPlan(PLAN);
   q.pick(4);
   q.setPlan(PLAN.slice(0, 3));
-  q.pick(q.view().main.n);
-  q.suggest({ seq: 1, suggestions: [{ question: 3 }] });
-  assert.deepEqual(q.view().alts.map((a) => a.n), [3, 2], "the suggestion, then the list: no leftover question");
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }] }); // question 3 on the card from the agent
+  q.pick(3);
+  q.suggest({ seq: 2, suggestions: [{ question: 2 }, { text: "New?" }] });
+  assert.deepEqual(q.view().alts.map((a) => a.n ?? a.text), [2, "New?"], "the suggestions only: no leftover question");
 });
