@@ -243,6 +243,9 @@ export async function run({ browser, base, out }) {
 
     // ---- The chat arrives: plain chat quiet, questions bold with their buttons; the agent's pick waits on the card with Use.
     const posted = await relayCall("post_chat", { messages: CHAT });
+    // A screen reader hears one short polite line for the new questions; nothing visible changes.
+    const say = page.locator("#chatSay");
+    assert.deepEqual([await say.getAttribute("aria-live"), await say.getAttribute("class"), await say.textContent()], ["polite", "sr", "2 new viewer questions · 3 open"], `${name}: one polite line for the new questions`);
     assert.deepEqual(posted.result, { shown: 4 }, `${name}: four messages shown`);
     assert.equal(await text("#chatBtn"), "Restream chat connected ✓", `${name}: the setup's button reads connected`);
     assert.deepEqual([await text("#chatState button"), await page.locator("#chatState button").getAttribute("data-state")], ["Restream chat connected ✓", "ok"], `${name}: the panel's own chat button shows the chat is connected (the setup is out of sight)`);
@@ -322,6 +325,7 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-state")], ["Connecting chat…", "busy"], `${name}: the retry connects again, busy on the button itself`);
     const retried = (await relayCall("wait_for_cue", { seq: 3, holdMs: 25000 })).result;
     assert.equal(retried.cue, "read_chat", `${name}: the agent hears read_chat`);
+    assert.deepEqual([retried.solo, retried.position?.next], [true, "Point 2: Look first, then act"], `${name}: the chat request names the solo show and the current point, so the agent's pick fits it at once`);
     await relayCall("post_chat", { messages: [] });
     assert.equal(await text("#chatState button"), "Restream chat connected ✓", `${name}: connected again, on the same button`);
     if (!phone) assert.equal(await page.evaluate(() => document.activeElement === document.querySelector("#chatState button")), true, `${name}: the keyboard stays on it`);
@@ -358,6 +362,48 @@ export async function run({ browser, base, out }) {
     ok(`${name}: nothing stored, only this site, no console errors`);
     await context.close();
   }
+  // A long chat (about 2,000 questions): a press updates only the row it changed; every other row stays as it is.
+  {
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
+    const page = await context.newPage();
+    await page.clock.install({ time: new Date("2026-12-01T19:00:00Z") });
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    const relayCall = (tool, args) => page.evaluate(([t, a]) => window.__relay.call(t, a), [tool, args]);
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
+    await relayCall("get_context", {});
+    await page.waitForFunction(() => document.querySelector("#chatBtn").getAttribute("aria-disabled") === null);
+    await page.locator("#chatBtn").click();
+    await page.locator("#micBtn").click();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await page.locator("#speechBtn").click();
+    await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    await page.locator("#goBtn").click();
+    const batch = (i) => relayCall("post_chat", { messages: Array.from({ length: 50 }, (_, k) => ({ author: `Person ${i * 50 + k}`, platform: "YouTube", text: `Question ${i * 50 + k}?` })) });
+    await batch(0);
+    assert.equal(await page.locator("#chatSay").textContent(), "50 new viewer questions · 50 open", "the screen reader hears the first questions at once");
+    for (let i = 1; i < 40; i++) await batch(i);
+    assert.equal(await page.locator("#chatSay").textContent(), "50 new viewer questions · 50 open", "a busy chat does not flood it: the next line waits");
+    await page.clock.fastForward(10_000);
+    assert.equal(await page.locator("#chatSay").textContent(), "1950 new viewer questions · 2000 open", "then one line says what came meanwhile");
+    assert.equal(await page.locator("#chatList .msg[data-q]").count(), 2000, "2,000 questions in the list");
+    const press = await page.evaluate(() => new Promise((resolve) => {
+      const touched = new Set();
+      const watch = new MutationObserver((records) => { for (const r of records) { const row = (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest?.(".msg"); if (row) touched.add(row.dataset.id); } });
+      watch.observe(document.querySelector("#chatList"), { subtree: true, childList: true, attributes: true, characterData: true });
+      const button = document.querySelector('#chatList .msg:nth-child(1000) [data-act="answered"]');
+      const t0 = performance.now();
+      button.click();
+      const ms = performance.now() - t0;
+      queueMicrotask(() => { watch.disconnect(); resolve({ rows: [...touched], ms }); });
+    }));
+    assert.deepEqual(press.rows.length, 1, `a press touches only its own row (touched ${press.rows.length})`);
+    assert.ok(press.ms < 100, `a press with 2,000 questions takes ${press.ms.toFixed(1)} ms, under 100 ms`);
+    ok(`2,000 questions: a press updates only its own row, in ${press.ms.toFixed(1)} ms`);
+    await context.close();
+  }
+
   // No agent on the producer screen: the chat panel's own button is switched off with a reason that never points to the
   // setup (out of sight there), and no word on the producer screen sends the host to "Set up".
   {
