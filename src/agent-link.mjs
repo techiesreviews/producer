@@ -105,7 +105,8 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     if (last.position) result.position = last.position;
     if (last.guestName) result.guestName = last.guestName;
     if (last.solo) result.solo = true;
-    if (last.chatOn) result.chatOn = true;
+    // Whether the agent reads the chat is the chat's state now, not when the cue was queued (the host may have switched it off).
+    if (chatOn()) result.chatOn = true;
     reply(id, { result });
   }
 
