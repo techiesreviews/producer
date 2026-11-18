@@ -2,7 +2,9 @@
 // empty while the plan has a question left: the next prepared question shows from the start and stays while the agent
 // is slow or quiet. The agent's answer (src/agent-link.mjs, one to three suggestions) takes the card once: its first
 // suggestion on the card, its next one and the question it replaced as the two to swap in (a third gives way). Asked
-// and Skip move on and count a prepared question by its number. All in this page's memory; nothing is stored.
+// and Skip move on and count a prepared question by its number. The host's own pick from the search (TOOLS-344) takes the
+// card and stays until Asked or Skip: the agent's answer then waits below it to swap in. All in this page's memory;
+// nothing is stored.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** No answer this long after a cue: the thinking light goes back to ready (the card keeps its question). */
@@ -11,10 +13,11 @@ const ALTS = 2;
 
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
- * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; view() gives
+ * agent's answer (true when it changed the card); asked(), skip() and swap(i) are the card's controls; pick(n) puts
+ * prepared question n on the card (the search's click or Enter; an asked or skipped one opens again); view() gives
  * { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first prepared question still
  * open; marked() gives the host's own presses for the end report: { asked, skipped } (prepared question numbers) and
- * newAsked (new questions asked). A question is { n?, text, why?, from: "list" | "agent" }.
+ * newAsked (new questions asked). A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
  */
 export function createQuestions() {
   let plan = [];
@@ -27,6 +30,8 @@ export function createQuestions() {
 
   const key = (q) => (q.n ? `#${q.n}` : `t:${q.text.toLowerCase()}`);
   const open = (q) => (q.n ? !done.has(q.n) : !gone.has(key(q)));
+  // A pick that leaves the card is an ordinary list question below it.
+  const unpicked = (q) => (q?.from === "picked" ? { ...q, from: "list" } : q);
   const prepared = (n, extra = {}) => (Number.isInteger(n) && n >= 1 && n <= plan.length ? { n, text: plan[n - 1], ...extra } : null);
 
   // The card from what is left: an asked question leaves, the first alternative moves up, prepared questions fill in.
@@ -73,6 +78,12 @@ export function createQuestions() {
         return text ? { text, ...why, from: "agent" } : null;
       }).filter((q) => q && open(q));
       if (!fresh.length) return false;
+      // The host's pick stays on the card: the agent's suggestions wait first below it.
+      if (main?.from === "picked") {
+        alts = [...fresh, ...alts];
+        fill();
+        return true;
+      }
       const before = main;
       main = fresh[0];
       // The question it replaced stays to swap back, second after the agent's next pick (a third suggestion gives way).
@@ -86,7 +97,18 @@ export function createQuestions() {
 
     swap(i) {
       if (!main || !alts[i]) return false;
-      [main, alts[i]] = [alts[i], main];
+      [main, alts[i]] = [alts[i], unpicked(main)];
+      return true;
+    },
+
+    pick(n) {
+      const q = prepared(n, { from: "picked" });
+      if (!q || main?.n === n) return false;
+      done.delete(n);
+      // The question it replaced comes first to swap back.
+      alts = [unpicked(main), ...alts].filter(Boolean);
+      main = q;
+      fill();
       return true;
     },
 

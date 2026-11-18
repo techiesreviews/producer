@@ -8,6 +8,8 @@
 //   10 Intro                  a part of the run order: its planned minutes, then its name ("10 min Intro" too);
 //                             a line that starts with minutes is a part even when it ends with ? ("10 Any questions?")
 //   1. How did it start?      a question: numbered (1. or 1)), or any other line ending with a question mark
+// A question written under a part belongs to that part (the search groups by it). A plan that lists every part first
+// and the questions after them says nothing about it, so its questions belong to no part.
 
 /** The short example under the paste box: one line of each kind. */
 export const PLAN_EXAMPLE = ["Show: Techies Live", "Guest: Jane Doe", "10 Intro", "20 Her story", "1. How did it start?"];
@@ -18,12 +20,14 @@ const PLAN_NUMBERED = /^(?:q?\d{1,3})\s*[.)]\s*(\S.*)$/i;
 const PLAN_PART = /^([1-9]\d{0,2})\s*(?:minutes|minute|mins|min|m)?\.?\s+(\S.*)$/i;
 
 /**
- * Reads a pasted plan. Gives { ok: true, show, guest, parts: [{ name, minutes }], questions } when every line is
- * clear and there is at least one part; { ok: false, line, text } naming the first unclear line (from 1);
+ * Reads a pasted plan. Gives { ok: true, show, guest, parts: [{ name, minutes }], questions, questionParts } when every
+ * line is clear and there is at least one part (questionParts: per question, the index of its part, or null); { ok: false, line, text } naming the first unclear line (from 1);
  * { ok: false, noParts: true } when nothing gives a run order; { ok: false, empty: true } for nothing pasted.
  */
 export function readPlan(text) {
-  const plan = { ok: true, show: "", guest: "", parts: [], questions: [] };
+  const plan = { ok: true, show: "", guest: "", parts: [], questions: [], questionParts: [] };
+  const under = []; // per question, the index of the last part above it (-1 for none)
+  let between = false; // a question sits above a part line: the plan puts questions under their parts
   const lines = String(text).split(/\r?\n/);
   let any = false;
   for (const [i, raw] of lines.entries()) {
@@ -34,13 +38,14 @@ export function readPlan(text) {
     const numbered = line.match(PLAN_NUMBERED);
     const part = line.match(PLAN_PART);
     if (named && named[2].trim()) plan[named[1].toLowerCase()] = named[2].trim();
-    else if (numbered) plan.questions.push(numbered[1].trim());
-    else if (part) plan.parts.push({ name: part[2].trim(), minutes: Number(part[1]) });
-    else if (line.endsWith("?")) plan.questions.push(line);
+    else if (numbered) { plan.questions.push(numbered[1].trim()); under.push(plan.parts.length - 1); }
+    else if (part) { if (plan.questions.length) between = true; plan.parts.push({ name: part[2].trim(), minutes: Number(part[1]) }); }
+    else if (line.endsWith("?")) { plan.questions.push(line); under.push(plan.parts.length - 1); }
     else return { ok: false, line: i + 1, text: raw.trim() };
   }
   if (!any) return { ok: false, empty: true };
   if (!plan.parts.length) return { ok: false, noParts: true };
+  plan.questionParts = under.map((i) => (between && i >= 0 ? i : null));
   return plan;
 }
 
