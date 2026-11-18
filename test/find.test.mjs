@@ -128,3 +128,7 @@ test("markWords: the searched words marked in the question's own text, case kept
   assert.deepEqual(markWords("Plain", []), [{ text: "Plain", hit: false }]);
   assert.deepEqual(markWords("cookies", ["cook", "cookies"]), [{ text: "cookies", hit: true }], "the longer word wins where two overlap");
 });
+
+test("markWords: a letter that grows when lower-cased (İ) does not shift the marks after it", () => {
+  assert.deepEqual(markWords("İstanbul risk?", ["risk"]), [{ text: "İstanbul ", hit: false }, { text: "risk", hit: true }, { text: "?", hit: false }]);
+});

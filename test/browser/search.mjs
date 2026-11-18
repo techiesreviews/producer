@@ -230,6 +230,14 @@ export async function run({ browser, base, out }) {
       assert.equal(await find.inputValue(), "", `${name}: Escape empties the box`);
       await find.fill("zebra");
     }
+    if (!phone) {
+      // Escape from a result row empties the box too, and the keyboard goes back to it.
+      await find.fill("cookie");
+      await page.locator("#findList .alt").first().focus();
+      await page.keyboard.press("Escape");
+      assert.deepEqual([await find.inputValue(), await page.evaluate(() => document.activeElement?.id)], ["", "findIn"], `${name}: Escape on a result row empties the box and goes back to it`);
+      await find.fill("zebra");
+    }
     await press(page.locator("#findX"));
     assert.deepEqual([await find.inputValue(), await page.locator("#findX").isVisible(), await page.locator("#alts").isVisible()], ["", false, true], `${name}: the clear button empties the box`);
     ok(`${name}: no match says so; Escape and the clear button empty the box`);
