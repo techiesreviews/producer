@@ -74,7 +74,7 @@ export function fakePage(relay, ws, { hold = 25_000 } = {}) {
     const fresh = page.items.filter((i) => i.seq > after);
     if (!fresh.length) return null;
     const last = fresh.at(-1);
-    return { idle: false, cue: last.cue, seq: last.seq, ...(page.guestName ? { guestName: page.guestName } : {}), transcript: fresh.flatMap((i) => i.transcript ?? []), chat: fresh.flatMap((i) => i.chat ?? []), position: { segment: 2, title: "Main talk", minutesLeft: 11, ...(page.next ? { next: page.next } : {}) }, ...(last.solo ? { solo: true } : {}), ...(last.chatOn ? { chatOn: true } : {}) };
+    return { idle: false, cue: last.cue, seq: last.seq, ...(page.guestName ? { guestName: page.guestName } : {}), transcript: fresh.flatMap((i) => i.transcript ?? []), chat: fresh.flatMap((i) => i.chat ?? []), position: { segment: 2, title: "Main talk", minutesLeft: 11, ...(page.next ? { next: page.next } : {}) }, ...(last.solo ? { solo: true } : {}), ...(page.chatOn ? { chatOn: true } : {}) };
   };
   const answerWaits = () => {
     for (const w of [...page.held]) {
