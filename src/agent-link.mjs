@@ -104,6 +104,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
     const result = { idle: false, cue: last.cue, seq: last.seq, transcript: group.flatMap((c) => c.transcript), chat: [] };
     if (last.position) result.position = last.position;
     if (last.guestName) result.guestName = last.guestName;
+    if (last.solo) result.solo = true;
     reply(id, { result });
   }
 

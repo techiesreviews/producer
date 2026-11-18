@@ -1,5 +1,5 @@
 // Let the agent load the show (card 14, TOOLS-174): the reverse of get_context. The agent's tool load_show pushes the
-// show's name, the guest, the questions, the run order and the notes into the page; step 3's button "Let my agent load
+// show's name, the guest, the questions, the run order and the notes into the page; the plan step's button "Let my agent load
 // it" asks for it and shows the state. Plain facts in, words out: no page, no storage, no network. What the agent
 // sends is checked here twice, by the Worker before the page hears it and by the page itself, with the same plain
 // reasons. The tool carries the show and nothing else: it has no field for the guest's consent, the microphone or the
@@ -102,7 +102,7 @@ export function loadButton({ agent, load, locked = false, solo = false }) {
   if (locked) return { state: null, text: label, tip: "", off: "The show has started, so the plan stays as it is.", primary: true };
   // A request on its way stays shown while the link is only quiet (the agent is busy with the host's outline), but not once the agent is gone.
   if (load.phase === "asking" && (agent === "on" || agent === "waiting")) return { state: "busy", text: "Agent is loading…", tip: `Waiting for ${load.name} to send the show.`, off: "", primary: false };
-  if (agent !== "on") return { state: null, text: label, tip: "", off: agent === "elsewhere" ? "Your agent is connected in another tab." : "Connect your agent first (step 2).", primary: true };
+  if (agent !== "on") return { state: null, text: label, tip: "", off: agent === "elsewhere" ? "Your agent is connected in another tab." : "Connect your agent first (step 3).", primary: true };
   if (load.phase === "failed") return { state: "error", text: "Not loaded · try again", tip: load.reason, off: "", primary: false };
   return { state: null, text: label, tip: `${load.name} sends the show name, guest, questions and run order. You can still change them.`, off: "", primary: true };
 }

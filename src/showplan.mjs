@@ -1,4 +1,4 @@
-// The show plan: the one owner of step 3's plan box. A show arrives one of three ways: the host's own text (pasted or
+// The show plan: the one owner of the plan step's plan box. A show arrives one of three ways: the host's own text (pasted or
 // typed), the built-in demo show (src/demo.mjs), or the agent's load_show (src/agent-load.mjs). Each way goes through
 // here and leaves the same things in a clear state: the text, the plan as last read clearly, its run order, the
 // agent's notes, who wrote it, the lock at Start, and the exchange with the agent for "Let my agent load it". The page
@@ -147,7 +147,7 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
     },
 
     // Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
-    // so step 3's buttons always describe the run order on the producer screen.
+    // so the plan step's buttons always describe the run order on the producer screen.
     lock(now) {
       plan.run.start(now);
       plan.locked = true;
