@@ -7,6 +7,7 @@ import { fakeTimers, pageSockets, relayWith, settle } from "./fakes.mjs";
 import { checkToken, newToken } from "../src/token.mjs";
 import { AGENT_QUIET_MS, AGENT_SAMPLE, AGENT_TEST_MS, ANSWERS_KEPT, createAgentLink } from "../src/agent-link.mjs";
 import { CUE as CUE_NAMES, WAIT_HOLD_MS } from "../src/protocol.mjs";
+import { createChat } from "../src/chat.mjs";
 
 const { default: worker } = await import("../src/worker.mjs");
 const SITE = "https://producer.test";
@@ -17,7 +18,7 @@ const SITE = "https://producer.test";
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat, chatOn } = {}) {
   const now = { t: Date.now() };
   const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
@@ -32,6 +33,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat
     load,
     report,
     chat,
+    chatOn,
     now: () => now.t,
     timers,
   });
@@ -714,7 +716,7 @@ test("post_chat: the page's chat takes what the agent sent, and the answer goes 
   await connect();
   const ok = await call("post_chat", { messages: [{ author: "Person 1", text: "How often do you test a restore?" }] });
   assert.equal(ok.status, 200);
-  assert.deepEqual(got, [{ messages: [{ author: "Person 1", platform: "", text: "How often do you test a restore?", time: "", pick: "" }], waiting: "", problem: "" }]);
+  assert.deepEqual(got, [{ messages: [{ author: "Person 1", text: "How often do you test a restore?" }] }]);
   assert.deepEqual(ok.body.result.structuredContent, { ok: true, shown: 1 });
   assert.equal(link.view().state, "on", "a chat post counts as the agent's own call");
   link.disconnect();
@@ -765,5 +767,41 @@ test("the chat cue goes alone, is not a question on the card, and never takes su
   assert.deepEqual([second.cue, second.seq], ["pause", 2]);
   assert.equal(link.suggestion(), null);
   await flush();
+  link.disconnect();
+});
+
+test("through the real Worker into the page's chat: a short message, a pick, waiting and a problem all land", async () => {
+  const viewers = createChat();
+  const { link, call, connect } = setup({ chat: (args) => viewers.agentPost(args, "1:00") });
+  await connect();
+  viewers.ask("Claude Code", () => true);
+  const waiting = await call("post_chat", { waiting: "no live stream yet" });
+  assert.equal(waiting.body.result.isError, undefined, JSON.stringify(waiting.body.result));
+  assert.equal(viewers.view().phase, "waiting");
+  const posted = await call("post_chat", { messages: [{ author: "Person 1", text: "Hello" }, { author: "Person 2", platform: "YouTube", text: "How often do you test a restore?", time: "2026-12-01T19:20:00Z", pick: "fits the backup part" }] });
+  assert.equal(posted.body.result.isError, undefined, JSON.stringify(posted.body.result));
+  assert.deepEqual(posted.body.result.structuredContent, { ok: true, shown: 2 });
+  assert.equal(viewers.view().pick.text, "How often do you test a restore?");
+  const problem = await call("post_chat", { problem: "I have no Restream connection." });
+  assert.equal(problem.body.result.isError, undefined);
+  assert.deepEqual([viewers.view().phase, viewers.view().reason], ["failed", "I have no Restream connection."]);
+  link.disconnect();
+});
+
+test("with the viewer chat on, a held wait that runs out says chatOn, so the agent reads the chat on quiet stretches too", async () => {
+  let on = false;
+  const { link, call, connect, timers, flush } = setup({ chatOn: () => on });
+  await connect();
+  const off = call("wait_for_cue", { seq: 0 });
+  await flush();
+  await timers.tick(WAIT_HOLD_MS);
+  assert.deepEqual((await off).body.result.structuredContent, { idle: true, seq: 0 }, "chat off: a plain idle");
+  on = true;
+  const quiet = call("wait_for_cue", { seq: 0 });
+  await flush();
+  await timers.tick(WAIT_HOLD_MS);
+  const r = (await quiet).body.result;
+  assert.deepEqual(r.structuredContent, { idle: true, seq: 0, chatOn: true }, "chat on: the idle answer says so");
+  assert.match(r.content[0].text, /post_chat/);
   link.disconnect();
 });
