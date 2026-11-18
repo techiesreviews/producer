@@ -174,7 +174,7 @@ export async function run({ browser, base, out }) {
 
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
-    assert.equal((await relayCall("get_context", {})).result.chatOn, undefined, `${name}: before Connect Restream chat the agent is not told the chat is on`);
+    await relayCall("get_context", {});
     await page.waitForFunction(() => document.querySelector("#chatBtn").getAttribute("aria-disabled") === null);
     const ready = await button("#chatBtn");
     assert.deepEqual([ready.text, ready.state, ready.off], ["Connect Restream chat", null, null], `${name}: ready once the agent is connected`);
@@ -203,11 +203,13 @@ export async function run({ browser, base, out }) {
     const ctx = (await relayCall("get_context", {})).result;
     assert.equal(ctx.solo, true, `${name}: get_context says it is a solo show`);
     assert.equal(ctx.guestName, undefined, `${name}: and names no guest`);
+    assert.equal(ctx.chatOn, true, `${name}: and that the agent reads the chat (it watches for the live stream)`);
     ok(`${name}: the list reads as points, the top bar says solo, the agent hears it is a solo show`);
 
     // Another stream ends the chat (the agent hears it is off); back on Restream a press connects it again.
     await press(page.locator('#streamSeg [data-v="obs"]'));
     assert.match((await relayCall("post_chat", { messages: [] })).error, /switched it off/, `${name}: OBS ends the chat: the agent hears it is off`);
+    assert.equal((await relayCall("get_context", {})).result.chatOn, undefined, `${name}: once the chat is off, get_context no longer says it is on`);
     await press(page.locator('#streamSeg [data-v="restream"]'));
     assert.equal(await text("#chatBtn"), "Connect Restream chat", `${name}: back on Restream, ready to connect again`);
     await press(page.locator("#chatBtn"));
