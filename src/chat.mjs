@@ -218,16 +218,19 @@ export function createChat({ waitMs = CHAT_WAIT_MS, onChange = () => {}, timers 
 
 /**
  * The "Connect Restream chat" button in the setup, from plain facts: the stream picked in "I stream with", the agent link's state,
- * the chat's view and the agent's name. off is the reason it is switched off ("" when it can be pressed).
+ * the chat's view and the agent's name; inPanel for the chat panel's own button on the producer screen. off is the
+ * reason it is switched off ("" when it can be pressed).
  */
-export function chatButton({ stream, agent, chat, name }) {
+export function chatButton({ stream, agent, chat, name, inPanel = false }) {
+  // The panel's twin on the producer screen never names the setup's step: the setup is out of sight there.
+  const noAgent = inPanel ? "Your agent is not connected. The chat comes through your agent." : "Connect your agent first (step 3).";
   const label = "Connect Restream chat";
   if (stream !== "restream") return { state: null, text: label, tip: "", off: "Viewer chat works with Restream streams only." };
   if (chat.phase === "on") return { state: "ok", text: "Restream chat connected ✓", tip: `${chat.name || name} reads your Restream chat. Press to disconnect.`, off: "" };
   if (chat.phase === "waiting") return { state: "busy", text: "Chat · waiting for your live stream", tip: `${chat.name || name}: ${chat.note}. The chat shows once you are live. Press to disconnect.`, off: "" };
   if (chat.phase === "asking" && (agent === "on" || agent === "waiting")) return { state: "busy", text: "Connecting chat…", tip: `Waiting for ${chat.name || name} to read your Restream chat.`, off: "" };
   if (agent === "elsewhere") return { state: null, text: label, tip: "", off: "Your agent is connected in another tab." };
-  if (agent !== "on") return { state: null, text: label, tip: "", off: "Connect your agent first (step 3)." };
+  if (agent !== "on") return { state: null, text: label, tip: "", off: noAgent };
   if (chat.phase === "failed") return { state: "error", text: "Chat not connected · try again", tip: chat.reason, off: "" };
   return { state: null, text: label, tip: `${name} reads your Restream chat with its own Restream connection and shows it here. Nothing is stored.`, off: "" };
 }
