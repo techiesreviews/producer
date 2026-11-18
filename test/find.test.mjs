@@ -140,3 +140,8 @@ test("markWords: overlapping hits of one word are all marked; a typed İ marks t
   const plan = readPlan("3 Intro\n1. İstanbul risk?");
   assert.equal(findQuestions({ plan, query: "İstanbul risk" }).count, 1, "the list shows it too");
 });
+
+test("markWords: a Greek word ending in a capital Σ is marked like the list finds it", () => {
+  assert.equal(findQuestions({ plan: readPlan("3 Intro\n1. Τι είναι ο ΚΟΣΜΟΣ;"), query: "ΚΟΣΜΟΣ" }).count, 1);
+  assert.deepEqual(markWords("Τι είναι ο ΚΟΣΜΟΣ;", findWords("ΚΟΣΜΟΣ")), [{ text: "Τι είναι ο ", hit: false }, { text: "ΚΟΣΜΟΣ", hit: true }, { text: ";", hit: false }]);
+});
