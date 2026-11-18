@@ -213,7 +213,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .msg--new { animation: msg-in 220ms var(--ease-out); }
 @keyframes msg-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .msg--new { animation: none; } }
-.chat__state { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.7rem 0.85rem; color: var(--muted); }
+.chat__state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0; padding: 0.7rem 0.85rem; color: var(--muted); }
+.chat__list:not([hidden]) + .chat__state { border-block-start: 1px solid var(--line); }
 
 /* "All" exists only on a narrow window, where the list shows just the current and the next part. */
 .runs__more { display: none; }
