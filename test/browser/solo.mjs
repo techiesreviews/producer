@@ -212,6 +212,8 @@ export async function run({ browser, base, out }) {
     assert.equal(await text("#chatBtn"), "Connect Restream chat", `${name}: back on Restream, ready to connect again`);
     await press(page.locator("#chatBtn"));
     assert.equal(await text("#chatBtn"), "Connecting chat…", `${name}: connecting again`);
+    const again = (await relayCall("wait_for_cue", { seq: 1, holdMs: 25000 })).result;
+    assert.deepEqual([again.cue, again.seq], ["read_chat", 2], `${name}: the agent hears read_chat again`);
     // A viewer asks before the show starts: its time says so, not a show time.
     await relayCall("post_chat", { messages: [{ author: "Person 5", platform: "YouTube", text: "Is this the security stream?" }] });
     assert.equal(await text("#chatBtn"), "Restream chat connected ✓", `${name}: connected`);
@@ -233,7 +235,7 @@ export async function run({ browser, base, out }) {
     await press(page.locator("#runBtn")); // Start
     const other = page.locator('#modeSeg [data-v="guest"]');
     assert.deepEqual([await other.getAttribute("aria-disabled"), await other.getAttribute("data-tip")], ["true", "The show has started, so the show type stays as it is."], `${name}: once the clock runs the show type is fixed`);
-    await pressOff(other);
+    await other.dispatchEvent("click"); // the setup is out of sight on the producer screen: the press goes to the button itself
     assert.equal(await page.locator('#modeSeg [aria-pressed="true"]').getAttribute("data-v"), "solo", `${name}: and a press changes nothing`);
     ok(`${name}: the producer screen: Your next point, Said and Skip, the viewer chat waiting for the live stream`);
 
@@ -262,7 +264,7 @@ export async function run({ browser, base, out }) {
     ok(`${name}: the chat under the run order; questions bold with Use, Answered and Skip; the agent's pick on the card with Use; no markup from the chat`);
 
     // ---- The agent hears what is next on the card with each cue.
-    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000 }); });
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000 }); });
     const said = await page.evaluate(async () => {
       window.__speech.emit({ type: "text", source: "host", piece: 1, final: true, text: "So that was the late call.", start: 0, end: 31 });
       window.__speech.emit({ type: "pause", source: "host", at: 31 });
