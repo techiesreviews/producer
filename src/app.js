@@ -796,7 +796,8 @@ const findHead = $("findHead");
 const findTitle = $("findTitle");
 const findCount = $("findCount");
 const findList = $("findList");
-const found = { key: "", plan: null, card: null, first: null };
+const findSay = $("findSay");
+const found = { key: "", plan: null, card: null, locked: false, first: null, sayTimer: 0 };
 
 function renderFind() {
   const total = show.plan?.questions.length ?? 0;
@@ -813,8 +814,11 @@ function renderFind() {
   findList.hidden = !searching;
   altsBox.hidden = searching;
   // The question on the card (none while a viewer question holds it), and what the host already asked or skipped.
-  found.card = viewers.view().card ? null : questions.view().main?.n ?? null;
-  found.first = result.groups.flatMap((g) => g.items).find((n) => n !== found.card) ?? null;
+  const { main } = questions.view();
+  found.card = viewers.view().card ? null : main?.n ?? null;
+  // The card's own question is a match like any other until it is the host's pick (then it is locked there already).
+  found.locked = found.card !== null && main.from === "picked";
+  found.first = result.groups.flatMap((g) => g.items).find((n) => !(found.locked && n === found.card)) ?? null;
   if (!searching) {
     found.key = "";
     return;
@@ -822,7 +826,7 @@ function renderFind() {
   const marks = questions.marked();
   const now = show.run?.view(Date.now()).rows.findIndex((row) => row.state === "now") ?? -1;
   // Rebuilt only when it changes, so a focused row keeps the keyboard and a screen reader hears no churn.
-  const key = JSON.stringify([findIn.value, found.card, marks, now, solo]);
+  const key = JSON.stringify([findIn.value, found.card, found.locked, marks, now, solo]);
   if (key === found.key && found.plan === show.plan) return;
   found.key = key;
   found.plan = show.plan;
@@ -846,6 +850,7 @@ function renderFind() {
       row.dataset.n = String(n);
       if (state) row.dataset.s = state;
       if (state === "card") row.setAttribute("aria-current", "true");
+      if (state === "card" && found.locked) row.dataset.locked = "";
       const text = Object.assign(make("span", "alt__q"), { dir: "auto" });
       for (const piece of markWords(show.plan.questions[n - 1], result.words)) text.append(piece.hit ? make("mark", "", piece.text) : piece.text);
       const chip = state === "card" ? "On card" : state === "asked" ? (solo ? "Said ✓" : "Asked ✓") : state === "skipped" ? "Skipped" : solo ? `Point ${n}` : `Q${n}`;
@@ -869,6 +874,8 @@ function pickFound(n) {
 }
 
 function clearFind() {
+  clearTimeout(found.sayTimer);
+  findSay.textContent = "";
   findIn.value = "";
   findList.scrollTop = 0;
 }
@@ -876,6 +883,13 @@ function clearFind() {
 findIn.addEventListener("input", () => {
   findList.scrollTop = 0;
   renderFind();
+  // A screen reader hears the count once typing stops, not at every key.
+  clearTimeout(found.sayTimer);
+  findSay.textContent = "";
+  found.sayTimer = setTimeout(() => {
+    const { count, words } = findQuestions({ plan: show.plan, query: findIn.value });
+    findSay.textContent = !words.length ? "" : count ? `${count} ${count === 1 ? "match" : "matches"}` : findList.querySelector(".pool__state")?.textContent ?? "";
+  }, 700);
 });
 findIn.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && findIn.value) {
@@ -894,7 +908,7 @@ findX.addEventListener("click", () => {
 });
 findList.addEventListener("click", (e) => {
   const row = e.target.closest(".alt");
-  if (row && row.dataset.s !== "card") pickFound(Number(row.dataset.n));
+  if (row && !(found.locked && row.dataset.s === "card")) pickFound(Number(row.dataset.n));
 });
 
 /** A cue went (a pause, or Suggest now): the light breathes until the agent's turn on it ends (answered, passed, or a minute). */
