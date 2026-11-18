@@ -313,6 +313,21 @@ export async function run({ browser, base, out }) {
     await shot("live", phone ? "#chat" : null);
     ok(`${name}: Skip in the chat, Questions only, Said moves the plan on`);
 
+    // ---- The chat fails during the show (the agent loses its Restream connection): the panel offers the retry itself.
+    await relayCall("post_chat", { problem: "Restream connection lost." });
+    const retry = page.locator("#chatState button");
+    assert.equal(await retry.isVisible(), true, `${name}: a failed chat offers its retry in the panel (the setup is out of sight)`);
+    assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-tip")], ["Chat not connected · try again", "Restream connection lost."], `${name}: with the reason`);
+    const before = await page.evaluate(() => window.__relay.next);
+    await press(retry);
+    assert.equal(await text("#chatState"), "Connecting…", `${name}: the retry connects again`);
+    const retried = (await relayCall("wait_for_cue", { seq: 3, holdMs: 25000 })).result;
+    assert.equal(retried.cue, "read_chat", `${name}: the agent hears read_chat (${before})`);
+    await relayCall("post_chat", { messages: [] });
+    assert.equal(await page.locator("#chatState").isVisible(), false, `${name}: connected again, the chat shows`);
+    assert.equal(await text("#qMain"), "Look first, then act", `${name}: the plan and the card are as they were`);
+    ok(`${name}: a chat that fails during the show is retried from the panel; the show goes on as it was`);
+
     // ---- End & report: the viewer questions answered and not answered, the points not said; the agent hears the chat is off.
     await press(page.locator("#endBtn"));
     assert.equal(await page.locator("#report").isVisible(), true, `${name}: the end report shows`);

@@ -753,6 +753,19 @@ test("a solo show's cue says so, so the agent knows to pick viewer questions rat
   link.disconnect();
 });
 
+test("a cue says chatOn by the chat's state when the agent gets it, not when it was queued", async () => {
+  let on = true;
+  const { link, call, connect } = setup({ chatOn: () => on });
+  await connect();
+  await call("get_context");
+  link.send({ ...CUE, solo: true, chatOn: true }); // queued while the chat is on (the page says so in the cue)
+  on = false; // the host switches the chat off before the agent comes back
+  const r = (await call("wait_for_cue", { seq: 0 })).body.result;
+  assert.equal(r.structuredContent.chatOn, undefined, "the agent is not told to read a chat that is off");
+  assert.doesNotMatch(r.content[0].text, /post_chat/);
+  link.disconnect();
+});
+
 test("a chat request the agent has not picked up is taken back when the host switches the chat off", async () => {
   const { link, call, connect } = setup();
   await connect();

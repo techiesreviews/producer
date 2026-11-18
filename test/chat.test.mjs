@@ -147,6 +147,18 @@ test("chatStampOf: a message's own ISO time against the show clock; before Start
   for (const odd of ["Dec 1 19:01", "2 min ago", "19:01", "", undefined]) assert.equal(chatStampOf(odd, run, now), "5:00", `unreadable ${JSON.stringify(odd)}: the time it came`);
 });
 
+test("a long chat keeps the newest messages: past the cap the oldest plain messages go; questions always stay", () => {
+  const { chat } = connected();
+  chat.agentPost({ messages: [msg("First question?", { time: "t0" })] });
+  for (let i = 0; i < 41; i++) chat.agentPost({ messages: Array.from({ length: 50 }, (_, k) => msg(`hello ${i * 50 + k}`, { time: `t${i * 50 + k}` })) });
+  const v = chat.view();
+  assert.equal(v.messages.length, 2000, "never more than the cap");
+  assert.equal(v.messages[0].text, "First question?", "the question stays");
+  assert.equal(v.messages.at(-1).text, "hello 2049", "the newest plain message is shown");
+  assert.equal(v.messages.some((m) => m.text === "hello 0"), false, "the oldest plain messages went");
+  assert.deepEqual(chat.agentPost({ messages: [msg("one more", { time: "x" })] }), { result: { shown: 1 } });
+});
+
 test("Use on another question lets the pick on the card go too", () => {
   const { chat } = connected();
   chat.agentPost({ messages: [msg("A?", { pick: "fits" }), msg("B?")] });
