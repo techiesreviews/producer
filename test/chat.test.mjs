@@ -159,6 +159,14 @@ test("a long chat keeps the newest messages: past the cap the oldest plain messa
   assert.deepEqual(chat.agentPost({ messages: [msg("one more", { time: "x" })] }), { result: { shown: 1 } });
 });
 
+test("the same words from the same name on two platforms are two messages; a question mark in other scripts counts", () => {
+  const { chat } = connected();
+  chat.agentPost({ messages: [msg("Is there a template?", { platform: "YouTube" }), msg("Is there a template?", { platform: "Twitch" })] });
+  assert.deepEqual(chat.view().messages.map((m) => m.where), ["YouTube", "Twitch"]);
+  chat.agentPost({ messages: [msg("هل يوجد قالب؟"), msg("有模板吗？"), msg("¿Hay una plantilla?")] });
+  assert.deepEqual(chat.view().messages.slice(2).map((m) => m.q), [true, true, true], "Arabic, full-width and Spanish question marks");
+});
+
 test("Use on another question lets the pick on the card go too", () => {
   const { chat } = connected();
   chat.agentPost({ messages: [msg("A?", { pick: "fits" }), msg("B?")] });

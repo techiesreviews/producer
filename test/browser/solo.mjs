@@ -245,7 +245,7 @@ export async function run({ browser, base, out }) {
     const posted = await relayCall("post_chat", { messages: CHAT });
     assert.deepEqual(posted.result, { shown: 4 }, `${name}: four messages shown`);
     assert.equal(await text("#chatBtn"), "Restream chat connected ✓", `${name}: the setup's button reads connected`);
-    assert.equal(await page.locator("#chatState").isVisible(), false, `${name}: no state line once messages show`);
+    assert.deepEqual([await text("#chatState button"), await page.locator("#chatState button").getAttribute("data-state")], ["Restream chat connected ✓", "ok"], `${name}: the panel's own chat button shows the chat is connected (the setup is out of sight)`);
     const rows = await page.locator("#chatList .msg").evaluateAll((els) => els.map((el) => [el.querySelector(".msg__who").textContent, el.querySelector(".msg__x").textContent, el.hasAttribute("data-q"), [...el.querySelectorAll(".msg__act button:not([hidden])")].map((b) => b.textContent)]));
     assert.deepEqual(rows, [
       ["Person 5", "Is this the security stream?", true, ["Use", "Answered", "Skip"]],
@@ -318,12 +318,17 @@ export async function run({ browser, base, out }) {
     const retry = page.locator("#chatState button");
     assert.equal(await retry.isVisible(), true, `${name}: a failed chat offers its retry in the panel (the setup is out of sight)`);
     assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-tip")], ["Chat not connected · try again", "Restream connection lost."], `${name}: with the reason`);
-    await press(retry);
+    if (phone) await press(retry); else { await retry.focus(); await page.keyboard.press("Enter"); }
     assert.deepEqual([await text("#chatState button"), await retry.getAttribute("data-state")], ["Connecting chat…", "busy"], `${name}: the retry connects again, busy on the button itself`);
     const retried = (await relayCall("wait_for_cue", { seq: 3, holdMs: 25000 })).result;
     assert.equal(retried.cue, "read_chat", `${name}: the agent hears read_chat`);
     await relayCall("post_chat", { messages: [] });
-    assert.equal(await page.locator("#chatState").isVisible(), false, `${name}: connected again, the chat shows`);
+    assert.equal(await text("#chatState button"), "Restream chat connected ✓", `${name}: connected again, on the same button`);
+    if (!phone) assert.equal(await page.evaluate(() => document.activeElement === document.querySelector("#chatState button")), true, `${name}: the keyboard stays on it`);
+    // The same button disconnects the chat during the show; the agent hears it is off.
+    await press(retry);
+    assert.equal(await text("#chatState button"), "Connect Restream chat", `${name}: a press disconnects, without ending the show`);
+    assert.match((await relayCall("post_chat", { messages: [] })).error, /switched it off/, `${name}: the agent hears the chat is off`);
     assert.equal(await text("#qMain"), "Look first, then act", `${name}: the plan and the card are as they were`);
     ok(`${name}: a chat that fails during the show is retried from the panel; the show goes on as it was`);
 
