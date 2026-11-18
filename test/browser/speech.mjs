@@ -13,6 +13,14 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { delays, wordErrors } from "../speech-score.mjs";
 
+// TOOLS-336: "Solo show" is the show type's first choice (its own button now); Yes and No are the guest step's, which
+// shows with a guest. Picks the show type the answer needs, then the answer.
+async function answerGuest(page, label, press = (l) => l.click()) {
+  const mode = page.locator(`#modeSeg [data-v="${label === "Solo show" ? "solo" : "guest"}"]`);
+  if ((await mode.getAttribute("aria-pressed")) !== "true") await press(mode);
+  if (label !== "Solo show") await press(page.getByRole("button", { name: label, exact: true }));
+}
+
 const fixture = resolve(import.meta.dirname, "../fixtures/two-voices");
 const clip = JSON.parse(readFileSync(`${fixture}.json`, "utf8"));
 const TARGET = { middleDelay: 1.5, wordErrors: 0.2 };
@@ -166,11 +174,12 @@ async function view(browser, base, out, [name, , options, answer, chip, tab]) {
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const press = (locator) => (touch ? locator.tap() : locator.click());
   await press(page.locator("#speechBtn"));
   await page.waitForFunction(() => /ready|failed/.test(document.querySelector("#speechTxt").textContent), null, { timeout: 120000 });
   assert.equal(await text(page, "speechBtn"), "Speech ready", `${name}: the model loads (${await page.locator("#speechBtn").getAttribute("data-tip")})`);
-  await press(page.getByRole("button", { name: answer, exact: true }));
+  await answerGuest(page, answer, press);
   await press(page.locator("#micBtn"));
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   // A guest who said yes is heard through the studio tab: share it (the stand-in picker), then the sign names both.
@@ -236,6 +245,7 @@ async function failures(browser, base, out) {
     await route.fulfill({ json: { ...manifest, files: manifest.files.map((f) => ({ ...f, parts: [] })) } });
   });
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   await page.locator("#speechBtn").click();
   await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "error");
   assert.equal(await text(page, "speechBtn"), "Speech model failed · try again", "a missing model says so on the button");
@@ -248,7 +258,7 @@ async function failures(browser, base, out) {
     assert.match(await page.locator("#micBtn").getAttribute("data-tip"), tip, `${name}: with the way out`);
     assert.equal(await page.locator("#micMeter").isHidden(), true, `${name}: no meter`);
   }
-  await page.getByRole("button", { name: "Solo show", exact: true }).click();
+  await answerGuest(page, "Solo show");
   assert.deepEqual([await page.locator("#goBtn").getAttribute("aria-disabled"), await page.locator("#goBtn").getAttribute("data-tip")], ["true", "Turn on the microphone first."], "the open button stays off");
   const shot = join(out, "speech-failures.png");
   await page.screenshot({ path: shot });
@@ -274,6 +284,7 @@ async function twoVoices(browser, base, out) {
   page.on("worker", (w) => w.on("console", (m) => { if (m.type() === "error") problems.push(`worker console: ${m.text()}`); }));
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const windows = { host: [], guest: [] };
   for (const u of clip.utterances) windows[u.who].push([u.start, u.end]);
   await page.evaluate((arg) => window.__voices(arg), { wav: readFileSync(`${fixture}.wav`).toString("base64"), windows });
@@ -281,7 +292,7 @@ async function twoVoices(browser, base, out) {
   await page.locator("#speechBtn").click();
   await page.waitForFunction(() => /ready|failed/.test(document.querySelector("#speechTxt").textContent), null, { timeout: 120000 });
   assert.equal(await text(page, "speechBtn"), "Speech ready", "two voices: the model loads");
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   await page.locator("#tabBtn").click();
@@ -432,6 +443,7 @@ async function tabFailures(browser, base, out) {
   const page = await context.newPage();
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const btn = page.locator("#tabBtn");
   const label = () => text(page, "tabTxt");
   const ended = () => page.evaluate(() => window.__watch.shares.every((s) => s.getTracks().every((t) => t.readyState === "ended")));
@@ -474,10 +486,10 @@ async function tabFailures(browser, base, out) {
 
   // No and Solo show stop a shared tab at once.
   for (const [answer, reason] of [["No · my mic only", "Your guest said no: only your microphone is listened to."], ["Solo show", "Solo show: no guest to hear."]]) {
-    await page.getByRole("button", { name: "Yes", exact: true }).click();
+    await answerGuest(page, "Yes");
     await btn.click();
     await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
-    await page.getByRole("button", { name: answer, exact: true }).click();
+    await answerGuest(page, answer);
     assert.ok(await ended(), `${answer}: the shared tab stops at once`);
     assert.equal(await btn.getAttribute("aria-disabled"), "true", `${answer}: and the button is switched off`);
     assert.equal(await btn.getAttribute("data-tip"), reason, `${answer}: with its reason`);
@@ -486,7 +498,7 @@ async function tabFailures(browser, base, out) {
 
   // OBS has no studio tab: picking it stops a shared tab at once and switches the button off with its reason; the open
   // button does not wait for it.
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await btn.click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
   await page.getByRole("button", { name: "OBS", exact: true }).click();
@@ -501,21 +513,21 @@ async function tabFailures(browser, base, out) {
   await page.evaluate(() => { window.__watch.share = "cancel"; window.__watch.hold = true; });
   await btn.click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "busy");
-  await page.getByRole("button", { name: "No · my mic only", exact: true }).click();
+  await answerGuest(page, "No · my mic only");
   await page.evaluate(() => { window.__watch.hold = false; window.__watch.release(); });
   await page.waitForTimeout(300);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   assert.equal(await btn.getAttribute("data-state"), null, "No then Yes around a closed picker: no failure is left on the button");
   assert.equal(await label(), "Share the studio tab with sound", "and it reads as ready");
   await page.evaluate(() => { window.__watch.share = "tab"; });
 
   // The same while the browser's picker is still open: the answer wins, and what the browser hands over is let go.
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.evaluate(() => { window.__watch.hold = true; });
   await btn.click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "busy");
   assert.equal(await label(), "Pick the tab…", "while the picker is open the button says so");
-  await page.getByRole("button", { name: "No · my mic only", exact: true }).click();
+  await answerGuest(page, "No · my mic only");
   await page.evaluate(() => { window.__watch.hold = false; window.__watch.release(); });
   await page.waitForFunction(() => window.__watch.shares.at(-1)?.getTracks().every((t) => t.readyState === "ended"));
   assert.equal(await btn.getAttribute("aria-disabled"), "true", "No while the picker was open: the button ends up switched off");
@@ -548,7 +560,8 @@ async function realPicker(browser, base) {
     media.getDisplayMedia = async (options) => { const stream = await real(options); window.__real.push(stream); return stream; };
   });
   await page.goto(`${base}/`);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
+  await answerGuest(page, "Yes");
   await page.locator("#tabBtn").click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok" || document.querySelector("#tabBtn").dataset.state === "error", null, { timeout: 15000 });
   assert.equal(await text(page, "tabBtn"), "Restream Studio tab", "a real share is read right and shown on the button");
@@ -586,10 +599,11 @@ export async function run({ playwright, base, dist, out }) {
     page.on("worker", (w) => w.on("console", (m) => { if (m.type() === "error") problems.push(`worker console: ${m.text()}`); }));
     await page.addInitScript(watch);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
 
     // The new steps, in order, and the open button switched off with the first missing step as its reason.
     const steps = await page.locator(".step .step__label").allInnerTexts();
-    assert.deepEqual(steps, ["I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Sound", "Speech to text"], "the steps that exist, in order");
+    assert.deepEqual(steps, ["Show type", "I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Viewer chat", "Sound", "Speech to text"], "the steps that exist, in order (a show with a guest)");
     const go = page.locator("#goBtn");
     assert.equal(await go.getAttribute("aria-disabled"), "true", "Open producer screen waits for the steps");
     assert.equal(await go.getAttribute("data-tip"), "Answer Guest agreed first.", "and says what is missing first");
@@ -617,7 +631,7 @@ export async function run({ playwright, base, dist, out }) {
     ok(`speech: the model loads from this site with progress on its button (${[...shown].filter((l) => /%/.test(l)).length} steps)`);
 
     // The guest step: one answer at a time, the host's own click.
-    await page.getByRole("button", { name: "Yes", exact: true }).click();
+    await answerGuest(page, "Yes");
     assert.equal(await page.locator("#sGuest").getAttribute("data-done"), "", "the guest step is done");
     assert.equal(await go.getAttribute("data-tip"), "Turn on the microphone first.", "the open button now waits for the microphone");
     ok("guest: Yes picked by the host");

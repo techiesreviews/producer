@@ -104,6 +104,7 @@ async function openScreen(page, press, { agent }) {
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     await page.evaluate(() => window.__relay.call("get_context"));
   }
+  await press(page.locator('#modeSeg [data-v="guest"]')); // a show with a guest (TOOLS-336: a solo show is the default)
   await press(page.locator("#guestSeg button").first());
   await press(page.locator("#micBtn"));
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -190,6 +191,7 @@ export async function run({ browser, base, out }) {
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     const press = (locator) => (options.hasTouch ? locator.tap() : locator.click());
     const shot = async (file) => { const path = join(out, `report-${name}-${file}.png`); await page.keyboard.press("Escape"); await page.evaluate(() => document.activeElement?.blur()); await page.waitForTimeout(200); await page.screenshot({ path, fullPage: true }); screenshots.push(path); };
     const screen = () => page.evaluate(SCREEN);
@@ -312,6 +314,7 @@ export async function run({ browser, base, out }) {
     await page.addInitScript(standIns);
     await page.addInitScript(noPicker);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     const press = (l) => l.click();
     await openScreen(page, press, { agent: false });
     await playShow(page, press);
@@ -342,6 +345,7 @@ export async function run({ browser, base, out }) {
     await page.clock.install({ time: new Date("2026-11-09T19:00:00") });
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await openScreen(page, (l) => l.click(), { agent: true });
     const early = await page.evaluate((r) => window.__relay.call("post_report", r), REPORT);
     assert.equal(early.error, "There is no show to report on yet.", "a report before End & report is refused");
@@ -384,6 +388,7 @@ export async function run({ browser, base, out }) {
     await page.clock.install({ time: new Date("2026-11-09T19:00:00") });
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await openScreen(page, (l) => l.click(), { agent: true });
     await page.clock.fastForward(61_000);
     await page.waitForFunction((t) => document.querySelector("#connectBtn").textContent === t, "Waiting for Claude Code…");
@@ -405,6 +410,7 @@ export async function run({ browser, base, out }) {
     const page = await context.newPage();
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await openScreen(page, (l) => l.tap(), { agent: true });
     // A long show name and a guest's name in another script must not push the phone sideways.
     await page.locator("#planIn").evaluate((el, text) => { el.value = text; el.dispatchEvent(new Event("input")); }, PLAN.replace("Show: Techies Live", "Show: The Long-Running Weekly Founder Interview Series With Very Long Names https://example.com/WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW").replace("Guest: Jane Doe", "Guest: سارة عبد الرحمن الهاشمية"));

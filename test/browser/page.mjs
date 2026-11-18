@@ -26,7 +26,7 @@ const T3_TIP = "Slower: about 6 seconds an answer. T3 Code cannot take a private
 const LOCK_TIP = "Disconnect first to pick another agent.";
 const T3_MCP_TIP = "T3 Code cannot take a private MCP line. Use the connect message.";
 const TEST_TIP = "Warm-up before you go live. For quicker answers, pick a fast model setting and use a fresh small chat.";
-const GUEST = ["Yes", "No · my mic only", "Solo show"];
+const GUEST = ["Yes", "No · my mic only"];
 const KEY_TIP = "Comes later: your own paid AI key, capped at about €5 per stream.";
 const OFF_REASON = "Firefox does not let web pages receive the sound of a shared tab, so the guest cannot be heard here. Use Chrome or Edge.";
 const PHONE_REASON = "Phone and tablet browsers generally cannot share a tab with sound. Use Chrome or Edge on a computer.";
@@ -50,16 +50,17 @@ const token = async (page, name) => paint(page, await page.evaluate((n) => {
 const text = (page, id) => page.locator(`#${id}`).evaluate((el) => el.innerText.replace(/\s+/g, " ").trim());
 const lightness = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 
-// The setup screen: the heading with this browser's chip, the steps that exist ("I stream with", "AI agent", "Show,
-// questions & plan", "Guest agreed", "Sound", "Speech to text") and the open button, step 1's choices pressing one at
+// The setup screen: the heading with this browser's chip, the steps a solo show (the default, TOOLS-336) shows ("Show
+// type", "I stream with", "AI agent", "Show, points & plan", "Viewer chat", "Sound", "Speech to text"; "Guest agreed"
+// and the guest tab come with a guest) and the open button, step 1's choices pressing one at
 // a time with its done mark, the guest step's answers, the wide (label beside) or compact (label above) layout, and no
 // word on the screen beyond its labels (no explainer). Leaves "Restream Studio" picked and the guest answer Yes.
 async function checkSetup(page, name, { phone, touch, chip, tabOff, service = true }) {
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 I stream with ${STREAM.join(" ")} 2 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 3 Show, questions & plan i Let my agent load it Load demo show Paste it myself 4 Guest agreed ${GUEST.join(" ")} 5 Sound Microphone ${tabOff ? "i " : ""}${TAB_LABEL} 6 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
-  assert.equal(await page.locator(".step").count(), 6, `${name}: six steps, one per feature that exists`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 Show type Solo show With a guest 2 I stream with ${STREAM.join(" ")} 3 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 4 Show, points & plan i Let my agent load it Load demo show Paste it myself 5 Viewer chat i Connect Restream chat 6 Sound Microphone 7 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.equal(await page.locator(".step").count(), 8, `${name}: eight steps, one per feature that exists (the guest step hidden on a solo show)`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
   const pressed = () => page.locator('#streamSeg button[aria-pressed="true"]').allInnerTexts();
@@ -99,22 +100,31 @@ async function checkSetup(page, name, { phone, touch, chip, tabOff, service = tr
   await page.evaluate(() => document.activeElement?.blur());
   assert.deepEqual(await pressed(), ["Restream Studio"], `${name}: back to Restream Studio`);
 
-  // The guest step: nothing is picked on arrival (only the host answers); one answer at a time, by mouse, tap or
-  // keyboard; the step is done once answered. The open button waits, saying what is missing first.
+  // The show type (TOOLS-336): a solo show from the start, so no guest step and the open button waits for the
+  // microphone first. With a guest brings the guest step: nothing is picked on arrival (only the host answers); one
+  // answer at a time, by mouse, tap or keyboard; the step is done once answered. The open button waits, saying what is
+  // missing first.
   const go = page.locator("#goBtn");
   const guestPressed = () => page.locator('#guestSeg button[aria-pressed="true"]').allInnerTexts();
+  assert.equal(await page.locator("#sGuest").isVisible(), false, `${name}: a solo show from the start: no guest step`);
+  assert.equal(await go.getAttribute("data-tip"), "Turn on the microphone first.", `${name}: a solo show waits for the microphone first`);
+  const withGuest = page.locator('#modeSeg [data-v="guest"]');
+  if (touch) await withGuest.tap(); else await withGuest.click();
   assert.deepEqual(await guestPressed(), [], `${name}: no guest answer on arrival`);
   assert.equal(await page.locator("#guestSeg").evaluate((el) => document.getElementById(el.getAttribute("aria-labelledby"))?.textContent), "Guest agreed", `${name}: the answers are named by their step`);
   assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], ["true", "Answer Guest agreed first."], `${name}: the open button waits for the guest answer`);
-  const solo = page.locator("#guestSeg button").nth(2);
-  if (touch) await solo.tap(); else await solo.click();
-  assert.deepEqual(await guestPressed(), ["Solo show"], `${name}: ${touch ? "a tap" : "a click"} picks Solo show`);
+  const no = page.locator("#guestSeg button").nth(1);
+  if (touch) await no.tap(); else await no.click();
+  assert.deepEqual(await guestPressed(), ["No · my mic only"], `${name}: ${touch ? "a tap" : "a click"} picks No`);
   assert.ok(await page.locator("#sGuest").evaluate((el) => el.hasAttribute("data-done")), `${name}: the guest step is done`);
   assert.equal(await go.getAttribute("data-tip"), "Turn on the microphone first.", `${name}: then it waits for the microphone`);
   await page.locator("#guestSeg button").nth(0).focus();
   await page.keyboard.press("Enter");
   assert.deepEqual(await guestPressed(), ["Yes"], `${name}: Enter picks Yes`);
   await page.evaluate(() => document.activeElement?.blur());
+  // With a guest the tab-sound button is there, switched off with its reason where the browser cannot share a tab.
+  const tabWords = (await page.locator("#tabSource").innerText()).replace(/\s+/g, " ").trim();
+  assert.equal(tabWords, `${tabOff ? "i " : ""}${TAB_LABEL}`, `${name}: with a guest, the guest tab's button`);
 
   // Layout: the column is centred and at most 720px wide; wide puts the label beside the choices, compact above.
   const box = await page.evaluate(() => {
@@ -254,6 +264,7 @@ async function checkTabSound(page, name, out, { touch, reason }) {
     assert.equal(await btn.getAttribute("aria-disabled"), "true", `${name}: ${label}: the tab button is switched off`);
     assert.equal(await btn.getAttribute("data-tip"), reason ?? why, `${name}: ${label}: ${reason ? "the browser's own reason stays" : "with the reason"}`);
   }
+  await answer("With a guest"); // back from Solo show (TOOLS-336: the show type's choice): the guest step and the tab return
   if (!reason) { await answer("No · my mic only"); await shoot("guest-no"); }
   await answer("Yes");
   // OBS has no studio tab: the button is off with its own reason (a browser's own reason still comes first), and the

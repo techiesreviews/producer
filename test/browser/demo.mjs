@@ -142,6 +142,7 @@ export async function run({ browser, base, out }) {
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     const press = (locator) => (options.hasTouch ? locator.tap() : locator.click());
     const text = (sel) => page.locator(sel).evaluate((el) => el.textContent.replace(/\s+/g, " ").trim());
     const demo = page.locator("#demoBtn");
@@ -272,6 +273,7 @@ export async function run({ browser, base, out }) {
     ok(`${name}: the keyboard works the same`);
 
     // The producer screen: the demo's first question on the card, its run order; then the report.
+    await press(page.locator('#modeSeg [data-v="guest"]')); // a show with a guest (TOOLS-336: a solo show is the default)
     await press(page.locator("#guestSeg button").first());
     await press(page.locator("#micBtn"));
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");

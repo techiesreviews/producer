@@ -101,6 +101,7 @@ export async function run({ browser, base, out }) {
     page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
     await page.addInitScript(() => { document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`)); });
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     const press = (locator) => (options.hasTouch ? locator.tap() : locator.click());
     const pressOff = (locator) => (options.hasTouch ? locator.tap({ force: true }) : locator.click({ force: true }));
     const text = (sel) => page.locator(sel).evaluate((el) => el.textContent.replace(/\s+/g, " ").trim());

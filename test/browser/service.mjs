@@ -8,6 +8,14 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
+// TOOLS-336: "Solo show" is the show type's first choice (its own button now); Yes and No are the guest step's, which
+// shows with a guest. Picks the show type the answer needs, then the answer.
+async function answerGuest(page, label, press = (l) => l.click()) {
+  const mode = page.locator(`#modeSeg [data-v="${label === "Solo show" ? "solo" : "guest"}"]`);
+  if ((await mode.getAttribute("aria-pressed")) !== "true") await press(mode);
+  if (label !== "Solo show") await press(page.getByRole("button", { name: label, exact: true }));
+}
+
 // A narrow window with a touch screen on a computer's browser (the service is offered on computers only, so a phone's own
 // browser is not used here; the page suite checks that a phone shows it off).
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, deviceScaleFactor: 2 };
@@ -92,6 +100,7 @@ async function one(browser, base, out, [name, options]) {
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const press = (locator) => (touch ? locator.tap() : locator.click());
   const shots = [];
   const shot = async (label, fullStep = false) => {
@@ -102,7 +111,7 @@ async function one(browser, base, out, [name, options]) {
 
   // The opt-in: the model is picked on arrival; picking the service is the choice, and its one warning line is on it.
   assert.equal(await page.locator('#engineSeg [aria-pressed="true"]').innerText(), "On this computer", `${name}: the model on this computer is the default`);
-  await press(page.getByRole("button", { name: "Yes", exact: true }));
+  await answerGuest(page, "Yes", press);
   await press(page.locator("#micBtn"));
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   await press(page.locator("#browserChoice"));
@@ -270,12 +279,13 @@ async function modelReadyLate(browser, base) {
     };
   });
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   await page.locator("#speechBtn").click();
   await page.locator("#browserChoice").click();
   await page.evaluate(() => window.__worker.listeners.forEach((fn) => fn({ data: { type: "ready" } })));
   assert.equal(await page.locator('#engineSeg [aria-pressed="true"]').innerText(), WARNING, "the service stays picked");
   assert.equal(await page.locator("#speechBtn").isVisible(), false, "and the model's button stays out of the way");
-  await page.getByRole("button", { name: "Solo show", exact: true }).click();
+  await answerGuest(page, "Solo show");
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   await page.locator("#goBtn").click();
@@ -291,8 +301,9 @@ async function tabLetGo(browser, base) {
   const page = await context.newPage();
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const tracksEnded = (i) => page.evaluate((n) => window.__watch.tabs[n].getTracks().every((t) => t.readyState === "ended"), i);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
 
@@ -320,7 +331,8 @@ async function staleTabFailure(browser, base) {
   const page = await context.newPage();
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
+  await answerGuest(page, "Yes");
   await page.evaluate(() => { window.__watch.reject = true; });
   await page.locator("#tabBtn").click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "error");
@@ -335,7 +347,8 @@ async function tabPickerOpen(browser, base) {
   const page = await context.newPage();
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
+  await answerGuest(page, "Yes");
   await page.evaluate(() => { window.__watch.hold = true; });
   await page.locator("#tabBtn").click();
   await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "busy");
@@ -370,10 +383,11 @@ async function soundGoesToOneEngine(browser, base) {
       };
     });
     await page.goto(`${base}/`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
     await page.locator("#speechBtn").click();
     await page.waitForFunction(() => document.querySelector("#speechTxt").textContent === "Speech ready");
     if (engine === "browser") await page.locator("#browserChoice").click();
-    await page.getByRole("button", { name: "Solo show", exact: true }).click();
+    await answerGuest(page, "Solo show");
     await page.locator("#micBtn").click();
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
     await page.locator("#goBtn").click();
@@ -394,6 +408,7 @@ async function company(browser, base, [name, userAgent, choice, tip, viewport = 
   const page = await context.newPage();
   await page.addInitScript(watch);
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   assert.equal(await text(page, "browserChoice"), choice, `${name}: the choice names who gets the audio`);
   const fit = () => page.evaluate(() => {
     const c = document.querySelector("#browserChoice").getBoundingClientRect();
@@ -401,17 +416,17 @@ async function company(browser, base, [name, userAgent, choice, tip, viewport = 
     return c.left >= r.left - 0.5 && c.right <= r.right + 0.5 && c.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth;
   });
   assert.ok(await fit(), `${name}: the choice fits its row and the window`);
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   if (viewport.width < 600) await page.locator("#browserChoice").tap(); else await page.locator("#browserChoice").click();
   assert.ok(await fit(), `${name}: and still fits once picked`);
   for (const [answer, guestWarned] of [["No · my mic only", true], ["Solo show", false]]) {
-    await page.getByRole("button", { name: answer, exact: true }).click();
+    await answerGuest(page, answer);
     const note = await page.locator("#browserChoice").getAttribute("data-tip");
     assert.equal(/headphones/.test(note), guestWarned, `${name}: the choice's tooltip ${guestWarned ? "warns about the guest" : "leaves the guest out"} for "${answer}"`);
   }
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.locator("#goBtn").click();
   assert.equal(await page.locator("#listenTxt").getAttribute("data-tip"), tip, `${name}: and so does the sign's tooltip`);
   await context.close();

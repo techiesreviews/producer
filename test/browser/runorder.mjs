@@ -122,8 +122,10 @@ export async function run({ browser, base, out }) {
     const shot = async (file, clip) => { const path = join(out, `runorder-${name}-${file}.png`); await page.screenshot({ path, ...(clip ? { clip } : {}) }); screenshots.push(path); };
 
     // Step 3 sits between the agent and the guest steps, with its two buttons; the box is closed.
-    assert.deepEqual(await page.locator(".step .step__label").allInnerTexts(), ["I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Sound", "Speech to text"], `${name}: step 3 is the show plan`);
-    assert.deepEqual(await page.locator(".step__n").allInnerTexts(), ["1", "2", "3", "4", "5", "6"], `${name}: the steps are numbered in order`);
+    // A show with a guest (TOOLS-336: a solo show is the default, tried in the solo suite).
+    await press(page.locator('#modeSeg [data-v="guest"]'));
+    assert.deepEqual(await page.locator(".step:not([hidden]) .step__label").allInnerTexts(), ["Show type", "I stream with", "AI agent", "Show, questions & plan", "Guest agreed", "Viewer chat", "Sound", "Speech to text"], `${name}: step 4 is the show plan`);
+    assert.deepEqual(await page.locator(".step:not([hidden]) .step__n").allInnerTexts(), ["1", "2", "3", "4", "5", "6", "7", "8"], `${name}: the steps are numbered in order`);
     const planBtn = page.locator("#planBtn");
     const box = page.locator("#planIn");
     assert.equal(await text("planBtn"), "Paste it myself", `${name}: the button's name`);
@@ -173,6 +175,7 @@ export async function run({ browser, base, out }) {
 
     const boxBackground = await box.evaluate((el) => getComputedStyle(el).backgroundColor);
     // Guest, microphone (stand-in), speech (stand-in), then the producer screen.
+    await press(page.locator('#modeSeg [data-v="guest"]')); // a show with a guest (TOOLS-336: a solo show is the default)
     await press(page.locator("#guestSeg button").first());
     await press(page.locator("#micBtn"));
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -326,6 +329,7 @@ export async function run({ browser, base, out }) {
     const fits = () => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth, bar: document.querySelector(".top").getBoundingClientRect().height, clock: document.querySelector("#clock").getBoundingClientRect().right }));
     let box = await fits();
     assert.ok(box.scroll <= box.width && box.bar < 60, `long names: setup keeps one bar row and no sideways scroll (${JSON.stringify(box)})`);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // a show with a guest (TOOLS-336: a solo show is the default)
     await page.locator("#guestSeg button").first().click();
     await page.locator("#micBtn").click();
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -349,6 +353,7 @@ export async function run({ browser, base, out }) {
   await page.goto(`${base}/`);
   await page.locator("#planBtn").tap();
   await page.locator("#planIn").fill("3 Intro\n4 Outro");
+  await page.locator('#modeSeg [data-v="guest"]').tap(); // a show with a guest (TOOLS-336: a solo show is the default)
   await page.locator("#guestSeg button").first().tap();
   await page.locator("#micBtn").tap();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
@@ -381,6 +386,7 @@ export async function run({ browser, base, out }) {
     const tickers = () => page.evaluate(() => window.__tickers());
     await page.locator("#planBtn").click();
     await page.locator("#planIn").fill(PLAN);
+    await page.locator('#modeSeg [data-v="guest"]').click(); // a show with a guest (TOOLS-336: a solo show is the default)
     await page.locator("#guestSeg button").first().click();
     await page.locator("#micBtn").click();
     await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");

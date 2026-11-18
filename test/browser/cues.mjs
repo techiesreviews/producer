@@ -7,6 +7,14 @@
 // answer taken) stays under 0.3 s; nothing is stored and nothing but the token request leaves the page.
 import assert from "node:assert/strict";
 
+// TOOLS-336: "Solo show" is the show type's first choice (its own button now); Yes and No are the guest step's, which
+// shows with a guest. Picks the show type the answer needs, then the answer.
+async function answerGuest(page, label, press = (l) => l.click()) {
+  const mode = page.locator(`#modeSeg [data-v="${label === "Solo show" ? "solo" : "guest"}"]`);
+  if ((await mode.getAttribute("aria-pressed")) !== "true") await press(mode);
+  if (label !== "Solo show") await press(page.getByRole("button", { name: label, exact: true }));
+}
+
 // The Worker limits tokens per client address (10 a minute, one IPv6 /64 as one client); a real Cloudflare sets the
 // address itself, and here each browser context gets its own made-up one (its own /64 in the documentation range), so
 // these checks never meet that limit.
@@ -88,6 +96,7 @@ export async function run({ browser, base }) {
   page.on("console", (m) => { if (["error", "warning"].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
   await page.goto(`${base}/`);
+  await page.locator('#modeSeg [data-v="guest"]').click(); // this suite tries a show with a guest (TOOLS-336: solo is the default)
   const loaded = requests.length;
 
   // The plan, then the agent: Copy connect message (the clipboard may refuse: the message then shows below).
@@ -106,7 +115,7 @@ export async function run({ browser, base }) {
   ok("get_context: the pasted plan (show, guest, questions, run order)");
 
   // The producer screen, and the show clock started: the first part is on now.
-  await page.getByRole("button", { name: "Yes", exact: true }).click();
+  await answerGuest(page, "Yes");
   await page.locator("#micBtn").click();
   await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
   await page.locator("#tabBtn").click();
@@ -133,7 +142,7 @@ export async function run({ browser, base }) {
   assert.equal(out.cue.cue, "pause");
   assert.equal(out.cue.seq, 1);
   assert.deepEqual(out.cue.transcript.map((l) => [l.speaker, l.text.slice(0, 18)]), [["host", "How did it start?"], ["guest", "Honestly as a joke"], ["guest", "Two weeks later I "]], "the lines since the last cue, labelled host and guest");
-  assert.deepEqual(out.cue.position, { segment: 1, title: "Intro", minutesLeft: 3 }, "the run position");
+  assert.deepEqual(out.cue.position, { segment: 1, title: "Intro", minutesLeft: 3, next: "Question 1: How did it start?" }, "the run position, and what is next on the card (TOOLS-336)");
   assert.equal(out.cue.guestName, "Jane Doe", "the guest's name from the plan");
   assert.ok(out.ms < PAGE_BUDGET_MS, `pause to cue out: ${out.ms.toFixed(1)} ms, under ${PAGE_BUDGET_MS} ms`);
   ok(`cue: a pause after 31.5 s of speech hands the waiting agent one cue with labels, position and guest (${out.ms.toFixed(1)} ms)`);
