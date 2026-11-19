@@ -4,7 +4,7 @@
 // Time is Playwright's clock, running, so the 10 s spacing and the minute of thinking can be skipped at once.
 // Checks: the first prepared question shows from the start; Suggest now sends a cue at once, says Thinking… on itself
 // and lights the quiet thinking light without moving the card; the agent's answer takes the card once (question, a few
-// words why, its source chip, the two to swap in) and the spacing shows on the button; Slow down doubles it; an
+// words why, its source chip, its new questions to swap in) and the spacing shows on the button; Slow down doubles it; an
 // alternative swaps in; Asked and Skip move on, by touch and by keyboard; an agent with no answer leaves the card; a
 // disconnected agent leaves the list question and switches Suggest now off with "no agent"; layouts; nothing stored.
 import assert from "node:assert/strict";
@@ -190,7 +190,7 @@ export async function run({ browser, base, out }) {
     await shot("thinking");
     ok(`${name}: Suggest now: a cue at once, Thinking… on the button, the light breathes, the card stays put`);
 
-    // The answer: the agent's first suggestion takes the card with its why and source; the others and the old question
+    // The answer: the agent's first suggestion takes the card with its why and source; its new question
     // to swap in. The spacing shows on the button; a press too soon sends nothing and shows why.
     // The card's own share of the time: from the agent's answer arriving to the new question on screen.
     const onScreenMs = await page.evaluate(() => new Promise((resolve) => {
@@ -200,7 +200,7 @@ export async function run({ browser, base, out }) {
       window.__wait = window.__relay.call("wait_for_cue", { seq: 1, holdMs: 25000, suggestions: [{ question: 3, why: "She hinted at a hard first year." }, { text: "What surprised you most about who pays?", why: "Ties to her pricing story." }] });
     }));
     assert.ok(onScreenMs < 300, `${name}: answer in to question on screen in ${onScreenMs.toFixed(1)} ms, under 300 ms`);
-    assert.deepEqual(await card(), { q: "What went wrong first?", why: "She hinted at a hard first year.", src: "Q3 · your list", alts: [["What surprised you most about who pays?", "New"], ["How did it start?", "Q1 · your list"]] }, `${name}: the agent's answer on the card`);
+    assert.deepEqual(await card(), { q: "What went wrong first?", why: "She hinted at a hard first year.", src: "Q3 · your list", alts: [["What surprised you most about who pays?", "New"]] }, `${name}: the agent's answer on the card; its new question to swap in (the prepared question it replaced goes back to the list, TOOLS-346)`);
     assert.deepEqual(await light(), { cls: "dot dot--ok", label: "Agent ready", tip: "Agent ready." }, `${name}: the light is green again`);
     assert.match(await text("#suggestBtn"), /^i Suggest now · (9|10) s$/, `${name}: the 10 s spacing on the button`);
     assert.deepEqual([await suggest.getAttribute("aria-disabled"), await suggest.getAttribute("data-tip")], ["true", "One every 10 s."], `${name}: switched off with its reason`);
@@ -231,7 +231,7 @@ export async function run({ browser, base, out }) {
     assert.equal(await page.locator("#turnChip").getAttribute("data-tip"), "Agent turns this show. At most one in 2 minutes on its own.", `${name}: the turn chip's tooltip follows Slow down`);
     await press(suggest);
     await page.evaluate(() => window.__wait);
-    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000, suggestions: [{ text: "Who was your first hire, and why them?" }] }); });
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000, suggestions: [{ text: "Who was your first hire, and why them?" }, { text: "What did the first year cost?" }] }); });
     await page.waitForFunction(() => document.querySelector("#qMain").textContent === "Who was your first hire, and why them?");
     assert.deepEqual([await page.locator("#qWhy").isVisible(), await text("#qSrc")], [false, "New"], `${name}: no why when the agent gave none`);
     assert.match(await text("#suggestBtn"), /^i Suggest now · (19|20) s$/, `${name}: 20 s with Slow down`);
@@ -294,7 +294,9 @@ export async function run({ browser, base, out }) {
     assert.ok(lay.scroll <= lay.width, `${name}: no sideways scroll (${lay.scroll} > ${lay.width})`);
     if (phone) assert.ok(lay.next.bottom <= lay.runs.top && lay.next.width >= lay.width - 2 * 12, `${name}: compact: the card on top, across the window`);
     else assert.ok(lay.next.right <= lay.runs.left && lay.next.width > lay.runs.width, `${name}: wide: the card is the wide left column`);
-    if (options.hasTouch) for (const sel of ["#askedBtn", "#skipBtn", "#suggestBtn", "#slowBtn", "#alts .alt"]) {
+    // A row to swap in, while one is left (once the agent answered, its new questions only: TOOLS-346).
+    const swapRows = (await page.locator("#alts .alt").count()) ? ["#alts .alt"] : [];
+    if (options.hasTouch) for (const sel of ["#askedBtn", "#skipBtn", "#suggestBtn", "#slowBtn", ...swapRows]) {
       const h = await page.locator(sel).first().evaluate((el) => el.getBoundingClientRect().height);
       assert.ok(h >= 44, `${name}: ${sel} is finger-sized (${h}px)`);
     }
