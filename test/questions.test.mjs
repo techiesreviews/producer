@@ -85,7 +85,7 @@ test("suggestions that point at an asked, skipped or missing question are left o
   q.asked(); // Q1
   q.skip(); // Q2
   assert.equal(q.view().main.n, 3);
-  assert.equal(q.suggest({ seq: 1, suggestions: [{ question: 1 }, { question: 2 }, { question: 9 }] }), false);
+  assert.equal(q.suggest({ seq: 1, suggestions: [{ question: 1 }, { question: 2 }, { question: 9 }] }), true, "the list shows, saying no other matches");
   assert.equal(q.view().main.n, 3, "the card keeps its question");
   q.suggest({ seq: 2, suggestions: [{ question: 2 }, { question: 4, why: "next part" }] });
   assert.deepEqual(q.view().main, { n: 4, text: "What is next?", why: "next part", from: "agent" });
@@ -341,4 +341,14 @@ test("a match swapped below never shows twice when it moves back up", () => {
   assert.deepEqual(texts(q.view()), ["New?", "C?"]);
   q.asked();
   assert.deepEqual(texts(q.view()), ["C?"], "Q3 on the card, not also below it");
+});
+
+test("a first answer naming only questions already done: the card stays, the list says no other matches instead of the rows to swap in", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.asked(); // Q1; Q2 on the card, Q3 and Q4 below
+  assert.equal(q.suggest({ seq: 1, suggestions: [{ question: 1 }] }), true, "the screen changes");
+  const v = q.view();
+  assert.equal(v.main.n, 2, "the card stays");
+  assert.deepEqual([v.relevant, v.alts], [[], []], "the list (empty) in place of the rows to swap in");
 });
