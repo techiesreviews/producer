@@ -180,6 +180,16 @@ export async function run({ browser, base, out }) {
       assert.ok(row.height >= 44, `${name}: a row is a 44 px tap target (${row.height})`);
     }
     await shot("answer");
+    if (!options.hasTouch) {
+      // An answer that lands while the keyboard is on a row keeps it on the same question, wherever that row moves to.
+      await page.locator('#relList .alt[data-n="14"]').focus();
+      await pauseAnswer([12, 40, 14, 3]);
+      assert.deepEqual([await rows(), await page.evaluate(() => document.activeElement?.dataset.n)], [["# Part 6 · Part 6 topic", "Q40", "# Part 2 · Part 2 topic", "Q14", "# Part 1 · Part 1 topic", "Q3"], "14"], `${name}: the keyboard stays on Q14`);
+      await pauseAnswer([12, 3, 40, 41, 2]);
+      assert.equal(await page.evaluate(() => document.activeElement?.dataset.n), "3", `${name}: its question gone, the keyboard goes to the first row`);
+      await pauseAnswer([12, 3, 14, 40, 41, 2]);
+      ok(`${name}: a new answer keeps the keyboard on the same question, else the first row`);
+    }
     ok(`${name}: the agent's answer: best match on the card, 5 more in Relevant now grouped by part, ${ms.toFixed(1)} ms`);
 
     // A click puts a match on the card until Asked or Skip; the agent's best match goes back to the list.

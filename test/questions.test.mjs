@@ -309,3 +309,13 @@ test("Relevant now leaves out what was asked or skipped; a new plan reads the ma
   q.setPlan(PLAN8.slice(0, 5));
   assert.deepEqual(q.view().relevant, [], "a match the plan no longer has is dropped");
 });
+
+test("a question the agent names twice counts once, so the six places hold six different matches", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [3, 5, 5, 6, 3, 7, 8, 1].map((n) => ({ question: n })) });
+  assert.equal(q.view().main.n, 3);
+  assert.deepEqual(q.view().relevant.map((r) => r.n), [5, 6, 7, 8, 1]);
+  q.suggest({ seq: 2, suggestions: [{ text: "New?" }, { text: "new?" }, { question: 2 }] });
+  assert.deepEqual(texts(q.view()), ["New?"], "a new question repeated in other letters counts once too");
+});

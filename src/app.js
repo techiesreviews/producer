@@ -902,7 +902,8 @@ function renderRelevant(matches) {
     if (!groups.has(part)) groups.set(part, []);
     groups.get(part).push(q);
   }
-  const focused = [...relList.querySelectorAll(".alt")].findIndex((row) => row === document.activeElement);
+  // The list changes on its own at each answer: the keyboard stays on the same question, else goes to the first row.
+  const focused = relList.contains(document.activeElement) ? document.activeElement.dataset.n ?? "" : null;
   const out = [];
   for (const [part, items] of groups) {
     if (part !== null) {
@@ -921,10 +922,7 @@ function renderRelevant(matches) {
   if (!matches.length) out.push(make("p", "pool__state", "No other matches right now."));
   relList.replaceChildren(...out);
   rel.shown = new Set(matches.map((q) => q.n));
-  if (focused >= 0) {
-    const rows = relList.querySelectorAll(".alt");
-    (rows[focused] ?? rows[rows.length - 1] ?? findIn).focus();
-  }
+  if (focused !== null) (relList.querySelector(`.alt[data-n="${focused}"]`) ?? relList.querySelector(".alt") ?? findIn).focus();
 }
 
 /** A match goes on the card: a viewer question on it goes back to the chat's list, the plan's question to swap back. */
