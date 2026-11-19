@@ -79,6 +79,28 @@ test("the parts: names from the heading, minutes until the next part starts, the
   ]);
 });
 
+test("a pause or a title does not end a sentence: the question loads whole", () => {
+  const r = readScript("### **1 · A · 00:00**\nSo… what would you change now?\nSo... is that enough?\nDr. Lee, what happened first?\nI said so... What now?\nIs it done?! Yes.");
+  assert.deepEqual(r.questions.map((q) => q.text), ["So… what would you change now?", "So... is that enough?", "Dr. Lee, what happened first?", "I said so... What now?"], "\"Is it done?!\" ends in !, so it is no question");
+});
+
+test("lines with no end mark never pile up past a question's length: the oldest lines go first", () => {
+  const lines = Array.from({ length: 40 }, (_, i) => `this is statement line number ${i + 1} with no full stop`);
+  const r = readScript(["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n"));
+  assert.equal(r.questions.length, 1);
+  const [q] = r.questions;
+  assert.ok(q.text.length <= 300 + 60, `${q.text.length} characters`);
+  assert.match(q.text, /line number 40 with no full stop Sam, what is a backup\?$/);
+  assert.doesNotMatch(q.text, /line number 1 /);
+  assert.equal(readLoad({ script: ["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n") }).ok, true, "the script still loads");
+});
+
+test("emphasis marks are dropped; a minute past 59 after an hour is no time", () => {
+  const r = readScript("### *1 · INTRO · 00:00*\n*Why does it fail?*\n_Is it the host?_ And snake_case stays?\n### **2 · B · 1:75:00**\nNot on air?");
+  assert.deepEqual(r.parts, [{ name: "Intro", minutes: SCRIPT_LAST_MINUTES }]);
+  assert.deepEqual(r.questions.map((q) => q.text), ["Why does it fail?", "Is it the host?", "And snake_case stays?"]);
+});
+
 test("a script that gives no run order is refused with a plain reason", () => {
   assert.match(readScript("Just some lines.\nAny questions?").reason, /no parts with a start time.*### \*\*1 · INTRO · 00:00\*\*/);
   assert.match(readScript("### **1 · A · 05:00**\n### **2 · B · 05:00**").reason, /Part 2 \("B"\) starts at 05:00, not after part 1 at 05:00/);

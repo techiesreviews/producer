@@ -250,8 +250,8 @@ let drawnRun = null;
 function renderPlan() {
   const said = planButton(show.read, { solo });
   // The agent's show is told by Let my agent load it: Paste it myself stays the small quiet way in (TOOLS-345).
-  if (show.byAgent && said.state === "ok") label(planBtn, null, planButton({}, { solo }).tip, planButton({}, { solo }).text);
-  else label(planBtn, said.state, said.tip, said.text);
+  const quiet = show.byAgent && said.state === "ok" ? planButton({}, { solo }) : said;
+  label(planBtn, quiet.state, quiet.tip, quiet.text);
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   if (show.run !== drawnRun) {
@@ -615,7 +615,7 @@ runBtn.addEventListener("click", () => {
 function lockPlan(now) {
   show.lock(now);
   planIn.readOnly = true;
-  label(planBtn, show.byAgent ? null : "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
+  label(planBtn, planBtn.dataset.state || null, "The show has started, so the plan stays as it is.", planBtn.textContent);
   renderLoad();
   renderDemo();
   lockMode();

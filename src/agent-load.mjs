@@ -15,7 +15,7 @@ import { readScript } from "./script-reader.mjs";
 export const LOAD_WAIT_MS = 180_000; // keep it in whole minutes: the button's reason counts them
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */
 export const LOAD_MAX_BYTES = 200 * 1024;
-export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000, script: 100_000 };
+export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000, script: 50_000 };
 
 const LOAD_FIELDS = ["show", "guest", "questions", "parts", "notes", "script"];
 const loadPlural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -72,7 +72,7 @@ export function readLoad(args) {
       if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((k) => k !== "text" && k !== "part")) return no(`Question ${i + 1} must be some text, or { "text": ..., "part": ... }.`);
       const line = typeof item.text === "string" ? loadLine(item.text) : "";
       if (!line) return no(`Question ${i + 1} must be some text.`);
-      if (line.length > LOAD_LIMITS.question) return no(`Question ${i + 1} is too long. Limit: ${LOAD_LIMITS.question} characters.`);
+      if (line.length > LOAD_LIMITS.question) return no(`Question ${i + 1} ("${line.slice(0, 40)}…") is too long. Limit: ${LOAD_LIMITS.question} characters.`);
       questions.push(line);
       partOf.push(item.part);
     }

@@ -59,7 +59,7 @@ test("a plan that is too big or not clear is refused whole, with a plain reason"
   refused({ ...GOOD, questions: "How?" }, /list of questions/);
   refused({ ...GOOD, questions: [""] }, /Question 1 must be some text/);
   refused({ ...GOOD, questions: [42] }, /Question 1 must be some text/);
-  refused({ ...GOOD, questions: ["x".repeat(LOAD_LIMITS.question + 1)] }, /Question 1 is too long\. Limit: 300/);
+  refused({ ...GOOD, questions: ["x".repeat(LOAD_LIMITS.question + 1)] }, /Question 1 \("x{40}…"\) is too long\. Limit: 300/);
   refused({ ...GOOD, questions: Array.from({ length: LOAD_LIMITS.questions + 1 }, () => "Why?") }, /Too many questions\. Limit: 100/);
   refused({ ...GOOD, show: 7 }, /"show" must be text/);
   refused({ ...GOOD, show: "s".repeat(LOAD_LIMITS.show + 1) }, /"show" is too long/);
