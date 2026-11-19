@@ -7,10 +7,12 @@
 //   [Wait ten seconds.]            a reminder, a whole line in square brackets (a link too): left out
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
-// A pause ("So… what now?", "So... what now?") and a title (Dr. Lee) do not end a sentence. A one-word question
+// A pause in a line ("So… what now?", "So... what now?") and a title (Dr. Lee) do not end a sentence; a pause at the
+// end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question
 // ("Right?") is a tag on the sentence before it, not a question to ask, so it is left out. A blank line or a new
 // heading ends a sentence that never finished, and lines with no end mark never pile up past SCRIPT_RUN characters:
-// the oldest lines go first. Emphasis marks (* and _) are dropped. A part lasts until the next one starts; the last part
+// the oldest lines go first. Emphasis marks (* and _) are dropped. The end marks are the Latin ones (. ! ? …): a
+// script in a language with its own (？ 。 ؟) finds no questions. A part lasts until the next one starts; the last part
 // gets SCRIPT_LAST_MINUTES. Plain facts in, words out: no page, no storage, no network.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
@@ -25,6 +27,8 @@ const SCRIPT_REMINDER = /^\[[^\]]*\](?:\([^)]*\))?$/;
 /** Each end mark in a running text (with a closing quote or bracket), then a space or the end. */
 const SCRIPT_END = /[.!?…]+["'”’)\]]*(?=\s|$)/g;
 const SCRIPT_QUESTION = /\?["'”’)\]]*$/;
+/** A run that ends in a pause (… or ..), with a closing quote or bracket. */
+const SCRIPT_PAUSE = /(?:…|\.{2,})["'”’)\]]*$/;
 /** Words a full stop follows without ending the sentence. */
 const SCRIPT_TITLES = new Set(["mr", "mrs", "ms", "dr", "st", "vs", "prof", "e.g", "i.e"]);
 
@@ -38,7 +42,7 @@ function scriptEnd(text) {
   for (const m of text.matchAll(SCRIPT_END)) {
     const mark = m[0].replace(/["'”’)\]]+$/, "");
     if (!/[?!]/.test(mark) && (mark.includes("…") || mark.length > 1)) continue;
-    if (mark === "." && SCRIPT_TITLES.has(text.slice(0, m.index).split(" ").at(-1).toLowerCase())) continue;
+    if (mark === "." && SCRIPT_TITLES.has(text.slice(0, m.index).split(" ").at(-1).replace(/^[^\p{L}]+/u, "").toLowerCase())) continue;
     return m.index + m[0].length;
   }
   return -1;
@@ -68,7 +72,11 @@ export function readScript(text) {
     }
     if (!line) { open = []; continue; }
     if (!onAir || line.startsWith("#") || SCRIPT_REMINDER.test(line)) continue;
-    open.push(scriptPlain(line).replace(/\s+/g, " ").trim());
+    const said = scriptPlain(line).replace(/\s+/g, " ").trim();
+    // A pause at the end of the line before ends its sentence, unless this line goes on in lower case.
+    if (open.length && SCRIPT_PAUSE.test(open.at(-1)) && !/^[^\p{L}]*\p{Ll}/u.test(said)) open = [];
+    open.push(said);
+    while (open.length > 1 && open.join(" ").length > SCRIPT_RUN) open.shift();
     let run = open.join(" ").trim();
     for (let end = scriptEnd(run); end > 0; end = scriptEnd(run)) {
       const sentence = run.slice(0, end).trim();
@@ -76,7 +84,6 @@ export function readScript(text) {
       run = run.slice(end).trim();
       open = run ? [run] : [];
     }
-    while (open.length > 1 && open.join(" ").length > SCRIPT_RUN) open.shift();
   }
   if (!parts.length) return { ok: false, reason: "The script has no parts with a start time. A part's heading ends with the time it starts, like ### **1 · INTRO · 00:00**." };
   const out = [];
