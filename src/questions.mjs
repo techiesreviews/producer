@@ -93,7 +93,7 @@ export function createQuestions() {
         if (s?.question !== undefined) return prepared(s.question, { ...why, from: "agent" });
         const text = typeof s?.text === "string" ? s.text.trim() : "";
         return text ? { text, ...why, from: "agent" } : null;
-      }).filter((q) => q && open(q)).slice(0, MATCHES);
+      }).filter((q, i, all) => q && open(q) && all.findIndex((o) => o && key(o) === key(q)) === i).slice(0, MATCHES); // a repeat counts once
       if (!fresh.length) return false;
       // The prepared questions it names are the Relevant now list; a new question waits below to swap in (with the new
       // question it replaced on the card, so that one is not lost).

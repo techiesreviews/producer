@@ -801,6 +801,10 @@ test("a cue names the prepared questions already asked or skipped, so the agent 
   const cue = await s.call("wait_for_cue", { seq: 0 });
   assert.match(cue.content[0].text, /Asked or skipped already \(leave out\): 2, 5, 9/);
   assert.deepEqual(cue.structuredContent.position.done, [2, 5, 9], "whole numbers from 1 only, once each, in order");
+  s.page.done = [...Array.from({ length: 250 }, (_, i) => i + 1), 1001];
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "More." }] });
+  const many = await s.call("wait_for_cue", { seq: cue.structuredContent.seq });
+  assert.deepEqual([many.structuredContent.position.done.length, many.structuredContent.position.done.at(-1)], [200, 200], "at most 200, never past question 1000");
   const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
   assert.match(body.result.instructions, /up to six by number, closest first/);
 });
