@@ -405,19 +405,20 @@ test("the agent's answer is kept as the latest suggestion with the seconds since
   assert.equal(link.suggestion(), null, "gone with the connection");
 });
 
-test("asked from the agent (questions the host used on the Prompter's strip) reaches the page once per number", async () => {
+test("asked from the agent (questions the host used on the Prompter's strip) reaches the page once per call body", async () => {
   const got = [];
-  const { call, connect, flush } = setup({ asked: (ns) => got.push(ns) });
+  const { link, call, connect, flush } = setup({ asked: (ns) => got.push(ns) });
   await connect();
   call("wait_for_cue", { seq: 0, asked: [6, 2] });
   await flush();
   assert.deepEqual(got, [[6, 2]]);
-  // A loop that sends the same body again, or a number already passed: nothing new reaches the page.
+  // A loop that sends the same body again: nothing new reaches the page; another list does.
   call("wait_for_cue", { seq: 0, asked: [6, 2] });
   await flush();
   call("wait_for_cue", { seq: 0, asked: [2, 7] });
   await flush();
-  assert.deepEqual(got, [[6, 2], [7]]);
+  assert.deepEqual(got, [[6, 2], [2, 7]]);
+  link.disconnect();
 });
 
 test("an older answer never replaces a newer one, and the Test's answer is not a suggestion", async () => {

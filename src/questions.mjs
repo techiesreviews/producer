@@ -17,11 +17,12 @@ export const MATCHES = 6;
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card, its rows to swap in or the Relevant now list); asked(), skip() and
- * swap(i) are the card's controls; markAsked(n) counts prepared question n as Asked (used on the Prompter's strip); pick(n) puts prepared question n on the card (a click in the search or the Relevant
+ * swap(i) are the card's controls; markAsked(n) counts prepared question n as Asked (used on the Prompter's strip,
+ * TOOLS-347); pick(n) puts prepared question n on the card (a click in the search or the Relevant
  * now list, or Enter; an asked or skipped one opens again); view() gives { main, alts, relevant, first, counts: { asked,
  * skipped, left } }: relevant is null until the agent's first answer, then the prepared questions of its newest answer
  * still open, best first, less the one on the card; first is the number of the first prepared question still open;
- * marked() gives the host's own presses for the end report: { asked, skipped }
+ * marked() gives what the host marked (with the buttons or on the Prompter's strip) for the end report: { asked, skipped }
  * (prepared question numbers) and newAsked (new questions asked).
  * A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
  */
