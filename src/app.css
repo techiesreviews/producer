@@ -40,7 +40,7 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .tb--quiet { border-color: transparent; color: var(--muted); }
 .tb--small { min-block-size: 1.75rem; padding-inline: 0.6rem; font-size: 0.78rem; }
 .num { font-variant-numeric: tabular-nums; }
-@media (pointer: coarse) { .tb { min-block-size: 2.75rem; } }
+@media (pointer: coarse) { .tb { min-block-size: 2.75rem; } #backBtn { min-inline-size: 2.75rem; justify-content: center; } }
 
 /* A source of sound: its button and its level meter stay together when the row wraps. */
 .source { display: inline-flex; align-items: center; gap: 0.5rem; }
@@ -341,7 +341,7 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* On a narrow window the bar keeps the name and the icon; the words move to the tooltip. */
 @media (max-width: 680px) {
   .brand small { display: none; }
-  .chip .long, .listen .long, #endBtn .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
+  .chip .long, .listen .long, #endBtn .long, #backBtn .long { position: absolute; inline-size: 1px; block-size: 1px; overflow: clip; clip-path: inset(50%); }
   #endBtn .short { display: inline; }
   .top { padding-inline: max(0.6rem, env(safe-area-inset-left)) max(0.6rem, env(safe-area-inset-right)); }
 }

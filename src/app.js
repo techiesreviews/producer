@@ -1038,7 +1038,7 @@ function paused(source, at) {
  * listening in vain; the failed control says why (the model's button, or the service's choice, which the session puts
  * back on the model). */
 function engineFailed(engine) {
-  const live = phase.live();
+  const live = phase.running(); // the producer screen, or the setup while the show runs
   if (engine === "local") {
     if (live && session.view().engine === "local") { session.stop(); phase.back(); }
     return;
@@ -1087,7 +1087,8 @@ function renderListening(v) {
   done("sGuest", v.guest !== null);
   showSpeech(v);
   showSign(v);
-  switchOff(goBtn, openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
+  // Back to producer screen (the show runs while the setup shows) is always on: the top bar's Listen starts listening again.
+  switchOff(goBtn, phase.visiting() ? "" : openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
 }
 
 function showMic(v) {
@@ -1214,13 +1215,17 @@ speechBtn.addEventListener("click", () => { if (pressed(speechBtn)) session.load
 choices(engineSeg, (engine) => session.pickEngine(engine));
 
 // ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
-/** The screen of the show's phase: the setup, the producer screen (with the listening sign and End & report in the
- * top bar) or the end report. */
+/** The screen of the show's phase: the setup, the producer screen (with Setup, the clock, the listening sign and End &
+ * report in the top bar) or the end report. While the show runs the top bar stays on the setup too (TOOLS-348), and the
+ * setup's main button goes back to the producer screen. */
 function renderPhase(now) {
   tooltip.hide();
   $("setup").hidden = now !== "setup";
   $("live").hidden = now !== "live";
-  $("topLive").hidden = now !== "live";
+  $("topLive").hidden = !phase.running();
+  $("backBtn").hidden = now !== "live";
+  goBtn.textContent = phase.visiting() ? "Back to producer screen" : "Open producer screen";
+  renderListening(session.view());
   $("report").hidden = now !== "ended";
   if (now === "live") {
     renderRun();
@@ -1231,8 +1236,18 @@ function renderPhase(now) {
 }
 
 goBtn.addEventListener("click", () => {
-  if (!pressed(goBtn) || !phase.open()) return;
+  if (!pressed(goBtn)) return;
+  // Back to producer screen: the show never stopped, so listening goes on as it is.
+  if (phase.visiting()) {
+    if (phase.open()) $("backBtn").focus();
+    return;
+  }
+  if (!phase.open()) return;
   session.open();
+});
+// Setup (TOOLS-348): the setup while the clock and the listening keep running; the keyboard lands on its title.
+$("backBtn").addEventListener("click", () => {
+  if (phase.away()) $("setupTitle").focus();
 });
 
 // The listening sign shows while the page listens; Stop ends the microphone at once; Listen starts it again.
@@ -1256,7 +1271,7 @@ const SAVE_TIP = saveBtn.dataset.tip;
 const ending = { at: null, run: null, agent: { phase: "off", name: "", reason: "" }, asked: false, timer: 0, md: "", copyTimer: 0 };
 
 endBtn.addEventListener("click", () => {
-  if (!phase.live()) return;
+  if (!phase.running()) return; // from the producer screen, or the setup while the show runs
   const now = Date.now();
   ending.at = new Date(now);
   ending.run = show.run ? show.run.view(now) : null;
