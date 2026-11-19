@@ -405,24 +405,20 @@ test("the agent's answer is kept as the latest suggestion with the seconds since
   assert.equal(link.suggestion(), null, "gone with the connection");
 });
 
-test("asked from the agent (questions the host used on the Prompter's strip) reaches the page once, until the host opens one again", async () => {
+test("asked from the agent (questions the host used on the Prompter's strip) reaches the page once per call body", async () => {
   const got = [];
   const { link, call, connect, flush } = setup({ asked: (ns) => got.push(ns) });
   await connect();
   call("wait_for_cue", { seq: 0, asked: [6, 2] });
   await flush();
   assert.deepEqual(got, [[6, 2]]);
-  // A loop that sends the same body again, or a number already passed: nothing new reaches the page.
+  // The copied message's loop sends the same body again on every idle round: it never closes a question the host
+  // opened again in between. Another list does reach the page.
   call("wait_for_cue", { seq: 0, asked: [6, 2] });
   await flush();
   call("wait_for_cue", { seq: 0, asked: [2, 7] });
   await flush();
-  assert.deepEqual(got, [[6, 2], [7]]);
-  // The host picks Q2 again (it opens again) and uses it on the strip once more, at the same cue: it counts again.
-  link.reopened(2);
-  call("wait_for_cue", { seq: 0, asked: [2] });
-  await flush();
-  assert.deepEqual(got, [[6, 2], [7], [2]]);
+  assert.deepEqual(got, [[6, 2], [2, 7]]);
   link.disconnect();
 });
 

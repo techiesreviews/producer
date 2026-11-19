@@ -952,7 +952,6 @@ function renderRelevant(matches) {
 function pickFound(n) {
   const viewer = viewers.view().card;
   if (viewer) markViewer(viewer.id, "card");
-  agent.reopened(n); // a question used on the Prompter's strip and picked again can be used there again (TOOLS-347)
   if (questions.pick(n) || viewer) renderCard();
 }
 
