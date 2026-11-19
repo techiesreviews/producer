@@ -72,6 +72,17 @@ test("markAsked: a question used on the Prompter's strip counts as Asked; on the
   assert.equal(q.view().main.n, 3);
 });
 
+test("one wait with an answer and asked: the answer takes the card first, then the used question leaves it", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.suggest({ seq: 4, suggestions: [{ question: 2 }, { question: 3 }, { question: 4 }] });
+  q.markAsked(2);
+  const v = q.view();
+  assert.equal(v.main.n, 3);
+  assert.deepEqual(v.relevant.map((r) => r.n), [4], "Q2 is not in Relevant now");
+  assert.deepEqual(q.marked().asked, [2]);
+});
+
 test("markAsked leaves the host's own pick on the card unless it is the pick itself", () => {
   const q = createQuestions();
   q.setPlan(PLAN);

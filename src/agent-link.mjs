@@ -39,7 +39,7 @@ const UNCONFIRMED_CHARS = 20_000;
  * segments: [{ title, plannedMinutes, live? }], notes? }, or nothing before a plan is loaded. load(args) takes what the
  * agent's load_show sent and gives { result } or { error } (a plain line) for the agent; report(args) the same for
  * post_report, chat(args) for post_chat; chatOn() says whether the agent reads the viewer chat now; asked(numbers) hears
- * the prepared questions the host used on the Prompter's strip (wait_for_cue's asked), each number once per connection.
+ * the prepared questions the host used on the Prompter's strip (wait_for_cue's asked), once per call body.
  */
 export function createAgentLink({ net, onChange = () => {}, show = () => null, load = () => ({ error: "This page cannot load a show." }), report = () => ({ error: "There is no show to report on yet." }), chat = () => ({ error: "This page shows no viewer chat." }), chatOn = () => false, asked: usedAsked = () => {}, now = () => Date.now(), timers = globalThis }) {
   const link = { state: "off", failed: false, token: null, at: 0, test: { state: "idle" }, passed: false };
@@ -62,7 +62,7 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
   let latest = null; // the agent's latest answer: { seq, cue, suggestions, ms }
   let suggested = () => {};
   const answered = new Set();
-  const usedTaken = new Set(); // question numbers the agent said the host used on the Prompter's strip: each passed on once
+  const usedTaken = new Set(); // asked lists already passed on (seq|numbers), so a repeated body counts once
   let askedSeq = 0; // the newest show cue sent
   let settledSeq = 0; // the newest cue the agent answered, or came back past with no answer
   let onSettled = () => {};
@@ -168,9 +168,15 @@ export function createAgentLink({ net, onChange = () => {}, show = () => null, l
   function onWait(id, args) {
     const asked = Number.isSafeInteger(args.seq) && args.seq >= 0 ? args.seq : 0;
     take(asked, args.suggestions);
-    // Questions the host used on the Prompter's strip (TOOLS-347): a loop that sends the same body again passes none twice.
-    const used = (Array.isArray(args.asked) ? args.asked : []).filter((n) => Number.isSafeInteger(n) && n >= 1 && !usedTaken.has(n) && usedTaken.add(n));
-    if (used.length) usedAsked(used);
+    // Questions the host used on the Prompter's strip (TOOLS-347), taken once per call body as answers are: a loop that
+    // sends the same body again passes none twice, and a question the host opened again can still be used again later.
+    const used = (Array.isArray(args.asked) ? args.asked : []).filter((n) => Number.isSafeInteger(n) && n >= 1);
+    const usedKey = `${asked}|${JSON.stringify(used)}`;
+    if (used.length && !usedTaken.has(usedKey)) {
+      usedTaken.add(usedKey);
+      if (usedTaken.size > ANSWERS_KEPT) usedTaken.delete(usedTaken.values().next().value);
+      usedAsked(used);
+    }
     // A seq ahead of this page (the agent kept it from another tab of the same connection) counts from the page's own.
     const after = Math.min(asked, seq);
     // Back past a cue with no answer: the agent chose to give none, so the page stops waiting for it.

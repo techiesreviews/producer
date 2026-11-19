@@ -283,6 +283,10 @@ export async function run({ browser, base, out }) {
     await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 1000, suggestions: [{ text: "Agent's own question?" }, { question: 3 }] }); }, said.seq);
     await page.waitForTimeout(100);
     assert.deepEqual([(await card()).q, (await card()).why], ["The late call", "Next in your plan."], `${name}: the agent's suggestions leave the solo card alone`);
+    // Nor does asked (a question used on the Prompter's strip, TOOLS-347): a solo plan moves on only with Said and Skip.
+    await page.evaluate((seq) => { window.__relay.call("wait_for_cue", { seq, holdMs: 1000, asked: [1] }); }, said.seq);
+    await page.waitForTimeout(100);
+    assert.deepEqual([(await card()).q, (await card()).src], ["The late call", "Point 1 of 3 · your plan"], `${name}: asked leaves the solo card alone`);
     ok(`${name}: each cue names the next point on the card`);
 
     // ---- Use: the pick goes on the card as the viewer question; Back to your point; Answered.
