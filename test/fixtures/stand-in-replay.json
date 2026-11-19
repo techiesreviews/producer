@@ -1,0 +1,32 @@
+{
+  "about": "A made-up stretch of talk for test/replay.test.mjs, written for the made-up show in stand-in-script.md: every name and line is invented. One piece per pause; expect names the prepared questions that fit what was just said (one of them must show on the card or in Relevant now); asked names the question the host then asks.",
+  "pieces": [
+    {
+      "lines": [
+        { "speaker": "host", "text": "So most people think a weekly copy is plenty." },
+        { "speaker": "guest", "text": "Right, but a copy sitting on the same server is not a backup at all. When that server dies, the copy dies with it, and you only find out on the worst morning of the year." }
+      ],
+      "expect": [3, 4],
+      "asked": [3]
+    },
+    {
+      "lines": [
+        { "speaker": "guest", "text": "And even a real backup somewhere else is only half the job. If you have never tried to restore it, you do not know whether it will restore, though everybody assumes it does." }
+      ],
+      "expect": [5]
+    },
+    {
+      "lines": [
+        { "speaker": "guest", "text": "That week began on a Monday. The first sign was one customer email saying the shop showed an empty page. I was away on holiday, and honestly nobody would have noticed for days." }
+      ],
+      "expect": [6, 7]
+    },
+    {
+      "lines": [
+        { "speaker": "host", "text": "People in the chat keep asking about plugins." },
+        { "speaker": "guest", "text": "A backup plugin is fine as a start. I still want the host to keep one too, on its own systems, so one mistake never takes both." }
+      ],
+      "expect": [9]
+    }
+  ]
+}
