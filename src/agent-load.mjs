@@ -16,6 +16,9 @@ export const LOAD_WAIT_MS = 180_000; // keep it in whole minutes: the button's r
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */
 export const LOAD_MAX_BYTES = 200 * 1024;
 export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000, script: 50_000 };
+/** The most a script may weigh written as JSON with each apostrophe as \u0027, as the connect message's B holds it: one
+ * shell argument takes 128 KB, and the show's other fields need the rest. */
+export const LOAD_SCRIPT_BYTES = 96 * 1024;
 
 const LOAD_FIELDS = ["show", "guest", "questions", "parts", "notes", "script"];
 const loadPlural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -56,6 +59,7 @@ export function readLoad(args) {
     if (args.questions !== undefined || args.parts !== undefined) return no("Send the script, or the questions and parts, not both.");
     if (typeof args.script !== "string" || !args.script.trim()) return no("\"script\" must be the show's prompter script as text.");
     if (args.script.length > LOAD_LIMITS.script) return no(`"script" is too long. Limit: ${LOAD_LIMITS.script} characters.`);
+    if (new TextEncoder().encode(JSON.stringify(args.script).replaceAll("'", "\\u0027")).length > LOAD_SCRIPT_BYTES) return no(`"script" is too long. Limit: ${LOAD_SCRIPT_BYTES / 1024} KB written as JSON.`);
     const read = readScript(args.script);
     if (!read.ok) return no(read.reason);
     given = { questions: read.questions.map((q) => ({ text: q.text, part: q.part + 1 })), parts: read.parts, script: true };

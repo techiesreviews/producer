@@ -7,7 +7,7 @@
 //   [Wait ten seconds.]            a reminder, a whole line in square brackets (a link too): left out
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
-// A pause in a line ("So… what now?", "So... what now?") and a title (Dr. Lee) do not end a sentence; a pause at the
+// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee) and initials (J. K., U.S.) do not end a sentence; a pause at the
 // end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
 // a sentence on the same line ("…safe. Right?") is a tag on that sentence, not a question to ask, so it is left out; on
 // a line of its own ("Why?") it is a question. A blank line or a new heading ends a sentence that never finished. A
@@ -44,7 +44,9 @@ function scriptEnd(text) {
   for (const m of text.matchAll(SCRIPT_END)) {
     const mark = m[0].replace(/["'”’)\]]+$/, "");
     if (!/[?!]/.test(mark) && (mark.includes("…") || mark.length > 1)) continue;
-    if (mark === "." && SCRIPT_TITLES.has(text.slice(0, m.index).split(" ").at(-1).replace(/^[^\p{L}]+/u, "").toLowerCase())) continue;
+    const word = text.slice(0, m.index).split(" ").at(-1).replace(/^[^\p{L}]+/u, "");
+    // A title (Dr.), an initial (J. K.) or letters with full stops (U.S.) keep the sentence going.
+    if (mark === "." && (SCRIPT_TITLES.has(word.toLowerCase()) || /^(?:\p{L}\.)*\p{L}$/u.test(word))) continue;
     return m.index + m[0].length;
   }
   return -1;
