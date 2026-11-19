@@ -39,7 +39,7 @@ test("each question keeps its part, so the search groups by part", () => {
 
 test("questions over several short lines are joined into one sentence ending in ?", () => {
   const r = readScript("### **1 · TALK · 00:00**\nSo if it breaks,\nwhat do you do\nfirst?\nIt shows the copy. Does it show the log?\n");
-  assert.deepEqual(r.questions, [{ text: "So if it breaks, what do you do first?", part: 0 }, { text: "Does it show the log?", part: 0 }]);
+  assert.deepEqual(r.questions, [{ text: "So if it breaks, what do you do first?", part: 0, joined: true }, { text: "Does it show the log?", part: 0 }]);
 });
 
 test("reminders, links, headings without a time and one-word tags are left out; a one-word question on its own line stays", () => {
@@ -93,8 +93,25 @@ test("a question is never shortened: too long on one line or over several, it is
   for (const script of [oneLine, lines]) {
     const [q] = readScript(script).questions;
     assert.equal(q.text, long, "read whole");
-    assert.match(readLoad({ script }).reason, /^Question 1 \("So word word word word word word word wo…"\) is too long\. Limit: 300 characters\. In the script, end each sentence with \. ! or \?/);
+    assert.match(readLoad({ script }).reason, /^Question 1 \("So word word word word word word word wo…"\) is too long\. Limit: 300 characters\.$|It runs over several lines of the script/);
   }
+  assert.doesNotMatch(readLoad({ script: oneLine }).reason, /several lines/, "one line ran into nothing: no hint");
+  assert.match(readLoad({ script: lines }).reason, /It runs over several lines of the script: end each sentence there with \. ! or \?/);
+});
+
+test("a long line in the middle of a run is never dropped: the question it ends in stays too long and is refused", () => {
+  const script = ["### **1 · A · 00:00**", "So here", `${"word ".repeat(500)}`, "what now?"].join("\n");
+  assert.equal(readScript(script).questions.length, 1);
+  assert.ok(readScript(script).questions[0].text.length > 300);
+  assert.match(readLoad({ script }).reason, /Question 1 \("So here word/);
+});
+
+test("a statement ending in a letter or U.S. still ends: only a real initial or a lower-case next word keeps it going", () => {
+  const q = (line) => readScript(`### **1 · A · 00:00**\n${line}`).questions.map((x) => x.text);
+  assert.deepEqual(q("So did I. What did you do next?"), ["What did you do next?"]);
+  assert.deepEqual(q("We tried plan B. What did that cost?"), ["What did that cost?"]);
+  assert.deepEqual(q("I moved to the U.S. Why did you stay?"), ["Why did you stay?"]);
+  assert.deepEqual(q("Was John F. Kennedy there?"), ["Was John F. Kennedy there?"]);
 });
 
 test("lines with no end mark run together into the question after them, and the refusal names its first words", () => {
