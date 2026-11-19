@@ -23,15 +23,21 @@ const VIEWS = [
 // A made-up solo show.
 const PLAN = ["Show: Back Test", "3 Intro", "1. The first point", "8 Main part", "2. The second point", "3. The third point"].join("\n");
 
-// Stand-ins: the microphone (a quiet tone) and the speech worker (ready at once).
+// Stand-ins: the microphone and the studio tab (quiet tones) and the speech worker (ready at once).
 function standIns() {
-  navigator.mediaDevices.getUserMedia = async () => {
+  const tone = () => {
     const context = new AudioContext();
     const osc = context.createOscillator();
     const out = context.createMediaStreamDestination();
     osc.connect(out);
     osc.start();
     return out.stream;
+  };
+  navigator.mediaDevices.getUserMedia = async () => tone();
+  navigator.mediaDevices.getDisplayMedia = async () => {
+    const video = document.createElement("canvas").captureStream(1).getVideoTracks()[0];
+    video.getSettings = () => ({ displaySurface: "browser" });
+    return new MediaStream([video, ...tone().getAudioTracks()]);
   };
   const RealWorker = window.Worker;
   window.Worker = function Worker(url, options) {
@@ -160,8 +166,13 @@ export async function run({ browser, base, out }) {
     await page.locator('#modeSeg [data-v="guest"]').click();
     const go = page.locator("#goBtn");
     assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], ["true", "Answer Guest agreed first."], "with a guest now: Back to producer screen waits for the guest's answer");
-    await page.locator("#guestSeg button").nth(1).click(); // No · my mic only
+    await page.locator("#guestSeg button").first().click(); // Yes
     assert.equal(await go.getAttribute("aria-disabled"), null, "answered: Back to producer screen is on");
+    // The guest said yes during the visit: the studio tab can be shared from the setup (it is not the top bar's).
+    const tab = page.locator("#tabBtn");
+    assert.equal(await tab.getAttribute("aria-disabled"), null, "the tab button is the host's to press");
+    await tab.click();
+    await page.waitForFunction(() => document.querySelector("#tabBtn").dataset.state === "ok");
     checks.push("a show type changed during the visit needs the guest's answer before Back to producer screen");
     await context.close();
   }
