@@ -804,7 +804,12 @@ test("a cue names the prepared questions already asked or skipped, so the agent 
   s.page.done = [...Array.from({ length: 250 }, (_, i) => i + 1), 1001];
   s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "More." }] });
   const many = await s.call("wait_for_cue", { seq: cue.structuredContent.seq });
-  assert.deepEqual([many.structuredContent.position.done.length, many.structuredContent.position.done.at(-1)], [200, 200], "at most 200, never past question 1000");
+  assert.deepEqual([many.structuredContent.position.done.length, many.structuredContent.position.done.at(-1)], [200, 200], "at most 200");
+  s.page.done = [3, 1000, 1001];
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "Again." }] });
+  const capped = await s.call("wait_for_cue", { seq: many.structuredContent.seq });
+  assert.deepEqual(capped.structuredContent.position.done, [3, 1000], "never past question 1000");
+  assert.match(capped.content[0].text, /leave out\): 3, 1000$/m);
   const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
   assert.match(body.result.instructions, /up to six by number, closest first/);
 });
