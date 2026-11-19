@@ -73,17 +73,23 @@ export function readScript(text) {
     if (!line) { open = []; continue; }
     if (!onAir || line.startsWith("#") || SCRIPT_REMINDER.test(line)) continue;
     const said = scriptPlain(line).replace(/\s+/g, " ").trim();
+    if (!said) continue;
     // A pause at the end of the line before ends its sentence, unless this line goes on in lower case.
     if (open.length && SCRIPT_PAUSE.test(open.at(-1)) && !/^[^\p{L}]*\p{Ll}/u.test(said)) open = [];
     open.push(said);
-    while (open.length > 1 && open.join(" ").length > SCRIPT_RUN) open.shift();
-    let run = open.join(" ").trim();
+    let run = open.join(" ");
+    let earlier = open.slice(0, -1); // the lines before this one: they hold no end mark, so they belong to its first sentence
     for (let end = scriptEnd(run); end > 0; end = scriptEnd(run)) {
-      const sentence = run.slice(0, end).trim();
+      let sentence = run.slice(0, end).trim();
+      // The oldest lines go first while the sentence is too long for a question.
+      while (earlier.length && sentence.length > SCRIPT_RUN) sentence = sentence.slice(earlier.shift().length + 1);
+      earlier = [];
       if (SCRIPT_QUESTION.test(sentence) && sentence.split(" ").length >= 2) questions.push({ text: sentence, part: parts.length - 1 });
       run = run.slice(end).trim();
       open = run ? [run] : [];
     }
+    // A run still waiting for its end mark keeps at most SCRIPT_RUN characters: a question can never use more.
+    while (open.length > 1 && open.join(" ").length > SCRIPT_RUN) open.shift();
   }
   if (!parts.length) return { ok: false, reason: "The script has no parts with a start time. A part's heading ends with the time it starts, like ### **1 · INTRO · 00:00**." };
   const out = [];

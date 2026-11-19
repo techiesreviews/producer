@@ -95,6 +95,13 @@ test("lines with no end mark never pile up past a question's length: the oldest 
   assert.equal(readLoad({ script }).ok, true, "the script still loads");
 });
 
+test("a long question over several lines stays whole when another sentence follows on its last line", () => {
+  const lines = [`So ${"a".repeat(95)},`, `and ${"b".repeat(95)},`, `what ${"c".repeat(60)}? Thanks.`];
+  const [q] = readScript(["### **1 · A · 00:00**", ...lines].join("\n")).questions;
+  assert.equal(q.text, `${lines.join(" ").replace(" Thanks.", "")}`);
+  assert.ok(q.text.length > 200 && q.text.length <= 300, `${q.text.length} characters`);
+});
+
 test("a pause at the end of a line ends its sentence, unless the next line goes on in lower case", () => {
   assert.deepEqual(readScript("### **1 · A · 00:00**\nAnd then the backup failed…\nRobert, what did you do next?").questions.map((q) => q.text), ["Robert, what did you do next?"]);
   assert.deepEqual(readScript("### **1 · A · 00:00**\nSo...\n\"Who called first?\"").questions.map((q) => q.text), ["\"Who called first?\""]);

@@ -182,11 +182,11 @@ test("a question may carry its part's number: the plan box writes it under its p
   assert.deepEqual([back.questions, back.questionParts], [r.plan.questions, r.plan.questionParts]);
 });
 
-test("questions all in one part say nothing about parts, as a pasted plan reads them", () => {
+test("questions all in one part keep it: they go under it in the box (the page holds the parts the agent gave)", () => {
   const r = readLoad({ ...PARTED, questions: PARTED.questions.map((q) => ({ ...q, part: 2 })) });
-  assert.deepEqual(r.plan.questionParts, [null, null, null]);
-  assert.equal(planText(r.plan), planText({ ...r.plan, questionParts: [] }), "the questions follow the run order");
-  assert.deepEqual(readPlan(planText(r.plan)).questionParts, r.plan.questionParts);
+  assert.deepEqual(r.plan.questionParts, [1, 1, 1]);
+  assert.equal(planText(r.plan), "Show: Sample Show\n5 min Intro\n10 min Demo\n1. How did it start?\n2. Who was first?\n3. What went wrong?\n30 min Main talk");
+  assert.deepEqual(readPlan(planText(r.plan)).questionParts, [null, null, null], "the text alone reads as a pasted plan does (TOOLS-344's rule)");
 });
 
 test("the Worker hands the page the plan as the tool's arguments again, and the page reads the same plan", () => {
