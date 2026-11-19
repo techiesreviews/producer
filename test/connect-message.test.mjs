@@ -55,6 +55,9 @@ test("the message holds the ready-made loop with this page's address and token, 
   assert.ok(chat.chat.messages[0].pick, "the example shows a pick");
   assert.match(message, /Up to six suggestions, closest first: "question" \(the number of a prepared question on the topic just talked about: prefer it/);
   assert.match(message, /use it when the show lists no prepared questions or none fits/, "with no plan the agent writes its own text: a question number the plan lacks shows nothing");
+  // TOOLS-347: an agent also connected to the host's Prompter puts its first suggestion, a talking point and a hook
+  // on the Prompter's strip, and passes the questions the host used there back in "asked".
+  assert.match(message, /Prompter[\s\S]*push_suggestions[\s\S]*only from the show plan or what was said[\s\S]*"asked":\[2\]/);
 });
 
 test("the command the agent types after every cue is short: no JSON-RPC, no header lines, the answer as plain text", () => {
@@ -68,7 +71,7 @@ test("the command the agent types after every cue is short: no JSON-RPC, no head
   const typed = settings.replace(FAKE, "").replace("P=get_context; B='{}'", "P=wait_for_cue; B=''") + loop;
   assert.ok(typed.length < 260, `${typed.length} characters without the token and the answer`);
   assert.doesNotMatch(message, /jsonrpc|tools\/call/, "the message never mentions JSON-RPC");
-  assert.ok(message.length < 2950, `${message.length} characters in all`); // TOOLS-345 sends the prompter script in the load_show rule; TOOLS-336 added the viewer chat rule; card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
+  assert.ok(message.length < 3300, `${message.length} characters in all`); // TOOLS-347 added the Prompter strip rule; TOOLS-345 sends the prompter script in the load_show rule; TOOLS-336 added the viewer chat rule; card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
 });
 
 test("the same message works for the preview: only the address changes", () => {
