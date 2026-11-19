@@ -194,6 +194,7 @@ test("the instructions tell an agent that also holds the Prompter to push the st
   const s = await setup();
   const { body } = await s.rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "claude-code" } });
   assert.match(body.result.instructions, /push_suggestions[\s\S]*same turn[\s\S]*only from the show plan or from what was said[\s\S]*asked/);
+  assert.match(body.result.instructions, /End report, call clear_suggestions on the Prompter first[\s\S]*asked list of post_report/, "the last taps reach the report");
 });
 
 test("wait_for_cue: a page that does not answer in time ends the wait at 30 s as idle with the agent's own seq", async (t) => {

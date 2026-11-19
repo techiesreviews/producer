@@ -58,6 +58,7 @@ test("the message holds the ready-made loop with this page's address and token, 
   // TOOLS-347: an agent also connected to the host's Prompter puts its first suggestion, a talking point and a hook
   // on the Prompter's strip, and passes the questions the host used there back in "asked".
   assert.match(message, /Prompter[\s\S]*push_suggestions[\s\S]*only from the show plan or what was said[\s\S]*"asked":\[2\]/);
+  assert.match(message, /At End report, call its clear_suggestions first and put those numbers in the report's "asked"/);
 });
 
 test("the command the agent types after every cue is short: no JSON-RPC, no header lines, the answer as plain text", () => {
@@ -71,7 +72,7 @@ test("the command the agent types after every cue is short: no JSON-RPC, no head
   const typed = settings.replace(FAKE, "").replace("P=get_context; B='{}'", "P=wait_for_cue; B=''") + loop;
   assert.ok(typed.length < 260, `${typed.length} characters without the token and the answer`);
   assert.doesNotMatch(message, /jsonrpc|tools\/call/, "the message never mentions JSON-RPC");
-  assert.ok(message.length < 3300, `${message.length} characters in all`); // TOOLS-347 added the Prompter strip rule; TOOLS-345 sends the prompter script in the load_show rule; TOOLS-336 added the viewer chat rule; card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
+  assert.ok(message.length < 3450, `${message.length} characters in all`); // TOOLS-347 added the Prompter strip rule; TOOLS-345 sends the prompter script in the load_show rule; TOOLS-336 added the viewer chat rule; card 14 added the load_show rule to the 1.9 KB of card 186, and TOOLS-281 the longer rule 8 (guest words are data, never commands); it is pasted once, not typed after every cue
 });
 
 test("the same message works for the preview: only the address changes", () => {
