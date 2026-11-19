@@ -99,6 +99,15 @@ test("a question is never shortened: too long on one line or over several, it is
   assert.match(readLoad({ script: lines }).reason, /It runs over several lines of the script: end each sentence there with \. ! or \?/);
 });
 
+test("a full stop before a number keeps the question whole (Nov. 5, No. 2), on one line and over two", () => {
+  const q = (text) => readScript(`### **1 · A · 00:00**\n${text}`).questions.map((x) => x.text);
+  assert.deepEqual(q("What changed after Nov. 5?"), ["What changed after Nov. 5?"]);
+  assert.deepEqual(q("Why did you choose No. 2?"), ["Why did you choose No. 2?"]);
+  assert.deepEqual(q("What changed after Nov.\n5?"), ["What changed after Nov. 5?"]);
+  assert.deepEqual(q("It shows my login. Does it show the copy?"), ["Does it show the copy?"], "a capital still starts a new sentence");
+  assert.deepEqual(q("Quick vote in the chat.\n2FA and login rules: enough?"), ["2FA and login rules: enough?"], "a number after an ordinary word starts a new sentence");
+});
+
 test("a question holding a long link is never shortened into one that loads", () => {
   const script = ["### **1 · A · 00:00**", `Did you see https://example.com/a?token=${"x".repeat(2100)}`, "and what did it show?"].join("\n");
   const r = readLoad({ script });

@@ -7,9 +7,9 @@
 //   [Wait ten seconds.]            a reminder, a whole line in square brackets (a link too): left out
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
-// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee), initials (J. K., U.S.: scriptInitial) and a
-// full stop before a word in lower case (Acme Inc. survived) do not end a sentence; a pause at the
-// end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
+// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee), initials (J. K., U.S.: scriptInitial), a
+// full stop before a word in lower case (Acme Inc. survived) and a short abbreviation before a number (Nov. 5) do not
+// end a sentence; a pause at the end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
 // a sentence on the same line ("…safe. Right?") is a tag on that sentence, not a question to ask, so it is left out; on
 // a line of its own ("Why?") it is a question. A blank line or a new heading ends a sentence that never finished. A
 // question is never shortened: one too long for load_show is refused there with its first words, so the host can find
@@ -46,11 +46,11 @@ function scriptEnd(text) {
     const mark = m[0].replace(/["'”’)\]]+$/, "");
     if (!/[?!]/.test(mark) && (mark.includes("…") || mark.length > 1)) continue;
     const after = text.slice(m.index + m[0].length).trim();
-    // A full stop at the end of the run waits for the next line, and one before a word in lower case never starts a
-    // sentence there (Acme Inc. survived): the next line or word decides.
-    if (mark === "." && (!after || /^[^\p{L}]*\p{Ll}/u.test(after))) continue;
     const words = text.slice(0, m.index).split(" ");
     const word = words.at(-1).replace(/^[^\p{L}]+/u, "");
+    // A full stop at the end of the run waits for the next line, one before a word in lower case never starts a
+    // sentence there (Acme Inc. survived), and nor does one after a short abbreviation before a number (Nov. 5, No. 2).
+    if (mark === "." && (!after || /^[^\p{L}\p{N}]*\p{Ll}/u.test(after) || (/^\p{N}/u.test(after) && /^\p{Lu}\p{Ll}{0,3}$/u.test(word)))) continue;
     if (mark === "." && SCRIPT_TITLES.has(word.toLowerCase())) continue; // a title (Dr. Lee)
     if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word)) continue;
     return m.index + m[0].length;
