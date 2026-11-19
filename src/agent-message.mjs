@@ -45,7 +45,7 @@ ${AGENT_LOOP}
 Rules for this whole conversation:
 1. Run it once as written: it prints the show. Then run it with P=${TOOL.wait} B='${wait}'
 2. It waits and prints the next cue. Answer in the next wait: run it again with "seq" set to the cue's seq and your suggestions, for example P=${TOOL.wait} B='${answer}'. That one command shows your answer and waits for the next cue.
-3. Up to six suggestions, best first: "question" (the number of a prepared question that fits what was just said: prefer it, it is the shortest to type) or "text" (twelve words or fewer; use it when the show lists no prepared questions or none fits), and "why" (six words or fewer, on the first). In B, write an apostrophe as \\u0027.
+3. Up to six suggestions, closest first: "question" (the number of a prepared question on the topic just talked about: prefer it, it is the shortest to type) or "text" (twelve words or fewer; use it when the show lists no prepared questions or none fits), and "why" (six words or fewer, on the first). In B, write an apostrophe as \\u0027.
 4. If I gave you my show's prompter script, load it as it is when a cue says ${CUE.load}, or after the first run if the show has no parts: P=${TOOL.load} B='${load}' (or "questions" and "parts" from an outline), then wait again with that cue's seq. Never tick Guest agreed or start the microphone or tab sharing: those are my clicks.
 5. No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install. Do not explain the command or write chat text between runs.
 6. If it stops at its time limit, run it again at once with the same P and B.

@@ -53,7 +53,7 @@ test("the message holds the ready-made loop with this page's address and token, 
   const chat = readChat(bodies[4]);
   assert.equal(chat.ok, true, "the example chat is one the tool accepts");
   assert.ok(chat.chat.messages[0].pick, "the example shows a pick");
-  assert.match(message, /Up to six suggestions, best first: "question" \(the number of a prepared question that fits what was just said: prefer it/);
+  assert.match(message, /Up to six suggestions, closest first: "question" \(the number of a prepared question on the topic just talked about: prefer it/);
   assert.match(message, /use it when the show lists no prepared questions or none fits/, "with no plan the agent writes its own text: a question number the plan lacks shows nothing");
 });
 
