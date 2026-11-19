@@ -213,11 +213,13 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(cue.position.done, [20, 40], `${name}: the cue names the questions asked or skipped, so the agent leaves them out`);
     ok(`${name}: Asked and Skip take the best match still open; the cue names the questions already asked or skipped`);
 
-    // The search hides the list while it holds words; clearing it brings the list back.
+    // The search hides the list while it holds words; clearing it brings the list back, heard again.
     await press(page.locator("#findIn"));
     await page.locator("#findIn").fill("part 9");
     assert.deepEqual([await page.locator("#relList").isVisible(), await page.locator("#findList").isVisible()], [false, true], `${name}: searching hides the list`);
+    await page.evaluate(() => { document.querySelector("#relSay").textContent = ""; });
     await press(page.locator("#findX"));
+    await page.waitForFunction(() => document.querySelector("#relSay").textContent === "2 relevant questions");
     assert.deepEqual([await page.locator("#relList").isVisible(), await rows()], [true, ["# Part 5 · Part 5 topic", "Q33", "Q34"]], `${name}: clearing brings it back`);
     // Every match asked or skipped: the list says so.
     await press(page.locator("#skipBtn"));
@@ -245,6 +247,30 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(stored, { local: 0, session: 0, cookie: "", databases: 0 }, `${name}: nothing stored`);
     assert.deepEqual(problems, [], `${name}: no console errors`);
     ok(`${name}: nothing stored, no console errors`);
+    await context.close();
+  }
+  // A first answer naming only a question already asked: the card stays, and the empty list takes the place of the rows
+  // to swap in (SL-1 of #30).
+  {
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
+    const page = await context.newPage();
+    await page.clock.install({ time: new Date("2026-11-19T19:00:00Z") });
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await openScreen(page, (l) => l.click(), { plan: bigPlan(), guest: true, agent: true });
+    await page.locator("#askedBtn").click(); // Q1; Q2 on the card
+    await page.clock.fastForward(61_000);
+    const cue = await page.evaluate(async () => {
+      const wait = window.__relay.call("wait_for_cue", { seq: 0, holdMs: 25000 });
+      window.__speech.emit({ type: "text", source: "guest", piece: 1, final: true, text: "Whoever holds that cookie is logged in.", start: 0, end: 31 });
+      window.__speech.emit({ type: "pause", source: "guest", at: 31 });
+      return (await wait).result;
+    });
+    await page.evaluate((seq) => { window.__wait = window.__relay.call("wait_for_cue", { seq, holdMs: 25000, suggestions: [{ question: 1 }] }); }, cue.seq);
+    await page.waitForFunction(() => document.querySelector("#relSay").textContent === "No other matches right now.");
+    const seen = await page.evaluate(() => ({ q: document.querySelector("#qMain").textContent, alts: document.querySelectorAll("#alts .alt").length, list: document.querySelector("#relList").textContent, shown: !document.querySelector("#relList").hidden }));
+    assert.deepEqual(seen, { q: "Question 2, in part 1?", alts: 0, list: "No other matches right now.", shown: true }, "a first answer naming only an asked question: the card stays, the empty list replaces the rows to swap in");
+    ok("a first answer naming only an asked question: the card stays, the empty list replaces the rows to swap in");
     await context.close();
   }
   return { checks, screenshots };
