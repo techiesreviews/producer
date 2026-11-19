@@ -278,10 +278,20 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(await card(), kept, `${name}: the card stays as it is`);
     ok(`${name}: an agent that never answers: after a minute the light and Suggest now are back`);
 
+    // A question the host used on the Prompter's strip (TOOLS-347): the agent passes its number in asked on its next
+    // wait, and it counts as Asked: the card moves on, as the Asked button does.
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 4, holdMs: 25000, suggestions: [{ question: 2, why: "The money story." }] }); });
+    await page.waitForFunction(() => document.querySelector("#qMain").textContent === "Who paid first?");
+    await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 4, holdMs: 25000, asked: [2] }); });
+    await page.waitForFunction(() => document.querySelector("#qMain").textContent !== "Who paid first?");
+    assert.notEqual(await text("#qSrc"), "Q2 · your list", `${name}: the used question left the card`);
+    ok(`${name}: a question used on the Prompter's strip (asked: [2]) counts as Asked: the card moves on`);
+
     // The agent disconnects mid-show: the card keeps its question, Suggest now says "no agent" on itself, the light is grey.
+    const onCard = await card();
     await page.evaluate(() => window.__relay.sockets.at(-1).close(4003));
     await page.waitForFunction(() => document.querySelector("#suggestBtn").getAttribute("aria-disabled") === "true");
-    assert.deepEqual(await card(), kept, `${name}: the card keeps its question`);
+    assert.deepEqual(await card(), onCard, `${name}: the card keeps its question`);
     assert.deepEqual([await text("#suggestBtn"), await suggest.getAttribute("data-tip")], ["i Suggest now · no agent", "No agent connected. The next question comes from your list."], `${name}: "no agent" on Suggest now`);
     assert.deepEqual(await light(), { cls: "dot", label: "No agent", tip: "No agent: the next question comes from your list." }, `${name}: the light is grey`);
     await press(page.locator("#askedBtn"));
