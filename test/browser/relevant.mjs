@@ -200,7 +200,7 @@ export async function run({ browser, base, out }) {
     await pauseAnswer([20, 21, 33], "next point");
     assert.equal(await text("#qMain"), "Question 40, in part 6?", `${name}: the pick stays on the card through the next answer`);
     assert.deepEqual(await rows(), ["# Part 3 · Part 3 topic", "Q20", "Q21", "# Part 5 · Part 5 topic", "Q33"], `${name}: the list follows the newest answer`);
-    assert.equal(await text("#relSay"), "3 relevant questions", `${name}: a screen reader hears the new list while the card stays`);
+    await page.waitForFunction(() => document.querySelector("#relSay").textContent === "3 relevant questions");
     await shot("picked");
     ok(`${name}: a click puts a match on the card and it stays through the next answer, which changes only the list`);
 
@@ -222,14 +222,23 @@ export async function run({ browser, base, out }) {
     // Every match asked or skipped: the list says so.
     await press(page.locator("#skipBtn"));
     await press(page.locator("#skipBtn"));
-    assert.deepEqual([await rows(), await page.locator("#relCount").isVisible(), await text("#relSay")], [["No other matches right now."], false, "No other matches right now."], `${name}: none left says so, to a screen reader too`);
+    await page.waitForFunction(() => document.querySelector("#relSay").textContent === "No other matches right now.");
+    assert.deepEqual([await rows(), await page.locator("#relCount").isVisible()], [["No other matches right now."], false], `${name}: none left says so, to a screen reader too`);
     ok(`${name}: the search hides the list while it holds words; none left says so`);
 
-    // Start: the part on now says so.
-    await press(page.locator("#runBtn"));
+    // Start: the part on now says so. The list drawn again with the same questions is not announced again.
     await pauseAnswer([5, 1, 30]);
+    await page.waitForFunction(() => document.querySelector("#relSay").textContent === "2 relevant questions");
+    await page.evaluate(() => { document.querySelector("#relSay").textContent = ""; });
+    await press(page.locator("#runBtn"));
     assert.deepEqual(await rows(), ["# Part 1 · Part 1 topicon now", "Q1", "# Part 4 · Part 4 topic", "Q30"], `${name}: "on now" marks the part on now`);
     await shot("on-now");
+    await page.waitForTimeout(300);
+    assert.equal(await text("#relSay"), "", `${name}: the same questions drawn again are not announced again`);
+    // An answer naming only a question already asked: the card stays, the list says no other matches.
+    await press(page.locator("#askedBtn")); // Q5; Q1 takes the card
+    await pauseAnswer([5]);
+    assert.deepEqual([await text("#qMain"), await rows()], ["Question 1, in part 1?", ["No other matches right now."]], `${name}: an answer naming only a question already asked keeps the card and empties the list`);
     ok(`${name}: "on now" marks the part on now`);
 
     const stored = await page.evaluate(async () => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie, databases: (await indexedDB.databases()).length }));

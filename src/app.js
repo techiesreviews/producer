@@ -809,7 +809,7 @@ const relCount = $("relCount");
 const relList = $("relList");
 const relSay = $("relSay");
 const found = { key: "", plan: null, card: null, locked: false, first: null, sayTimer: 0 };
-const rel = { key: "", plan: null, shown: new Set(), said: null }; // shown: the matches on screen, so a new one fades in; said: the ones last announced
+const rel = { key: "", plan: null, shown: new Set(), said: null, sayTimer: 0 }; // shown: the matches on screen, so a new one fades in; said: the ones last announced
 
 function renderFind() {
   const total = show.plan?.questions.length ?? 0;
@@ -888,6 +888,7 @@ function renderRelevant(matches) {
   relHead.hidden = relList.hidden = !matches;
   if (!matches) {
     rel.key = "";
+    clearTimeout(rel.sayTimer);
     relSay.textContent = "";
     return;
   }
@@ -928,8 +929,13 @@ function renderRelevant(matches) {
   relList.replaceChildren(...out);
   // A screen reader hears a changed list (also under a pick, when the card stays the same), not the clock's ticks.
   const say = matches.length ? `${matches.length} relevant ${matches.length === 1 ? "question" : "questions"}` : "No other matches right now.";
+  // Cleared first and written a moment later, so the same words for a new list ("5 relevant questions") are heard again.
   const ids = matches.map((q) => q.n).join();
-  if (ids !== rel.said) relSay.textContent = say;
+  if (ids !== rel.said) {
+    clearTimeout(rel.sayTimer);
+    relSay.textContent = "";
+    rel.sayTimer = setTimeout(() => { relSay.textContent = say; }, 150);
+  }
   rel.said = ids;
   rel.shown = new Set(matches.map((q) => q.n));
   if (focused !== null) {

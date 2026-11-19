@@ -102,7 +102,7 @@ export function createQuestions() {
         return text ? { text, ...why, from: "agent" } : null;
       }).filter((q, i, all) => q && open(q) && all.findIndex((o) => o && key(o) === key(q)) === i).slice(0, MATCHES); // a repeat counts once
       if (!fresh.length) {
-        // Nothing usable (all asked or skipped): the card stays, the list says no other matches.
+        // Nothing usable (all asked, skipped or not in the plan): the card stays; after a first answer the list says no other matches.
         const had = shown()?.length > 0;
         if (relevant) relevant = [];
         return had;
