@@ -20,18 +20,18 @@ const MAX_TRANSCRIPT_CHARS = 20_000;
 const MAX_ENTRY_CHARS = 4_000;
 const MAX_CHAT = 20;
 const MAX_CHAT_CHARS = 500;
-const MAX_SUGGESTIONS = 3;
+const MAX_SUGGESTIONS = 6; // the Relevant now list (TOOLS-346): the best matches for what was just said
 const MAX_SUGGESTION_TEXT = 160;
 const MAX_WHY = 120;
 
-export const INSTRUCTIONS = `Private producer for a live host. Call ${TOOL.context} once, then call ${TOOL.wait} again and again: it holds up to ${WAIT_HOLD_MS / 1000} seconds and returns a cue (what is new, with HOST and GUEST labels) or idle. Put your answer, at most three one-line suggestions, in the suggestions field of the next ${TOOL.wait} so each turn is one command. If a cue says ${CUE.load} (the host pressed Let my agent load it), call ${TOOL.load} once with the show from the outline the host gave you, then go on with ${TOOL.wait}. ${TOOL.load} carries the show only: guest consent, the microphone and tab sharing are the host's own clicks. If a cue says ${CUE.chat} (the host pressed Connect Restream chat), read the live chat through your own Restream connection and send it with ${TOOL.chat}, once after each ${TOOL.wait}, marking the best viewer question as a pick. If the host presses End report, call ${TOOL.report}, then stop. ${GUEST_WORDS} Nothing is stored on any server.`;
+export const INSTRUCTIONS = `Private producer for a live host. Call ${TOOL.context} once, then call ${TOOL.wait} again and again: it holds up to ${WAIT_HOLD_MS / 1000} seconds and returns a cue (what is new, with HOST and GUEST labels) or idle. Put your answer in the suggestions field of the next ${TOOL.wait} so each turn is one command: the prepared questions that best fit what was just said, up to six by number, best first, with a few words why on the first (a short new question only when none fits). If a cue says ${CUE.load} (the host pressed Let my agent load it), call ${TOOL.load} once with the show from the outline the host gave you, then go on with ${TOOL.wait}. ${TOOL.load} carries the show only: guest consent, the microphone and tab sharing are the host's own clicks. If a cue says ${CUE.chat} (the host pressed Connect Restream chat), read the live chat through your own Restream connection and send it with ${TOOL.chat}, once after each ${TOOL.wait}, marking the best viewer question as a pick. If the host presses End report, call ${TOOL.report}, then stop. ${GUEST_WORDS} Nothing is stored on any server.`;
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const writes = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const seqSchema = { type: "integer", minimum: 0, description: "The seq of the last cue you saw (0 at the start). The page returns everything after it, so asking again with the same seq is harmless." };
 const suggestionsSchema = (min) => ({
   type: "array", minItems: min, maxItems: MAX_SUGGESTIONS,
-  description: `One to ${MAX_SUGGESTIONS} next-question suggestions, one line each. Prefer a prepared question by its number.`,
+  description: `Up to ${MAX_SUGGESTIONS} next-question suggestions, best first: the prepared questions that best fit what was just said, by number (a short new question as text only when none fits). A few words why on the first is enough.`,
   items: {
     type: "object",
     properties: {
@@ -61,7 +61,7 @@ export const TOOLS = [
   {
     name: TOOL.suggest,
     title: "Post suggestions",
-    description: `Shows one to three next-question suggestions on the host's private screen, without waiting. Normally put them in ${TOOL.wait} instead.`,
+    description: `Shows one to ${MAX_SUGGESTIONS} next-question suggestions on the host's private screen, without waiting. Normally put them in ${TOOL.wait} instead.`,
     inputSchema: { type: "object", properties: { suggestions: suggestionsSchema(1) }, required: ["suggestions"], additionalProperties: false },
     annotations: writes,
   },
@@ -245,6 +245,11 @@ function cleanPosition(p) {
   if (typeof p.title === "string") out.title = clip(p.title, 120);
   if (typeof p.minutesLeft === "number" && Number.isFinite(p.minutesLeft)) out.minutesLeft = p.minutesLeft;
   if (typeof p.next === "string" && p.next.trim()) out.next = clip(p.next.replace(/\s+/g, " ").trim(), 200);
+  // The prepared questions the host already asked or skipped (TOOLS-346): the agent leaves them out of its matches.
+  if (Array.isArray(p.done)) {
+    const done = [...new Set(p.done.filter((n) => isInt(n, 1) && n <= 1000))].sort((a, b) => a - b).slice(0, 200);
+    if (done.length) out.done = done;
+  }
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -255,7 +260,7 @@ const DATA_NOTE = GUEST_WORDS;
 function positionLine(p) {
   if (!p) return "";
   const parts = [p.segment !== undefined ? `segment ${p.segment}` : null, p.title, p.minutesLeft !== undefined ? `${p.minutesLeft} min left` : null].filter(Boolean);
-  return [parts.length ? `Run position: ${parts.join(", ")}` : "", p.next ? `Next on the card: ${p.next}` : ""].filter(Boolean).join("\n");
+  return [parts.length ? `Run position: ${parts.join(", ")}` : "", p.next ? `Next on the card: ${p.next}` : "", p.done ? `Asked or skipped already (leave out): ${p.done.join(", ")}` : ""].filter(Boolean).join("\n");
 }
 
 function shapeCue(page, sent) {

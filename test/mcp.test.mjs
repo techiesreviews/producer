@@ -250,15 +250,17 @@ test("results from the page are cleaned: other speakers named, text capped, unkn
   assert.ok(r.content[0].text.length < 30_000);
 });
 
-test("post_suggestions: one to three, each a prepared question number or short text, and nothing else", async () => {
+test("post_suggestions: one to six, each a prepared question number or short text, and nothing else", async () => {
   const s = await setup();
   const ok = await s.call("post_suggestions", { suggestions: [{ question: 1 }, { text: "What changed after?", why: "ties to the last point" }] });
   assert.equal(ok.isError, undefined);
   assert.deepEqual(s.page.shown, [{ question: 1 }, { text: "What changed after?", why: "ties to the last point" }]);
   assert.deepEqual(ok.structuredContent, { ok: true, shown: 2 });
+  const six = await s.call("post_suggestions", { suggestions: [6, 5, 4, 3, 2, 1].map((question) => ({ question })) });
+  assert.deepEqual(six.structuredContent, { ok: true, shown: 6 }, "six matches for the Relevant now list (TOOLS-346)");
   const calls = s.page.calls.length;
   const bad = [
-    {}, { suggestions: [] }, { suggestions: "one" }, { suggestions: [{ question: 1 }, { question: 2 }, { question: 3 }, { question: 4 }] },
+    {}, { suggestions: [] }, { suggestions: "one" }, { suggestions: [1, 2, 3, 4, 5, 6, 7].map((question) => ({ question })) },
     { suggestions: [{}] }, { suggestions: [{ question: 0 }] }, { suggestions: [{ question: 1.5 }] }, { suggestions: [{ text: "" }] },
     { suggestions: [{ text: "x".repeat(161) }] }, { suggestions: [{ text: "ok", why: "y".repeat(121) }] }, { suggestions: [null] },
   ];
@@ -271,7 +273,7 @@ test("post_suggestions: one to three, each a prepared question number or short t
 
 test("wait_for_cue: bad seq or suggestions are a tool error and never reach the page", async () => {
   const s = await setup();
-  for (const args of [{ seq: -1 }, { seq: 1.5 }, { seq: "2" }, { seq: 2 ** 60 }, { suggestions: "x" }, { suggestions: [{}] }, { suggestions: Array(4).fill({ question: 1 }) }]) {
+  for (const args of [{ seq: -1 }, { seq: 1.5 }, { seq: "2" }, { seq: 2 ** 60 }, { suggestions: "x" }, { suggestions: [{}] }, { suggestions: Array(7).fill({ question: 1 }) }]) {
     assert.equal((await s.call("wait_for_cue", args)).isError, true, JSON.stringify(args));
   }
   assert.deepEqual(s.page.waits, []);
@@ -790,4 +792,15 @@ test("with the viewer chat on, a wait with nothing new says so in words, so a cu
   const line = await res.text();
   assert.notEqual(line, "idle", "the short route does not answer the bare word idle, so the copied loop stops");
   assert.match(line, /post_chat/);
+});
+
+test("a cue names the prepared questions already asked or skipped, so the agent leaves them out of its matches (TOOLS-346)", async () => {
+  const s = await setup();
+  s.page.done = [5, 2, 2, 0, 1.5, "3", 9];
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "guest", text: "Whoever holds that cookie is logged in." }] });
+  const cue = await s.call("wait_for_cue", { seq: 0 });
+  assert.match(cue.content[0].text, /Asked or skipped already \(leave out\): 2, 5, 9/);
+  assert.deepEqual(cue.structuredContent.position.done, [2, 5, 9], "whole numbers from 1 only, once each, in order");
+  const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
+  assert.match(body.result.instructions, /up to six by number, best first/);
 });
