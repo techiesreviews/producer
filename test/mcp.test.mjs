@@ -802,5 +802,5 @@ test("a cue names the prepared questions already asked or skipped, so the agent 
   assert.match(cue.content[0].text, /Asked or skipped already \(leave out\): 2, 5, 9/);
   assert.deepEqual(cue.structuredContent.position.done, [2, 5, 9], "whole numbers from 1 only, once each, in order");
   const { body } = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "2.1" } });
-  assert.match(body.result.instructions, /up to six by number, best first/);
+  assert.match(body.result.instructions, /up to six by number, closest first/);
 });
