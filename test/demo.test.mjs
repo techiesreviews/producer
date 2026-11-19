@@ -13,7 +13,7 @@ test("the demo is about 8 questions, 3 parts, a guest and notes, and passes the 
   assert.equal(r.plan.questions.length, 8);
   assert.equal(r.plan.parts.length, 3);
   assert.ok(r.plan.guest && r.plan.notes, "a guest and notes");
-  assert.deepEqual(r.plan, DEMO_SHOW, "nothing in it needed tidying");
+  assert.deepEqual(r.plan, { ...DEMO_SHOW, questionParts: DEMO_SHOW.questions.map(() => null) }, "nothing in it needed tidying");
 });
 
 test("the demo reads back from the plan box's text exactly (the host edits that text)", () => {

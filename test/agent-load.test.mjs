@@ -2,7 +2,7 @@
 // text the host can edit, and the words on step 3's button in each state.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LOAD_LIMITS, LOAD_MAX_BYTES, loadButton, planText, readLoad } from "../src/agent-load.mjs";
+import { LOAD_LIMITS, LOAD_MAX_BYTES, loadArgs, loadButton, planText, readLoad } from "../src/agent-load.mjs";
 import { planButton, readPlan } from "../src/runorder.mjs";
 
 const GOOD = {
@@ -16,12 +16,12 @@ const GOOD = {
 test("a good plan is read as it is", () => {
   const r = readLoad(GOOD);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.plan, GOOD);
+  assert.deepEqual(r.plan, { ...GOOD, questionParts: [null, null] });
 });
 
 test("only the parts are needed: the rest may be left out", () => {
   const r = readLoad({ parts: [{ name: "Chat", minutes: 20 }] });
-  assert.deepEqual(r, { ok: true, plan: { show: "", guest: "", questions: [], parts: [{ name: "Chat", minutes: 20 }], notes: "" } });
+  assert.deepEqual(r, { ok: true, plan: { show: "", guest: "", questions: [], parts: [{ name: "Chat", minutes: 20 }], questionParts: [], notes: "" } });
 });
 
 test("lines are tidied: spaces and line breaks in a name become one space, notes keep their lines", () => {
@@ -149,18 +149,63 @@ test("the button: asking, loaded (as in the mock-up), and failed", () => {
   const plan = readLoad({ ...GOOD, questions: Array.from({ length: 12 }, (_, i) => `Question ${i + 1}?`), parts: Array.from({ length: 5 }, (_, i) => ({ name: `Part ${i + 1}`, minutes: 5 })) }).plan;
   const loaded = loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan } });
   assert.equal(loaded.state, "ok");
-  assert.equal(loaded.text, "Loaded by Claude Code · 12 questions · 5 parts");
-  assert.equal(loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan }, solo: true }).text, "Loaded by Claude Code · 12 points · 5 parts", "a solo show's list is the host's points");
-  assert.equal(loaded.tip, "Show: Sample Show. Guest: Sample Guest. 12 questions, 5 parts, guest notes.");
+  assert.equal(loaded.text, "Questions loaded by your agent · 12 questions · 5 parts ✓", "as in the approved prototype (TOOLS-343)");
+  assert.equal(loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan }, solo: true }).text, "Points loaded by your agent · 12 points · 5 parts ✓", "a solo show's list is the host's points");
+  assert.equal(loaded.tip, "Your agent loads the show by itself when it connects. Press to load it again.");
   assert.equal(loaded.primary, false);
   // The agent leaving does not undo what it loaded.
   assert.equal(loadButton({ agent: "off", load: { phase: "loaded", name: "Claude Code", plan } }).text, loaded.text);
   const one = loadButton({ agent: "on", load: { phase: "loaded", name: "Codex", plan: { show: "", guest: "", questions: [], parts: [{ name: "A", minutes: 1 }], notes: "" } } });
-  assert.equal(one.text, "Loaded by Codex · 1 part");
-  assert.equal(one.tip, "1 part.");
+  assert.equal(one.text, "Show loaded by your agent · 1 part ✓");
   const failed = loadButton({ agent: "on", load: { phase: "failed", name: "Claude Code", reason: "No show came back." } });
   assert.deepEqual([failed.state, failed.text, failed.tip, failed.primary], ["error", "Not loaded · try again", "No show came back.", false]);
   // Once the show clock runs the plan is fixed: the button says so, whatever the agent does.
   assert.equal(loadButton({ agent: "on", load: { phase: "idle", name: "Claude Code" }, locked: true }).off, "The show has started, so the plan stays as it is.");
-  assert.equal(loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan }, locked: true }).state, "ok", "what was loaded stays shown");
+  const locked = loadButton({ agent: "on", load: { phase: "loaded", name: "Claude Code", plan }, locked: true });
+  assert.deepEqual([locked.state, locked.tip], ["ok", "The show has started, so the plan stays as it is."], "what was loaded stays shown; it cannot be loaded again");
+});
+
+// TOOLS-345: a part per question, so the search groups the agent's show by part.
+const PARTED = {
+  show: "Sample Show",
+  questions: [{ text: "How did it start?", part: 1 }, { text: "Who was first?", part: 1 }, { text: "What went wrong?", part: 3 }],
+  parts: [{ name: "Intro", minutes: 5 }, { name: "Demo", minutes: 10 }, { name: "Main talk", minutes: 30 }],
+};
+
+test("a question may carry its part's number: the plan box writes it under its part, and it reads back there", () => {
+  const r = readLoad(PARTED);
+  assert.equal(r.ok, true, r.reason);
+  assert.deepEqual(r.plan.questions, ["How did it start?", "Who was first?", "What went wrong?"]);
+  assert.deepEqual(r.plan.questionParts, [0, 0, 2]);
+  assert.equal(planText(r.plan), "Show: Sample Show\n5 min Intro\n1. How did it start?\n2. Who was first?\n10 min Demo\n30 min Main talk\n3. What went wrong?");
+  const back = readPlan(planText(r.plan));
+  assert.deepEqual([back.questions, back.questionParts], [r.plan.questions, r.plan.questionParts]);
+});
+
+test("questions all in one part say nothing about parts, as a pasted plan reads them", () => {
+  const r = readLoad({ ...PARTED, questions: PARTED.questions.map((q) => ({ ...q, part: 2 })) });
+  assert.deepEqual(r.plan.questionParts, [null, null, null]);
+  assert.equal(planText(r.plan), planText({ ...r.plan, questionParts: [] }), "the questions follow the run order");
+  assert.deepEqual(readPlan(planText(r.plan)).questionParts, r.plan.questionParts);
+});
+
+test("the Worker hands the page the plan as the tool's arguments again, and the page reads the same plan", () => {
+  for (const args of [PARTED, GOOD, { parts: [{ name: "Chat", minutes: 20 }] }]) {
+    const first = readLoad(args).plan;
+    assert.deepEqual(readLoad(loadArgs(first)).plan, first);
+  }
+  assert.deepEqual(loadArgs(readLoad(GOOD).plan).questions, GOOD.questions, "questions without parts stay plain text");
+});
+
+test("parts per question that are not clear are refused with a plain reason", () => {
+  const refused = (questions, reason) => assert.match(readLoad({ ...PARTED, questions }).reason, reason);
+  refused([{ text: "One?", part: 1 }, "Two?"], /Give every question its part, or none of them/);
+  refused([{ text: "One?", part: 4 }], /Question 1's part must be a part's number, from 1 to 3/);
+  refused([{ text: "One?", part: 0 }], /from 1 to 3/);
+  refused([{ text: "One?", part: "1" }], /from 1 to 3/);
+  refused([{ text: "One?", part: null }], /from 1 to 3/);
+  refused([{ text: "One?", part: 2 }, { text: "Two?", part: 1 }], /Question 2 is in an earlier part than question 1\. List the questions in show order/);
+  refused([{ text: "One?", part: 1, why: "x" }], /Question 1 must be some text, or \{ "text"/);
+  refused([{ part: 1 }], /Question 1 must be some text/);
+  refused([["One?"]], /Question 1 must be some text, or/);
 });

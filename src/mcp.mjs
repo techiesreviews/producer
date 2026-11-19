@@ -3,7 +3,7 @@
 // page's "connect my agent"); there is nothing to call without one. The page answers every tool, so the talk, the
 // questions and the run order pass through memory only: nothing is stored here and nothing is logged.
 // The tool names, timings, error codes and the report check come from src/protocol.mjs, which the page shares.
-import { LOAD_LIMITS, readLoad } from "./agent-load.mjs";
+import { LOAD_LIMITS, loadArgs, readLoad } from "./agent-load.mjs";
 import { CHAT_LIMITS, readChat } from "./chat.mjs";
 import { clientOf, memoryLimiter, RATE_LIMIT } from "./limiter.mjs";
 import {
@@ -95,16 +95,26 @@ export const TOOLS = [
   {
     name: TOOL.load,
     title: "Load the show into the page",
-    description: `The reverse of ${TOOL.context}: puts the show on the host's screen from an outline the host gave you. Call it when a cue says ${CUE.load}, or when the host asks you to load the show. Takes the show name, the guest's name, the prepared questions, the run order (parts with planned minutes) and notes for you. Replaces what the page holds; the host can still change it there. Refused with a plain reason when it is too big (200 KB), not clear, or the show has started. It carries the show only: it never sets "Guest agreed" and never starts the microphone or tab sharing, those are the host's own clicks. Then call ${TOOL.wait} again.`,
+    description: `The reverse of ${TOOL.context}: puts the show on the host's screen from the show's prompter script or an outline the host gave you. Call it right after ${TOOL.context} at the start when the host gave you one, when a cue says ${CUE.load}, or when the host asks you to load the show. Takes the show name, the guest's name and notes for you, with either the prompter script as it is (the page reads the run order and the questions from it, each question with its part) or the prepared questions and the run order (parts with planned minutes). Replaces what the page holds; the host can still change it there. Refused with a plain reason when it is too big (200 KB), not clear, or the show has started. It carries the show only: it never sets "Guest agreed" and never starts the microphone or tab sharing, those are the host's own clicks. Then call ${TOOL.wait} again.`,
     inputSchema: {
       type: "object",
       properties: {
         show: { type: "string", maxLength: LOAD_LIMITS.show, description: "The show's name." },
         guest: { type: "string", maxLength: LOAD_LIMITS.guest, description: "The guest's name, if the outline has one." },
-        questions: { type: "array", maxItems: LOAD_LIMITS.questions, items: { type: "string", maxLength: LOAD_LIMITS.question }, description: "The prepared questions in the order of the outline, one line each." },
+        script: { type: "string", maxLength: LOAD_LIMITS.script, description: "The show's prompter script as it is, instead of questions and parts: ### **1 · INTRO · 00:00** headings (a part and its start time), spoken lines and [reminders]. Questions over several lines are joined; each keeps its part." },
+        questions: {
+          type: "array", maxItems: LOAD_LIMITS.questions,
+          description: "The prepared questions in show order, one line each: the text, or { text, part } with the number of its part in parts (from 1), for every question or none.",
+          items: {
+            anyOf: [
+              { type: "string", maxLength: LOAD_LIMITS.question },
+              { type: "object", properties: { text: { type: "string", maxLength: LOAD_LIMITS.question }, part: { type: "integer", minimum: 1, maximum: LOAD_LIMITS.parts } }, required: ["text", "part"], additionalProperties: false },
+            ],
+          },
+        },
         parts: {
           type: "array", minItems: 1, maxItems: LOAD_LIMITS.parts,
-          description: "The run order: one part for each stretch of the show.",
+          description: "The run order: one part for each stretch of the show. Needed unless you send the script.",
           items: {
             type: "object",
             properties: { name: { type: "string", maxLength: LOAD_LIMITS.part }, minutes: { type: "integer", minimum: 1, maximum: LOAD_LIMITS.minutes, description: "Planned whole minutes." } },
@@ -114,7 +124,6 @@ export const TOOLS = [
         },
         notes: { type: "string", maxLength: LOAD_LIMITS.notes, description: `Notes for you about the guest or the show, as plain text. They come back in ${TOOL.context}.` },
       },
-      required: ["parts"],
       additionalProperties: false,
     },
     annotations: writes,
@@ -274,7 +283,7 @@ function shapeCue(page, sent) {
   const lines = [`Cue: ${cue} (seq ${seq})`];
   if (cue === CUE.endReport) lines.push(`The host pressed End report: call ${TOOL.report}, then stop.`);
   if (cue === CUE.chat) lines.push(`The host pressed Connect Restream chat: read the live chat through your own Restream connection (find the live event, then its chat messages) and send what is new with ${TOOL.chat}, once after each ${TOOL.wait} from now on. Give the one viewer question that best fits what comes next a "pick" with a few words why. While no stream is live, send "waiting" and check again next turn; if you have no Restream connection, send "problem" with the reason.`);
-  if (cue === CUE.load) lines.push(`The host pressed Let my agent load it: call ${TOOL.load} with the show name, the guest, the questions, the run order (parts with minutes) and any notes from the outline or notes the host gave you in this conversation. If you have none, ask the host in the chat.`);
+  if (cue === CUE.load) lines.push(`The host pressed Let my agent load it: call ${TOOL.load} with the show name, the guest and the show's prompter script as it is (script), or else the questions and the run order (parts with minutes) from the outline the host gave you in this conversation, and any notes. If you have none, ask the host in the chat.`);
   if (guestName) lines.push(`Guest name: ${guestName}`);
   if (transcript.length) lines.push(`Transcript${truncated ? " (older text left out)" : ""}:\n${transcriptLines(transcript)}`);
   if (chat.length) lines.push(`Viewer questions:\n${chat.map((c) => `- ${c.text}`).join("\n")}`);
@@ -410,7 +419,7 @@ const TOOL_SPECS = {
   [TOOL.load]: {
     check(args) {
       const g = readLoad(args);
-      return g.ok ? { page: g.plan } : { error: g.reason };
+      return g.ok ? { page: loadArgs(g.plan) } : { error: g.reason };
     },
     done(result, page) {
       const questions = count(result.questions, page.questions.length);

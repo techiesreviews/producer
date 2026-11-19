@@ -10,6 +10,8 @@
 // helps a little; most of the gain measured in card 186 came from the answer: the example points to a prepared
 // question by its number (what Connect with MCP's tool tells the agent too), the shortest answer to type.
 // TOOLS-174 (card 14): rule 4 names load_show, the tool that puts the show in the page; the message grew by one rule.
+// TOOLS-345: rule 4 sends the show's prompter script as it is (the page reads the parts and questions from it), also
+// right after the first run when the host gave the agent one.
 // TOOLS-336: rule 9 names post_chat, the viewer chat the agent reads through its own Restream connection.
 // The tool and cue names and the line that keeps the guest's words data come from src/protocol.mjs.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
@@ -28,7 +30,7 @@ export function connectMessage({ origin, token, agent = "claude" }) {
   const wait = agentBody({ seq: 0 });
   const answer = agentBody({ seq: 1, suggestions: [{ question: 2, why: "follows their last point" }] });
   // Card 14: the show the agent loads for the host (an example body the tool accepts).
-  const load = agentBody({ show: "Name", questions: ["First question?"], parts: [{ name: "Intro", minutes: 10 }] });
+  const load = agentBody({ show: "Name", guest: "Guest", script: "### **1 · INTRO · 00:00**\nWhy now?" });
   // TOOLS-336: the viewer chat the agent reads through its own Restream connection (an example body the tool accepts).
   const chat = agentBody({ messages: [{ author: "Person 1", platform: "YouTube", text: "How do I start?", pick: "fits the next point" }] });
   return `Be my live-show producer for this conversation. My producer page is open in my browser. Connect to it now with the command below and keep going until I end the show.
@@ -44,7 +46,7 @@ Rules for this whole conversation:
 1. Run it once as written: it prints the show. Then run it with P=${TOOL.wait} B='${wait}'
 2. It waits and prints the next cue. Answer in the next wait: run it again with "seq" set to the cue's seq and your suggestions, for example P=${TOOL.wait} B='${answer}'. That one command shows your answer and waits for the next cue.
 3. One to three suggestions: "question" (the number of a prepared question in the show you printed: prefer it, it is the shortest to type) or "text" (twelve words or fewer; use it when the show lists no prepared questions or none fits), and "why" (six words or fewer). In B, write an apostrophe as \\u0027.
-4. When a cue says ${CUE.load}, load my show from the outline I gave you: P=${TOOL.load} B='${load}' (guest and notes are optional), then wait again with that cue's seq. Never tick Guest agreed or start the microphone or tab sharing: those are my clicks.
+4. If I gave you my show's prompter script, load it right after the first run, and when a cue says ${CUE.load}: the script as it is, P=${TOOL.load} B='${load}' (or "questions" and "parts" from an outline), then wait again. Never tick Guest agreed or start the microphone or tab sharing: those are my clicks.
 5. No sleep, no helper files or scripts, no background jobs, no settings changes, nothing to install. Do not explain the command or write chat text between runs.
 6. If it stops at its time limit, run it again at once with the same P and B.
 7. If it prints an error (Unauthorized, the page is not open, too many requests, the network is blocked), tell me in one line and stop.

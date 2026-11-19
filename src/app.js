@@ -249,7 +249,9 @@ let drawnRun = null;
 /** What the text in the box was read as: the plan button, the run order, the show line and the question card. */
 function renderPlan() {
   const said = planButton(show.read, { solo });
-  label(planBtn, said.state, said.tip, said.text);
+  // The agent's show is told by Let my agent load it: Paste it myself stays the small quiet way in (TOOLS-345).
+  if (show.byAgent && said.state === "ok") label(planBtn, null, planButton({}, { solo }).tip, planButton({}, { solo }).text);
+  else label(planBtn, said.state, said.tip, said.text);
   planIn.setAttribute("aria-invalid", String(said.state === "error"));
   if (said.state === "error") planIn.setAttribute("aria-describedby", "planBtn"); else planIn.removeAttribute("aria-describedby");
   if (show.run !== drawnRun) {
@@ -613,7 +615,7 @@ runBtn.addEventListener("click", () => {
 function lockPlan(now) {
   show.lock(now);
   planIn.readOnly = true;
-  label(planBtn, "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
+  label(planBtn, show.byAgent ? null : "ok", "The show has started, so the plan stays as it is.", planBtn.textContent);
   renderLoad();
   renderDemo();
   lockMode();

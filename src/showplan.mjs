@@ -22,7 +22,7 @@ export const DEMO_CONFIRM_MS = 8000;
  * plan) or "off" (the show has started); agentLoad(args, name) the agent's load_show, giving { result } or { error }
  * in plain words; askAgent(name, send) the host's press on "Let my agent load it" (send() sends the cue and says if it
  * went); agentLink(state) the agent link's state, so a wait ends when the agent goes; lock(now) Start.
- * What it holds: text, read (the last read, for the plan button), plan (null unless clear), run, notes, locked.
+ * What it holds: text, read (the last read, for the plan button), plan (null unless clear), run, notes, locked, byAgent.
  * The views: demoView() and loadView(link, name, solo) for the two buttons, name being the agent picked now (solo: the
  * list is the host's own points).
  */
@@ -65,6 +65,8 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
     get run() { return plan.run; },
     get notes() { return plan.notes; },
     get locked() { return plan.locked; },
+    /** The box holds the agent's show as it loaded it (the host has not edited it since). */
+    get byAgent() { return load.byAgent; },
 
     edit(text) {
       // The host's own edit: what the agent loaded is no longer what is there, and the host's go-ahead for the agent is used up.
@@ -114,7 +116,8 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       const text = planText(got.plan);
       const back = readBack(text);
       const same = back.ok && back.show === got.plan.show && back.guest === got.plan.guest
-        && JSON.stringify(back.parts) === JSON.stringify(got.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(got.plan.questions);
+        && JSON.stringify(back.parts) === JSON.stringify(got.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(got.plan.questions)
+        && JSON.stringify(back.questionParts) === JSON.stringify(got.plan.questionParts);
       if (!same) return refuse("That show could not be read back clearly. Use plain names and questions.");
       read(text);
       plan.notes = got.plan.notes;
