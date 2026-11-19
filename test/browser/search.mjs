@@ -6,8 +6,8 @@
 // the rows to swap in; "on now" marks the part on now; a click puts a match on the card ("Picked by you", the row reads
 // "On card"); the agent's answer does not take a picked card; Enter takes the first match; Asked and Skip clear the
 // search and the asked question reads "Asked ✓" in a later search; Escape and the clear button empty it; a plan with
-// every part first says no part (no headings); a solo show searches points; a double-click or double-tap on Said
-// finishes only the point on the card and the report counts it once; nothing is sent, nothing stored.
+// every part first says no part (no headings); a solo show searches points; a double-click or double-tap on Said or Skip
+// finishes only the point on the card and the report stays accurate; nothing is sent, nothing stored.
 import assert from "node:assert/strict";
 import { join } from "node:path";
 
@@ -292,34 +292,46 @@ export async function run({ browser, base, out }) {
     await context.close();
   }
 
-  // TOOLS-377: the second click of Said must not finish the next point as the card changes under the pointer.
+  // TOOLS-377: completing the card twice in one gesture must not consume the next point.
+  const gestures = [];
+  const expectedGestures = [];
   for (const view of VIEWS) {
     const { name, ...options } = view;
-    const context = await browser.newContext(ownAddress(options));
-    const page = await context.newPage();
-    await page.addInitScript(standIns);
-    await page.goto(`${base}/`);
-    const plan = ["Show: Double-click Test", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
-    const press = (locator) => options.hasTouch ? locator.tap() : locator.click();
-    await openScreen(page, press, { plan, guest: false });
-    await page.locator("#findIn").fill("first");
-    await page.locator("#findIn").press("Enter");
-    assert.equal(await page.locator("#qMain").textContent(), "The first user", `${name}: search puts Point 2 on the card`);
-    if (options.hasTouch) {
-      const box = await page.locator("#askedBtn").boundingBox();
-      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-    } else await page.locator("#askedBtn").dblclick();
-    const path = join(out, `search-${name}-said-double-click.png`);
-    await page.screenshot({ path });
-    screenshots.push(path);
-    assert.equal(await page.locator("#qMain").textContent(), "The opening", `${name}: double-clicking Said finishes only Point 2 and leaves Point 1 on the card`);
-    await press(page.locator("#endBtn"));
-    assert.equal((await page.locator("#reportStats .stat").nth(1).innerText()).replace(/\s+/g, " "), "1 of 3 points said", `${name}: the report counts only the point the host saw`);
-    assert.deepEqual(await page.locator("#notSaidList .rows__x").allTextContents(), ["The opening", "The closing"], `${name}: both unspoken points remain in the report`);
-    ok(`${name}: double-clicking Said finishes only the picked point; the report counts one point said`);
-    await context.close();
+    for (const action of [
+      { button: "askedBtn", said: "1 of 3 points said", notSaid: ["The opening", "The closing"] },
+      { button: "skipBtn", said: "0 of 3 points said", notSaid: ["The opening", "The first user", "The closing"] },
+    ]) {
+      const context = await browser.newContext(ownAddress(options));
+      const page = await context.newPage();
+      await page.addInitScript(standIns);
+      await page.goto(`${base}/`);
+      const plan = ["Show: Double-click Test", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+      const press = (locator) => options.hasTouch ? locator.tap() : locator.click();
+      await openScreen(page, press, { plan, guest: false });
+      await page.locator("#findIn").fill("first");
+      await page.locator("#findIn").press("Enter");
+      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${name}: search puts Point 2 on the card`);
+      const button = page.locator(`#${action.button}`);
+      if (options.hasTouch) {
+        const box = await button.boundingBox();
+        const centre = [box.x + box.width / 2, box.y + box.height / 2];
+        await page.touchscreen.tap(...centre);
+        await page.touchscreen.tap(...centre);
+      } else await button.dblclick();
+      const path = join(out, `search-${name}-${action.button}-double-click.png`);
+      await page.screenshot({ path });
+      screenshots.push(path);
+      const current = await page.locator("#qMain").textContent();
+      await press(page.locator("#endBtn"));
+      const said = (await page.locator("#reportStats .stat").nth(1).innerText()).replace(/\s+/g, " ");
+      const notSaid = await page.locator("#notSaidList .rows__x").allTextContents();
+      gestures.push({ view: name, button: action.button, current, said, notSaid });
+      expectedGestures.push({ view: name, button: action.button, current: "The opening", said: action.said, notSaid: action.notSaid });
+      await context.close();
+    }
   }
+  assert.deepEqual(gestures, expectedGestures, "Said and Skip double-clicks and double-taps finish only the picked point and keep the report accurate");
+  ok("desktop and phone, light and dark: Said and Skip double-clicks and double-taps finish only the picked point; the report stays accurate");
 
   return { checks, screenshots };
 }
