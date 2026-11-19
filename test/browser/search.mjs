@@ -310,8 +310,8 @@ export async function run({ browser, base, out }) {
     screenshots.push(path);
     assert.equal(await page.locator("#qMain").textContent(), "The opening", `${name}: double-clicking Said finishes only Point 2 and leaves Point 1 on the card`);
     await press(page.locator("#endBtn"));
-    assert.equal(await page.locator("#reportStats .stat").nth(1).innerText(), "1 of 3\npoints said", `${name}: the report counts only the point the host saw`);
-    assert.deepEqual(await page.locator("#notSaidList .row__q").allTextContents(), ["The opening", "The closing"], `${name}: both unspoken points remain in the report`);
+    assert.equal((await page.locator("#reportStats .stat").nth(1).innerText()).replace(/\s+/g, " "), "1 of 3 points said", `${name}: the report counts only the point the host saw`);
+    assert.deepEqual(await page.locator("#notSaidList .rows__x").allTextContents(), ["The opening", "The closing"], `${name}: both unspoken points remain in the report`);
     ok(`${name}: double-clicking Said finishes only the picked point; the report counts one point said`);
     await context.close();
   }
