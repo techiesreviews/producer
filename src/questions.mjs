@@ -17,7 +17,7 @@ export const MATCHES = 6;
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
  * agent's answer (true when it changed the card, its rows to swap in or the Relevant now list); asked(), skip() and
- * swap(i) are the card's controls; pick(n) puts prepared question n on the card (a click in the search or the Relevant
+ * swap(i) are the card's controls; markAsked(n) counts prepared question n as Asked (used on the Prompter's strip); pick(n) puts prepared question n on the card (a click in the search or the Relevant
  * now list, or Enter; an asked or skipped one opens again); view() gives { main, alts, relevant, first, counts: { asked,
  * skipped, left } }: relevant is null until the agent's first answer, then the prepared questions of its newest answer
  * still open, best first, less the one on the card; first is the number of the first prepared question still open;
@@ -129,6 +129,16 @@ export function createQuestions() {
 
     asked: () => move("asked"),
     skip: () => move("skipped"),
+
+    // A prepared question the host used on the Prompter's strip (TOOLS-347, through the agent) counts as Asked: on the
+    // card it moves on as Asked does; elsewhere it just leaves. One already asked or skipped stays as it is.
+    markAsked(n) {
+      if (!prepared(n) || done.has(n)) return false;
+      if (main?.n === n) return move("asked");
+      done.set(n, "asked");
+      fill();
+      return true;
+    },
 
     swap(i) {
       if (!main || !alts[i]) return false;

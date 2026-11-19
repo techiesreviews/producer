@@ -22,7 +22,7 @@ Written 2026-11-09. This is what exists on the Worker: the line between the host
 | Tool | Agent sends | Page answers |
 |---|---|---|
 | `get_context` | nothing | `{ showTitle, guestName?, questions: [{ n, text }], segments: [{ title, plannedMinutes, live }], notes, seq }` |
-| `wait_for_cue` | `{ seq, suggestions? }` | At once if there is something after `seq`, else it holds and answers idle. See below. |
+| `wait_for_cue` | `{ seq, suggestions?, asked? }` | At once if there is something after `seq`, else it holds and answers idle. See below. |
 | `post_suggestions` | `{ suggestions }` (1 to 6) | `{ shown }` |
 | `get_new_transcript` | `{ seq }` | `{ seq, transcript: [{ speaker, text, at? }] }` |
 | `post_report` | `{ topics, asked?, skipped?, clips? }` | `{ ok: true }` |
@@ -37,7 +37,7 @@ TOOLS-345: instead of the questions and parts, the agent may send the show's pro
 
 ## One command per turn
 
-`wait_for_cue` takes the agent's previous answer in `suggestions`, so one call posts the answer and waits for the next cue. The page gets `{ seq, suggestions?, holdMs: 25000 }`, shows the suggestions first, then waits.
+`wait_for_cue` takes the agent's previous answer in `suggestions`, so one call posts the answer and waits for the next cue. The page gets `{ seq, suggestions?, asked?, holdMs: 25000 }`, shows the suggestions first, then waits. `asked` (TOOLS-347) lists the prepared questions the host used on the Prompter's strip: when the agent is also connected to the host's Prompter, it puts its first suggestion, a talking point and a hook there with the Prompter's `push_suggestions` in the same turn, and that tool reports which ones the host tapped. Each number counts as Asked, as if the host pressed Asked (on the card it moves on), once per connection; one already asked or skipped stays as it is.
 
 - The page answers within `holdMs` (25 seconds): either a cue or idle. A cue is `{ idle: false, cue, seq, guestName?, transcript, chat, position }`; idle is `{ idle: true, seq }`.
 - `cue` is `suggest_now`, `pause`, `chat` or `end_report`. Anything else reaches the agent as `cue`. An `end_report` cue also waits for a loop that called and then went quiet: the show ends once, so the loop hears it when it comes back.

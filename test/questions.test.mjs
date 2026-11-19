@@ -56,6 +56,34 @@ test("the agent picking the question already on the card shows it once", () => {
   assert.equal(q.view().main.why, "a good opener");
 });
 
+test("markAsked: a question used on the Prompter's strip counts as Asked; on the card it moves on like Asked", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.suggest({ seq: 1, suggestions: [{ question: 2 }, { question: 3 }] });
+  assert.equal(q.view().main.n, 2);
+  assert.equal(q.markAsked(2), true, "the card's question");
+  assert.equal(q.view().main.n, 3, "the card moves on to the best match still open");
+  assert.equal(q.markAsked(4), true, "a question not on the card");
+  assert.deepEqual(q.marked().asked, [2, 4]);
+  assert.deepEqual(q.view().counts, { asked: 2, skipped: 0, left: 2 });
+  assert.equal(q.markAsked(2), false, "already asked: nothing changes");
+  assert.equal(q.markAsked(9), false, "not on the plan");
+  assert.equal(q.markAsked(0), false);
+  assert.equal(q.view().main.n, 3);
+});
+
+test("markAsked leaves the host's own pick on the card unless it is the pick itself", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN);
+  q.pick(4);
+  assert.equal(q.markAsked(1), true);
+  assert.deepEqual([q.view().main.n, q.view().main.from], [4, "picked"], "the pick stays");
+  assert.equal(q.markAsked(4), true);
+  assert.notEqual(q.view().main?.n, 4, "the used pick leaves the card");
+  q.skip();
+  assert.equal(q.markAsked(q.marked().skipped[0]), false, "a question the host skipped stays skipped");
+});
+
 test("first: the first prepared question still open", () => {
   const q = createQuestions();
   assert.equal(q.view().first, null);

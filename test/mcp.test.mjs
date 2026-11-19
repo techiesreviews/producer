@@ -173,6 +173,29 @@ test("wait_for_cue: asks the page to hold 25 s; idle comes back at 25 s as an or
   assert.match(raw, /"idle":true/, "the marker a foreground loop looks for");
 });
 
+test("wait_for_cue: asked passes the question numbers the host used on the Prompter's strip to the page; bad ones are refused", async () => {
+  const s = await setup();
+  s.page.cue({ cue: "pause", transcript: [{ speaker: "host", text: "Next one." }] });
+  await s.call("wait_for_cue", { seq: 0, asked: [6, 6, 2] });
+  assert.deepEqual(s.page.waits.at(-1), { seq: 0, asked: [6, 2], holdMs: 25_000 }, "each number once");
+  const calls = s.page.waits.length;
+  for (const bad of [[0], ["6"], [1.5], "6", Array.from({ length: 21 }, (_, i) => i + 1)]) {
+    const r = await s.call("wait_for_cue", { seq: 1, asked: bad });
+    assert.equal(r.isError, true, JSON.stringify(bad));
+    assert.match(r.content[0].text, /"asked"/);
+  }
+  assert.equal(s.page.waits.length, calls, "a bad asked never reaches the page");
+  const wait = TOOLS.find((t) => t.name === "wait_for_cue");
+  assert.equal(wait.inputSchema.properties.asked.items.type, "integer");
+  assert.match(wait.description, /asked/);
+});
+
+test("the instructions tell an agent that also holds the Prompter to push the strip in the same turn and pass the used numbers back", async () => {
+  const s = await setup();
+  const { body } = await s.rpc("initialize", { protocolVersion: "2025-11-25", clientInfo: { name: "claude-code" } });
+  assert.match(body.result.instructions, /push_suggestions[\s\S]*same turn[\s\S]*only from the show plan or from what was said[\s\S]*asked/);
+});
+
 test("wait_for_cue: a page that does not answer in time ends the wait at 30 s as idle with the agent's own seq", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const s = await setup({ hold: 10_000_000 });

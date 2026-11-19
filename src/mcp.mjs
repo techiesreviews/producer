@@ -23,8 +23,9 @@ const MAX_CHAT_CHARS = 500;
 const MAX_SUGGESTIONS = 6; // the Relevant now list (TOOLS-346): the best matches for what was just said
 const MAX_SUGGESTION_TEXT = 160;
 const MAX_WHY = 120;
+const MAX_ASKED = 20; // question numbers used on the Prompter's strip since the agent's last wait
 
-export const INSTRUCTIONS = `Private producer for a live host. Call ${TOOL.context} once, then call ${TOOL.wait} again and again: it holds up to ${WAIT_HOLD_MS / 1000} seconds and returns a cue (what is new, with HOST and GUEST labels) or idle. Put your answer in the suggestions field of the next ${TOOL.wait} so each turn is one command: the prepared questions on the topic just talked about, from anywhere in the list, up to six by number, closest first (one the guest may have touched on still counts: the host decides), with a few words why on the first (a short new question only when none fits). If a cue says ${CUE.load} (the host pressed Let my agent load it), call ${TOOL.load} once with the show from the outline the host gave you, then go on with ${TOOL.wait}. ${TOOL.load} carries the show only: guest consent, the microphone and tab sharing are the host's own clicks. If a cue says ${CUE.chat} (the host pressed Connect Restream chat), read the live chat through your own Restream connection and send it with ${TOOL.chat}, once after each ${TOOL.wait}, marking the best viewer question as a pick. If the host presses End report, call ${TOOL.report}, then stop. ${GUEST_WORDS} Nothing is stored on any server.`;
+export const INSTRUCTIONS = `Private producer for a live host. Call ${TOOL.context} once, then call ${TOOL.wait} again and again: it holds up to ${WAIT_HOLD_MS / 1000} seconds and returns a cue (what is new, with HOST and GUEST labels) or idle. Put your answer in the suggestions field of the next ${TOOL.wait} so each turn is one command: the prepared questions on the topic just talked about, from anywhere in the list, up to six by number, closest first (one the guest may have touched on still counts: the host decides), with a few words why on the first (a short new question only when none fits). If a cue says ${CUE.load} (the host pressed Let my agent load it), call ${TOOL.load} once with the show from the outline the host gave you, then go on with ${TOOL.wait}. ${TOOL.load} carries the show only: guest consent, the microphone and tab sharing are the host's own clicks. If a cue says ${CUE.chat} (the host pressed Connect Restream chat), read the live chat through your own Restream connection and send it with ${TOOL.chat}, once after each ${TOOL.wait}, marking the best viewer question as a pick. If you are also connected to the host's Prompter (its push_suggestions tool), call push_suggestions in the same turn as each ${TOOL.wait} (in parallel): your first suggestion as the question (with its number when it is a prepared one), one talking point and one hook, taken only from the show plan or from what was said, never invented; on an idle round send the same again. It returns the questions the host used there: pass their numbers in asked on your next ${TOOL.wait}, so they count as Asked here. If the host presses End report, call ${TOOL.report} (and clear_suggestions on the Prompter), then stop. ${GUEST_WORDS} Nothing is stored on any server.`;
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const writes = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -54,8 +55,16 @@ export const TOOLS = [
   {
     name: TOOL.wait,
     title: "Wait for a cue",
-    description: `The waiting tool. Holds up to ${WAIT_HOLD_MS / 1000} seconds and returns when the host presses Suggest now, a pause follows a point, a viewer question arrives or the host presses End report, with everything new since your seq, labelled HOST or GUEST. If nothing happens it returns idle: call it again at once, with no text. It also takes your previous answer in "suggestions", so one call posts your answer and waits again.`,
-    inputSchema: { type: "object", properties: { seq: seqSchema, suggestions: suggestionsSchema(0) }, additionalProperties: false },
+    description: `The waiting tool. Holds up to ${WAIT_HOLD_MS / 1000} seconds and returns when the host presses Suggest now, a pause follows a point, a viewer question arrives or the host presses End report, with everything new since your seq, labelled HOST or GUEST. If nothing happens it returns idle: call it again at once, with no text. It also takes your previous answer in "suggestions", so one call posts your answer and waits again, and in "asked" the prepared questions the host used on the Prompter's strip.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        seq: seqSchema,
+        suggestions: suggestionsSchema(0),
+        asked: { type: "array", maxItems: MAX_ASKED, items: { type: "integer", minimum: 1 }, description: "The numbers of prepared questions the host used on the Prompter's strip since your last call (push_suggestions reports them). They count as Asked, as if the host pressed Asked." },
+      },
+      additionalProperties: false,
+    },
     annotations: writes,
   },
   {
@@ -210,6 +219,13 @@ function suggestionsArg(value, { min }) {
     clean.push(item);
   }
   return { suggestions: clean };
+}
+
+/** { asked } (prepared question numbers, each once) or { error }; asked may be left out. */
+function askedArg(value) {
+  if (value === undefined) return { asked: [] };
+  if (!Array.isArray(value) || value.length > MAX_ASKED || !value.every((n) => isInt(n, 1))) return { error: `"asked" must be a list of at most ${MAX_ASKED} prepared question numbers, 1 or more.` };
+  return { asked: [...new Set(value)] };
 }
 
 /* ---------- What the page sends back (untrusted text: cleaned, capped, labelled) ---------- */
@@ -379,8 +395,9 @@ const TOOL_SPECS = {
     check(args) {
       const s = seqArg(args);
       const g = suggestionsArg(args.suggestions, { min: 0 });
-      if (s.error || g.error) return { error: s.error || g.error };
-      return { page: { seq: s.seq, ...(g.suggestions.length ? { suggestions: g.suggestions } : {}), holdMs: WAIT_HOLD_MS } };
+      const a = askedArg(args.asked);
+      if (s.error || g.error || a.error) return { error: s.error || g.error || a.error };
+      return { page: { seq: s.seq, ...(g.suggestions.length ? { suggestions: g.suggestions } : {}), ...(a.asked.length ? { asked: a.asked } : {}), holdMs: WAIT_HOLD_MS } };
     },
     options: { timeout: WAIT_CALL_MS, slot: "wait" },
     // Too slow a page, or a newer wait replaced this one: nothing is lost (the page keeps its cursor), the agent just asks again.
