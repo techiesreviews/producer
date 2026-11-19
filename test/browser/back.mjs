@@ -114,6 +114,11 @@ export async function run({ browser, base, out }) {
       assert.equal(await page.locator('#engineSeg [data-v="local"]').getAttribute("aria-pressed"), "true", `${name}: a press changes nothing`);
       assert.match(await text("#listenTxt"), /Listening/, `${name}: and listening goes on`);
     }
+    // The top bar's Stop and Listen own the microphone while the show runs: the Sound step's button is off with its reason.
+    const mic = page.locator("#micBtn");
+    assert.deepEqual([await mic.getAttribute("aria-disabled"), await mic.getAttribute("data-tip"), await mic.locator(".off-mark").count()], ["true", "The show is running: use Stop or Listen in the top bar.", 1], `${name}: Microphone is off with its reason`);
+    await mic.click({ force: true });
+    assert.deepEqual([await mic.getAttribute("data-state"), await text("#listenTxt")].map(String).map((s) => s.replace(/ ·.*/, "")), ["ok", "Listening"], `${name}: a press changes nothing`);
     await page.clock.runFor(10_000);
     assert.equal(await text("#clockTime"), "1:15", `${name}: the clock keeps counting on the setup screen`);
     await shot("setup");
