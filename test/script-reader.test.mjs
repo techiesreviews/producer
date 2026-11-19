@@ -99,6 +99,13 @@ test("a question is never shortened: too long on one line or over several, it is
   assert.match(readLoad({ script: lines }).reason, /It runs over several lines of the script: end each sentence there with \. ! or \?/);
 });
 
+test("a question holding a long link is never shortened into one that loads", () => {
+  const script = ["### **1 · A · 00:00**", `Did you see https://example.com/a?token=${"x".repeat(2100)}`, "and what did it show?"].join("\n");
+  const r = readLoad({ script });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Question 1 \("Did you see https/);
+});
+
 test("a long line in the middle of a run is never dropped: the question it ends in stays too long and is refused", () => {
   const script = ["### **1 · A · 00:00**", "So here", `${"word ".repeat(500)}`, "what now?"].join("\n");
   assert.equal(readScript(script).questions.length, 1);
@@ -109,7 +116,9 @@ test("a long line in the middle of a run is never dropped: the question it ends 
 test("a statement ending in one letter still ends; letters with full stops (U.S.) never end, so no question loses words", () => {
   const q = (line) => readScript(`### **1 · A · 00:00**\n${line}`).questions.map((x) => x.text);
   assert.deepEqual(q("So did I. What did you do next?"), ["What did you do next?"]);
-  assert.deepEqual(q("We tried plan B. What did that cost?"), ["What did that cost?"]);
+  assert.deepEqual(q("We tried plan B. What did that cost?"), ["We tried plan B. What did that cost?"], "one capital letter: the safe side, a sentence in front");
+  assert.deepEqual(q("What did J. K. Rowling write?"), ["What did J. K. Rowling write?"]);
+  assert.deepEqual(q("What did J.\nK. Rowling write?"), ["What did J. K. Rowling write?"]);
   assert.deepEqual(q("I moved to the U.S. Why did you stay?"), ["I moved to the U.S. Why did you stay?"], "the safe side: a sentence in front, never words lost");
   assert.deepEqual(q("What did the U.S. Supreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);
   assert.deepEqual(q("What did the\nU.S.\nSupreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);

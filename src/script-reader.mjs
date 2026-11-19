@@ -52,23 +52,19 @@ function scriptEnd(text) {
     const words = text.slice(0, m.index).split(" ");
     const word = words.at(-1).replace(/^[^\p{L}]+/u, "");
     if (mark === "." && SCRIPT_TITLES.has(word.toLowerCase())) continue; // a title (Dr. Lee)
-    if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word, words.at(-2) ?? "", after.split(" ")[0])) continue;
+    if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word)) continue;
     return m.index + m[0].length;
   }
   return -1;
 }
 /**
- * Letters with full stops (U.S.) always keep the sentence going: "the U.S. Supreme Court" and "the U.S. Why…" look
- * alike, and a question must never lose its first words (at worst it keeps a sentence in front). One letter with a
- * full stop (J.) keeps it going when the run ends right after it (the next line decides), when the next word goes on in
- * lower case, or for a capital other than I between a capitalised word (or another initial) and a capitalised word
- * ("Did J. K. Rowling"). "Plan B. What" and "So did I. What" end their sentence.
+ * Letters with full stops (U.S.) and one capital letter other than I (J. K. Rowling, plan B.) keep the sentence going:
+ * "the U.S. Supreme Court" and "the U.S. Why…" look alike, and a question must never lose its first words, so at worst
+ * it keeps a sentence in front. One small letter (a.) keeps it going only before a word in lower case; "So did I. What"
+ * ends its sentence.
  */
-function scriptInitial(word, before, next) {
-  if (word.includes(".") || !next) return true;
-  if (/^[^\p{L}]*\p{Ll}/u.test(next)) return true;
-  const capital = (w) => /^[^\p{L}]*\p{Lu}/u.test(w);
-  return /^\p{Lu}$/u.test(word) && word !== "I" && (capital(before) || /^(?:\p{L}\.)+$/u.test(before)) && capital(next);
+function scriptInitial(word) {
+  return word.includes(".") || (/^\p{Lu}$/u.test(word) && word !== "I");
 }
 /** A name in capitals as Title Case ("ROBERT'S STORY" → "Robert's Story"); a word with a digit (2FA) stays as it is. */
 const scriptName = (name) => (/\p{Ll}/u.test(name) ? name : name.split(" ").map((w) => (/\d/.test(w) ? w : w.toLowerCase().replace(/\p{L}/u, (c) => c.toUpperCase()))).join(" "));
@@ -114,9 +110,9 @@ export function readScript(text) {
     }
     if (at > 0) head = at === lineAt;
     open = run.slice(at);
-    // An overlong run keeps its first SCRIPT_RUN characters, cut between words: any question it ends in is still far
-    // over the limit, so it is refused, never shortened into one that loads.
-    if (open.length > SCRIPT_RUN) { const cut = open.lastIndexOf(" ", SCRIPT_RUN); open = open.slice(0, cut > 0 ? cut : SCRIPT_RUN); }
+    // An overlong run keeps its first SCRIPT_RUN characters: any question it ends in is still far over the limit, so it
+    // is refused, never shortened into one that loads. (A full stop the cut leaves at its end waits, as at a line's end.)
+    if (open.length > SCRIPT_RUN) open = open.slice(0, SCRIPT_RUN);
   }
   if (!parts.length) return { ok: false, reason: "The script has no parts with a start time. A part's heading ends with the time it starts, like ### **1 · INTRO · 00:00**." };
   const out = [];
