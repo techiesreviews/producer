@@ -7,7 +7,7 @@
 //   [Wait ten seconds.]            a reminder, a whole line in square brackets (a link too): left out
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
-// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee) and initials (J. K., U.S.) do not end a sentence; a pause at the
+// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee) and initials (J. K., U.S.: scriptInitial) do not end a sentence; a pause at the
 // end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
 // a sentence on the same line ("…safe. Right?") is a tag on that sentence, not a question to ask, so it is left out; on
 // a line of its own ("Why?") it is a question. A blank line or a new heading ends a sentence that never finished. A
@@ -53,13 +53,14 @@ function scriptEnd(text) {
   return -1;
 }
 /**
- * Letters with a full stop (U.S., J.) keep the sentence going when the run ends right after them (the next line
- * decides), when the next word goes on in lower case ("the U.S. after the launch"), or for a capital initial other
- * than I between a capitalised word (or another initial) and a capitalised word ("Did J. K. Rowling"). "Plan B. What"
- * and "So did I. What" end their sentence.
+ * Letters with full stops (U.S.) always keep the sentence going: "the U.S. Supreme Court" and "the U.S. Why…" look
+ * alike, and a question must never lose its first words (at worst it keeps a sentence in front). One letter with a
+ * full stop (J.) keeps it going when the run ends right after it (the next line decides), when the next word goes on in
+ * lower case, or for a capital other than I between a capitalised word (or another initial) and a capitalised word
+ * ("Did J. K. Rowling"). "Plan B. What" and "So did I. What" end their sentence.
  */
 function scriptInitial(word, before, next) {
-  if (!next) return true;
+  if (word.includes(".") || !next) return true;
   if (/^[^\p{L}]*\p{Ll}/u.test(next)) return true;
   const capital = (w) => /^[^\p{L}]*\p{Lu}/u.test(w);
   return /^\p{Lu}$/u.test(word) && word !== "I" && (capital(before) || /^(?:\p{L}\.)+$/u.test(before)) && capital(next);

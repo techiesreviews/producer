@@ -28,6 +28,7 @@ test("a plan: Show and Guest lines, parts as minutes and a name, questions numbe
     parts: [{ name: "Intro", minutes: 3 }, { name: "Her story", minutes: 10 }, { name: "Pricing & growth", minutes: 15 }],
     questions: ["How did it start?", "Tell me about the first hire.", "What would you do differently?", "Who was your first customer?", "What comes next?"],
     questionParts: [null, null, null, null, null],
+    questionUnder: [2, 2, 2, 2, 2],
   });
 });
 

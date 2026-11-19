@@ -106,11 +106,14 @@ test("a long line in the middle of a run is never dropped: the question it ends 
   assert.match(readLoad({ script }).reason, /Question 1 \("So here word/);
 });
 
-test("a statement ending in a letter or U.S. still ends: only a real initial or a lower-case next word keeps it going", () => {
+test("a statement ending in one letter still ends; letters with full stops (U.S.) never end, so no question loses words", () => {
   const q = (line) => readScript(`### **1 · A · 00:00**\n${line}`).questions.map((x) => x.text);
   assert.deepEqual(q("So did I. What did you do next?"), ["What did you do next?"]);
   assert.deepEqual(q("We tried plan B. What did that cost?"), ["What did that cost?"]);
-  assert.deepEqual(q("I moved to the U.S. Why did you stay?"), ["Why did you stay?"]);
+  assert.deepEqual(q("I moved to the U.S. Why did you stay?"), ["I moved to the U.S. Why did you stay?"], "the safe side: a sentence in front, never words lost");
+  assert.deepEqual(q("What did the U.S. Supreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);
+  assert.deepEqual(q("What did the\nU.S.\nSupreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);
+  assert.deepEqual(q("Did J. R. R. Tolkien\nwrite it?"), ["Did J. R. R. Tolkien write it?"]);
   assert.deepEqual(q("Was John F. Kennedy there?"), ["Was John F. Kennedy there?"]);
 });
 
