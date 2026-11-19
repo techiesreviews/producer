@@ -167,7 +167,7 @@ export async function run({ browser, base, out }) {
     const go = page.locator("#goBtn");
     assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], ["true", "Answer Guest agreed first."], "with a guest now: Back to producer screen waits for the guest's answer");
     await page.locator("#guestSeg button").first().click(); // Yes
-    assert.equal(await go.getAttribute("aria-disabled"), null, "answered: Back to producer screen is on");
+    assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], [null, null], "answered: Back to producer screen is on, its old reason gone");
     // The guest said yes during the visit: the studio tab can be shared from the setup (it is not the top bar's).
     const tab = page.locator("#tabBtn");
     assert.equal(await tab.getAttribute("aria-disabled"), null, "the tab button is the host's to press");
