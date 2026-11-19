@@ -460,6 +460,7 @@ function sayQuestions(count) {
   if (count <= said.seen || said.timer) return;
   const speak = () => {
     said.timer = 0;
+    if (!phase.live()) return; // the host went to the setup meanwhile: said when the producer screen is back
     const v = viewers.view();
     const fresh = v.messages.filter((m) => m.q).length - said.seen;
     if (fresh <= 0) return;
