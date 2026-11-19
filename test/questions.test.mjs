@@ -319,3 +319,26 @@ test("a question the agent names twice counts once", () => {
   q.suggest({ seq: 2, suggestions: [{ text: "New?" }, { text: "new?" }, { question: 2 }] });
   assert.deepEqual(texts(q.view()), ["New?"], "a new question repeated in other letters counts once too");
 });
+
+test("a newer answer with nothing usable leaves the card and empties the list", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [{ question: 2 }, { question: 3 }, { question: 4 }] });
+  q.asked(); // Q2; Q3 takes the card
+  assert.equal(q.suggest({ seq: 2, suggestions: [{ question: 2 }] }), true, "the list changed");
+  assert.equal(q.view().main.n, 3, "the card stays");
+  assert.deepEqual(q.view().relevant, [], "the old matches are gone");
+  q.asked();
+  assert.equal(q.view().main.n, 1, "Asked: the next on the list, not an old match");
+  assert.equal(q.suggest({ seq: 3, suggestions: [{ question: 2 }] }), false, "an empty list stays empty: nothing changed");
+});
+
+test("a match swapped below never shows twice when it moves back up", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }, { text: "New?" }] });
+  q.swap(0); // the new question on the card, Q3 below
+  assert.deepEqual(texts(q.view()), ["New?", "C?"]);
+  q.asked();
+  assert.deepEqual(texts(q.view()), ["C?"], "Q3 on the card, not also below it");
+});

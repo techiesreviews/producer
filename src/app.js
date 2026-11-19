@@ -807,8 +807,9 @@ const findSay = $("findSay");
 const relHead = $("relHead");
 const relCount = $("relCount");
 const relList = $("relList");
+const relSay = $("relSay");
 const found = { key: "", plan: null, card: null, locked: false, first: null, sayTimer: 0 };
-const rel = { key: "", plan: null, shown: new Set() }; // shown: the matches on screen, so a new one fades in
+const rel = { key: "", plan: null, shown: new Set(), said: null }; // shown: the matches on screen, so a new one fades in; said: the ones last announced
 
 function renderFind() {
   const total = show.plan?.questions.length ?? 0;
@@ -887,6 +888,7 @@ function renderRelevant(matches) {
   relHead.hidden = relList.hidden = !matches;
   if (!matches) {
     rel.key = "";
+    relSay.textContent = "";
     return;
   }
   const now = show.run?.view(Date.now()).rows.findIndex((row) => row.state === "now") ?? -1;
@@ -924,6 +926,11 @@ function renderRelevant(matches) {
   }
   if (!matches.length) out.push(make("p", "pool__state", "No other matches right now."));
   relList.replaceChildren(...out);
+  // A screen reader hears a changed list (also under a pick, when the card stays the same), not the clock's ticks.
+  const say = matches.length ? `${matches.length} relevant ${matches.length === 1 ? "question" : "questions"}` : "No other matches right now.";
+  const ids = matches.map((q) => q.n).join();
+  if (ids !== rel.said) relSay.textContent = say;
+  rel.said = ids;
   rel.shown = new Set(matches.map((q) => q.n));
   if (focused !== null) {
     const rows = relList.querySelectorAll(".alt");
