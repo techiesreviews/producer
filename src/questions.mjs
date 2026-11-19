@@ -104,9 +104,10 @@ export function createQuestions() {
       if (!fresh.length) {
         // Nothing usable (all asked, skipped or not in the plan): the card stays and the list says no other matches, in
         // place of the prepared rows to swap in when this is the agent's first answer.
-        const had = relevant === null || shown().length > 0;
+        const first = relevant === null;
+        const had = first || shown().length > 0;
         relevant = [];
-        alts = alts.filter((q) => !q.n);
+        if (first) alts = alts.filter((q) => !q.n);
         return had;
       }
       // The prepared questions it names are the Relevant now list; a new question waits below to swap in (with the new
