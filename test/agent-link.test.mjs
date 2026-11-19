@@ -18,7 +18,7 @@ const SITE = "https://producer.test";
 let agents = 0;
 
 /** The Worker with this relay behind it, a page link on fake timers, and an agent that calls /mcp with the token. */
-function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat, chatOn } = {}) {
+function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat, chatOn, asked } = {}) {
   const now = { t: Date.now() };
   const ip = `203.0.113.${(agents++ % 250) + 1}`;
   const kit = relayWith(now);
@@ -34,6 +34,7 @@ function setup({ tokenReply, tokensOnPageClock = false, show, load, report, chat
     report,
     chat,
     chatOn,
+    asked,
     now: () => now.t,
     timers,
   });
@@ -402,6 +403,21 @@ test("the agent's answer is kept as the latest suggestion with the seconds since
   assert.equal(got.length, 1, "shown once");
   link.disconnect();
   assert.equal(link.suggestion(), null, "gone with the connection");
+});
+
+test("asked from the agent (questions the host used on the Prompter's strip) reaches the page once per number", async () => {
+  const got = [];
+  const { call, connect, flush } = setup({ asked: (ns) => got.push(ns) });
+  await connect();
+  call("wait_for_cue", { seq: 0, asked: [6, 2] });
+  await flush();
+  assert.deepEqual(got, [[6, 2]]);
+  // A loop that sends the same body again, or a number already passed: nothing new reaches the page.
+  call("wait_for_cue", { seq: 0, asked: [6, 2] });
+  await flush();
+  call("wait_for_cue", { seq: 0, asked: [2, 7] });
+  await flush();
+  assert.deepEqual(got, [[6, 2], [7]]);
 });
 
 test("an older answer never replaces a newer one, and the Test's answer is not a suggestion", async () => {

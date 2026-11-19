@@ -171,6 +171,8 @@ const agent = createAgentLink({
   report: reportFromAgent,
   chat: chatFromAgent,
   chatOn: () => chatReading(),
+  // Prepared questions the host used on the Prompter's strip (TOOLS-347): they count as Asked, as the button does.
+  asked: (numbers) => { if (numbers.map((n) => questions.markAsked(n)).some(Boolean)) renderCard(); },
 });
 // A new pick changes the names and tips on the buttons; a pick while the page waits for the old agent gives that wait up.
 let picked = agentKey();
