@@ -110,6 +110,15 @@ test("a full stop before a number keeps the question whole (Nov. 5, No. 2), on o
   assert.deepEqual(q("Is it on p. 12 or later?"), ["Is it on p. 12 or later?"]);
   assert.deepEqual(q("It shows my login. 2 people asked: why?"), ["It shows my login. 2 people asked: why?"], "a lower-case word after the number: the safe side");
   assert.deepEqual(q("Thanks, Bob. 2FA: is it on?"), ["2FA: is it on?"], "a name is no abbreviation");
+  assert.deepEqual(q("Did you see ep. 4?"), ["Did you see ep. 4?"]);
+  assert.deepEqual(q("Is that in Sept. 2025, Bob?"), ["Is that in Sept. 2025, Bob?"]);
+});
+
+test("a big script of short sentences reads fast", () => {
+  const script = `### **1 · A · 00:00**\n${"it is so. ".repeat(4900)}`;
+  const t = performance.now();
+  readScript(script);
+  assert.ok(performance.now() - t < 500, `${Math.round(performance.now() - t)} ms`);
 });
 
 test("a question holding a long link is never shortened into one that loads", () => {

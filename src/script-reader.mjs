@@ -49,10 +49,9 @@ function scriptEnd(text) {
     const mark = m[0].replace(/["'”’)\]]+$/, "");
     if (!/[?!]/.test(mark) && (mark.includes("…") || mark.length > 1)) continue;
     const after = text.slice(m.index + m[0].length).trim();
-    const words = text.slice(0, m.index).split(" ");
-    const word = words.at(-1).replace(/^[^\p{L}]+/u, "");
+    const word = text.slice(text.lastIndexOf(" ", m.index - 1) + 1, m.index).replace(/^[^\p{L}]+/u, ""); // the word before the mark
     // A full stop at the end of the run waits for the next line, one before a word in lower case never starts a
-    // sentence there (Acme Inc. survived), and nor does one after a short abbreviation before a number (Nov. 5, No. 2).
+    // sentence there (Acme Inc. survived), and nor does one after an abbreviation from SCRIPT_BEFORE_NUMBERS before a number (Nov. 5).
     if (mark === "." && (!after || /^[^\p{L}]*\p{Ll}/u.test(after) || (/^\p{N}/u.test(after) && SCRIPT_BEFORE_NUMBERS.has(word.toLowerCase())))) continue;
     if (mark === "." && SCRIPT_TITLES.has(word.toLowerCase())) continue; // a title (Dr. Lee)
     if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word)) continue;
