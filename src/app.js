@@ -1080,14 +1080,15 @@ function micProblem(error) {
     : { text: "Microphone blocked", tip: "The browser blocked the microphone. Allow it for this site (the icon beside the address), then press again." };
 }
 
-/** Everything the session decides, drawn: the Sound step, the speech step, the Open button and the listening sign. */
-/** While the show runs (also on the setup after Setup), the top bar's Stop and Listen own the microphone and the tab. */
+/** While the show runs (also on the setup after Setup), the top bar's Stop and Listen own the microphone. The studio
+ * tab stays the host's: a guest who says yes during the show is shared from the setup. */
 const SOUND_LOCK = "The show is running: use Stop or Listen in the top bar.";
 
+/** Everything the session decides, drawn: the Sound step, the speech step, the Open button and the listening sign. */
 function renderListening(v) {
   const lock = phase.running();
   if (!lock && micBtn.dataset.runLock !== undefined) {
-    // The show stopped running (an engine failed): the Sound step's buttons are the host's again.
+    // The show stopped running (an engine failed): the microphone button is the host's again.
     delete micBtn.dataset.runLock;
     micBtn.querySelector(".off-mark")?.nextSibling?.remove();
     micBtn.querySelector(".off-mark")?.remove();
@@ -1101,8 +1102,6 @@ function renderListening(v) {
     if (!micBtn.querySelector(".off-mark")) micBtn.prepend(offMark(), " ");
     switchOff(micBtn, SOUND_LOCK);
     micBtn.dataset.runLock = "";
-    label(tabBtn, tabBtn.dataset.state ?? null, SOUND_LOCK, offMark(), tabTxt);
-    switchOff(tabBtn, SOUND_LOCK);
   }
   // The Sound step is done once the microphone is on and the tab sound is shared, or switched off for a reason.
   done("sSound", v.mic && (v.tab || session.tabView().off));
