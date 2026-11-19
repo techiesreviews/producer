@@ -42,7 +42,7 @@ test("questions over several short lines are joined into one sentence ending in 
   assert.deepEqual(r.questions, [{ text: "So if it breaks, what do you do first?", part: 0 }, { text: "Does it show the log?", part: 0 }]);
 });
 
-test("reminders, links, headings without a time and one-word tags are left out", () => {
+test("reminders, links, headings without a time and one-word tags are left out; a one-word question on its own line stays", () => {
   const r = readScript([
     "# Title? · cues v1",
     "### **PREP**",
@@ -53,8 +53,10 @@ test("reminders, links, headings without a time and one-word tags are left out",
     "Nice and safe. Right?",
     "Really?",
     "Is this one asked?",
+    "",
+    "Why?",
   ].join("\n"));
-  assert.deepEqual(r.questions.map((q) => q.text), ["Is this one asked?"]);
+  assert.deepEqual(r.questions.map((q) => q.text), ["Really?", "Is this one asked?", "Why?"]);
   assert.deepEqual(r.parts, [{ name: "Intro", minutes: SCRIPT_LAST_MINUTES }]);
 });
 
@@ -84,15 +86,24 @@ test("a pause or a title does not end a sentence: the question loads whole", () 
   assert.deepEqual(r.questions.map((q) => q.text), ["So… what would you change now?", "So... is that enough?", "Dr. Lee, what happened first?", "I said so... What now?"], "\"Is it done?!\" ends in !, so it is no question");
 });
 
-test("lines with no end mark never pile up past a question's length: the oldest lines go first", () => {
-  const lines = Array.from({ length: 40 }, (_, i) => `statement ${String(i + 1).padStart(2, "0")} ${"x".repeat(36)}`); // 49 characters each
+test("a question is never shortened: too long on one line or over several, it is refused with its first words", () => {
+  const long = `So ${"word ".repeat(70)}what now?`;
+  const oneLine = `### **1 · A · 00:00**\n${long}`;
+  const lines = `### **1 · A · 00:00**\n${long.match(/.{1,40}(\s|$)/g).map((l) => l.trim()).join("\n")}`;
+  for (const script of [oneLine, lines]) {
+    const [q] = readScript(script).questions;
+    assert.equal(q.text, long, "read whole");
+    assert.match(readLoad({ script }).reason, /^Question 1 \("So word word word word word word word wo…"\) is too long\. Limit: 300 characters\. In the script, end each sentence with \. ! or \?/);
+  }
+});
+
+test("lines with no end mark run together into the question after them, and the refusal names its first words", () => {
+  const lines = Array.from({ length: 400 }, (_, i) => `statement ${String(i + 1).padStart(3, "0")} ${"x".repeat(36)}`);
   const script = ["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n");
-  const [q, ...more] = readScript(script).questions;
-  assert.equal(more.length, 0);
-  assert.ok(q.text.length <= 300, `${q.text.length} characters`);
-  assert.match(q.text, /statement 40 x{36} Sam, what is a backup\?$/);
-  assert.doesNotMatch(q.text, /statement 01/);
-  assert.equal(readLoad({ script }).ok, true, "the script still loads");
+  const [q] = readScript(script).questions;
+  assert.match(q.text, /^statement 001 x{36} .* Sam, what is a backup\?$/, "its first line and its end are kept");
+  assert.ok(q.text.length < 2200, `held to about 2000 characters (${q.text.length}), so a long script costs little`);
+  assert.match(readLoad({ script }).reason, /Question 1 \("statement 001 x{26}…"\) is too long/);
 });
 
 test("a long question over several lines stays whole when another sentence follows on its last line", () => {

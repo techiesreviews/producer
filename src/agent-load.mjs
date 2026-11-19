@@ -58,7 +58,7 @@ export function readLoad(args) {
     if (args.script.length > LOAD_LIMITS.script) return no(`"script" is too long. Limit: ${LOAD_LIMITS.script} characters.`);
     const read = readScript(args.script);
     if (!read.ok) return no(read.reason);
-    given = { questions: read.questions.map((q) => ({ text: q.text, part: q.part + 1 })), parts: read.parts };
+    given = { questions: read.questions.map((q) => ({ text: q.text, part: q.part + 1 })), parts: read.parts, script: true };
   }
 
   const questions = [];
@@ -71,7 +71,7 @@ export function readLoad(args) {
       if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((k) => k !== "text" && k !== "part")) return no(`Question ${i + 1} must be some text, or { "text": ..., "part": ... }.`);
       const line = typeof item.text === "string" ? loadLine(item.text) : "";
       if (!line) return no(`Question ${i + 1} must be some text.`);
-      if (line.length > LOAD_LIMITS.question) return no(`Question ${i + 1} ("${line.slice(0, 40)}…") is too long. Limit: ${LOAD_LIMITS.question} characters.`);
+      if (line.length > LOAD_LIMITS.question) return no(`Question ${i + 1} ("${line.slice(0, 40)}…") is too long. Limit: ${LOAD_LIMITS.question} characters.${given.script ? " In the script, end each sentence with . ! or ? so lines do not run together." : ""}`);
       questions.push(line);
       partOf.push(item.part);
     }

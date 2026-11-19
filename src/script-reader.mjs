@@ -8,18 +8,20 @@
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
 // A pause in a line ("So… what now?", "So... what now?") and a title (Dr. Lee) do not end a sentence; a pause at the
-// end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question
-// ("Right?") is a tag on the sentence before it, not a question to ask, so it is left out. A blank line or a new
-// heading ends a sentence that never finished, and lines with no end mark never pile up past SCRIPT_RUN characters:
-// the oldest lines go first. Emphasis marks (* and _) are dropped. The end marks are the Latin ones (. ! ? …): a
+// end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
+// a sentence on the same line ("…safe. Right?") is a tag on that sentence, not a question to ask, so it is left out; on
+// a line of its own ("Why?") it is a question. A blank line or a new heading ends a sentence that never finished. A
+// question is never shortened: one too long for load_show is refused there with its first words, so the host can find
+// it (a script whose lines lack their end marks runs them together). Emphasis marks (* and _) are dropped. The end marks are the Latin ones (. ! ? …): a
 // script in a language with its own (？ 。 ؟) finds no questions. A part lasts until the next one starts; the last part
 // gets SCRIPT_LAST_MINUTES. Plain facts in, words out: no page, no storage, no network.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** The last part has no next part to end it: it is planned at this many minutes. */
 export const SCRIPT_LAST_MINUTES = 5;
-/** The longest run of lines still waiting for its end mark: a question's own limit (LOAD_LIMITS.question). */
-const SCRIPT_RUN = 300;
+/** A run of lines still waiting for its end mark keeps at most this many characters: its first line and the newest
+ * ones. A question that long is refused anyway (LOAD_LIMITS.question is 300), so only its first words still matter. */
+const SCRIPT_RUN = 2000;
 
 const SCRIPT_HEADING = /^###\s+(.+)$/;
 const SCRIPT_TIME = /^(?:(\d{1,2}):([0-5]\d)|(\d{1,3})):([0-5]\d)$/;
@@ -78,18 +80,16 @@ export function readScript(text) {
     if (open.length && SCRIPT_PAUSE.test(open.at(-1)) && !/^[^\p{L}]*\p{Ll}/u.test(said)) open = [];
     open.push(said);
     let run = open.join(" ");
-    let earlier = open.slice(0, -1); // the lines before this one: they hold no end mark, so they belong to its first sentence
+    let lineStart = true; // the next sentence starts this line (or an earlier one), not after another sentence on it
     for (let end = scriptEnd(run); end > 0; end = scriptEnd(run)) {
-      let sentence = run.slice(0, end).trim();
-      // The oldest lines go first while the sentence is too long for a question.
-      while (earlier.length && sentence.length > SCRIPT_RUN) sentence = sentence.slice(earlier.shift().length + 1);
-      earlier = [];
-      if (SCRIPT_QUESTION.test(sentence) && sentence.split(" ").length >= 2) questions.push({ text: sentence, part: parts.length - 1 });
+      const sentence = run.slice(0, end).trim();
+      const tag = !lineStart && !sentence.includes(" ");
+      if (SCRIPT_QUESTION.test(sentence) && !tag) questions.push({ text: sentence, part: parts.length - 1 });
+      lineStart = false;
       run = run.slice(end).trim();
       open = run ? [run] : [];
     }
-    // A run still waiting for its end mark keeps at most SCRIPT_RUN characters: a question can never use more.
-    while (open.length > 1 && open.join(" ").length > SCRIPT_RUN) open.shift();
+    while (open.length > 2 && open.join(" ").length > SCRIPT_RUN) open.splice(1, 1);
   }
   if (!parts.length) return { ok: false, reason: "The script has no parts with a start time. A part's heading ends with the time it starts, like ### **1 · INTRO · 00:00**." };
   const out = [];
