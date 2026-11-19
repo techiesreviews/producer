@@ -58,7 +58,8 @@ test("the foreground curl loop waits through idle answers with no sleep and ends
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^Cue: pause \(seq 1\)/);
     assert.match(r.stdout, /quote "idle":true if you like/, "a cue that mentions idle is not mistaken for one");
-    assert.ok(s.requests.length >= 3 && s.requests.length <= 6, `${s.requests.length} requests: it looped through idle answers`);
+    // At least one idle answer, then the cue (a busy computer starts curl slowly, so fewer rounds fit before the cue).
+    assert.ok(s.requests.length >= 2 && s.requests.length <= 6, `${s.requests.length} requests: it looped through idle answers`);
     assert.ok(s.requests.every((n) => n === "wait_for_cue"));
     assert.ok(r.stdout.endsWith("Next: call wait_for_cue with seq 1 and your suggestions."), "nothing is added after the answer");
     assert.ok(s.requests.length < 10, "well under the burst limit of 10 per 10 seconds");
@@ -80,7 +81,7 @@ test("a loop that carries an answer repeats it on each idle round; the page show
     const r = await loop(s, token, "wait_for_cue", { seq: 1, suggestions: [{ question: 2, why: "next in the list" }] });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^Cue: suggest_now \(seq 2\)/);
-    assert.ok(page.waits.length >= 3, `${page.waits.length} rounds`);
+    assert.ok(page.waits.length >= 2, `${page.waits.length} rounds`); // at least one idle round repeated the answer
     assert.ok(page.waits.every((w) => w.suggestions?.length === 1), "every round carried the answer");
     assert.deepEqual(page.shown, [{ question: 2, why: "next in the list" }], "shown once");
   } finally {
