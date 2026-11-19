@@ -291,5 +291,30 @@ export async function run({ browser, base, out }) {
     await context.close();
   }
 
+  // PROD-01: the second click of Said must not finish the next point as the card changes under the pointer.
+  for (const view of VIEWS) {
+    const { name, ...options } = view;
+    const context = await browser.newContext(ownAddress(options));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    const plan = ["Show: Double-click Test", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+    const press = (locator) => options.hasTouch ? locator.tap() : locator.click();
+    await openScreen(page, press, { plan, guest: false });
+    await page.locator("#findIn").fill("first");
+    await page.locator("#findIn").press("Enter");
+    assert.equal(await page.locator("#qMain").textContent(), "The first user", `${name}: search puts Point 2 on the card`);
+    await page.locator("#askedBtn").dblclick();
+    const path = join(out, `search-${name}-said-double-click.png`);
+    await page.screenshot({ path });
+    screenshots.push(path);
+    assert.equal(await page.locator("#qMain").textContent(), "The opening", `${name}: double-clicking Said finishes only Point 2 and leaves Point 1 on the card`);
+    await press(page.locator("#endBtn"));
+    assert.equal(await page.locator("#reportStats .stat").nth(1).innerText(), "1 of 3\npoints said", `${name}: the report counts only the point the host saw`);
+    assert.deepEqual(await page.locator("#notSaidList .row__q").allTextContents(), ["The opening", "The closing"], `${name}: both unspoken points remain in the report`);
+    ok(`${name}: double-clicking Said finishes only the picked point; the report counts one point said`);
+    await context.close();
+  }
+
   return { checks, screenshots };
 }
