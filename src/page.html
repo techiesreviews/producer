@@ -17,6 +17,7 @@
   <div class="brand"><span class="brand__mark"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6l8 6 8-6v12"/></svg></span>Producer <small id="showLine">· no show loaded yet</small></div>
   <button type="button" class="chip private" data-tip="Only you see this window. Never share it on stream."><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><path d="m4 4 16 16"/></svg><span class="long">Private</span></button>
   <div class="top__end" id="topLive" hidden>
+    <button class="tb tb--quiet tb--small" type="button" id="backBtn" data-tip="Back to setup. The clock and the listening keep running." hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg><span class="long">Setup</span></button>
     <span class="clock num" id="clock" role="timer" data-tip="" hidden><span id="clockTime">0:00</span><small id="clockDelta" hidden></small></span>
     <span class="listen" id="listen" data-on="true">
       <span class="dot" id="listenDot" aria-hidden="true"></span>
@@ -31,7 +32,7 @@
 <main class="screen" id="screen">
   <section class="setup" id="setup" aria-labelledby="setupTitle">
     <div class="setup__col">
-      <h1 id="setupTitle">Set up <span class="chip" id="browserChip"></span></h1>
+      <h1 id="setupTitle" tabindex="-1">Set up <span class="chip" id="browserChip"></span></h1>
       <ol class="steps" role="list" id="steps">
         <li class="step" id="sMode" data-done>
           <span class="step__n" aria-hidden="true">1</span><span class="step__label" id="modeLabel">Show type</span>

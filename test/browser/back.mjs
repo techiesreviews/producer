@@ -82,7 +82,12 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await visible("#live"), await back.isVisible(), await text("#backBtn")], [true, true, "Setup"], `${name}: Setup in the top bar`);
     assert.equal(await back.getAttribute("data-tip"), "Back to setup. The clock and the listening keep running.", `${name}: its tooltip`);
     const box = await back.boundingBox();
-    if (phone) assert.ok(box.height >= 44, `${name}: Setup is big enough to tap (${box.height} px)`);
+    if (phone) {
+      assert.ok(box.height >= 44 && box.width >= 44, `${name}: Setup is big enough to tap (${box.width} x ${box.height} px)`);
+      // On a narrow screen Setup keeps its arrow and its name moves out of sight (a screen reader still hears it), so End stays on the second row.
+      const end = await page.locator("#endBtn").boundingBox();
+      assert.ok(Math.abs(end.y - box.y) < box.height, `${name}: End & report sits on Setup's row`);
+    }
     await press(page.locator("#runBtn")); // Start: the show clock runs
     await page.clock.runFor(65_000);
     assert.equal(await text("#clockTime"), "1:05", `${name}: the clock runs`);
