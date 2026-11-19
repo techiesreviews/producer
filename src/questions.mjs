@@ -102,9 +102,11 @@ export function createQuestions() {
         return text ? { text, ...why, from: "agent" } : null;
       }).filter((q, i, all) => q && open(q) && all.findIndex((o) => o && key(o) === key(q)) === i).slice(0, MATCHES); // a repeat counts once
       if (!fresh.length) {
-        // Nothing usable (all asked, skipped or not in the plan): the card stays; after a first answer the list says no other matches.
-        const had = shown()?.length > 0;
-        if (relevant) relevant = [];
+        // Nothing usable (all asked, skipped or not in the plan): the card stays and the list says no other matches, in
+        // place of the prepared rows to swap in when this is the agent's first answer.
+        const had = relevant === null || shown().length > 0;
+        relevant = [];
+        alts = alts.filter((q) => !q.n);
         return had;
       }
       // The prepared questions it names are the Relevant now list; a new question waits below to swap in (with the new

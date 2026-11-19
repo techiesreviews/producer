@@ -888,6 +888,7 @@ function renderRelevant(matches) {
   relHead.hidden = relList.hidden = !matches;
   if (!matches) {
     rel.key = "";
+    rel.said = null; // a hidden list was not heard: it is announced again when it comes back
     clearTimeout(rel.sayTimer);
     relSay.textContent = "";
     return;
