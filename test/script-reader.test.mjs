@@ -114,6 +114,11 @@ test("a statement ending in one letter still ends; letters with full stops (U.S.
   assert.deepEqual(q("What did the U.S. Supreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);
   assert.deepEqual(q("What did the\nU.S.\nSupreme Court decide?"), ["What did the U.S. Supreme Court decide?"]);
   assert.deepEqual(q("Did J. R. R. Tolkien\nwrite it?"), ["Did J. R. R. Tolkien write it?"]);
+  assert.deepEqual(q("How did Acme Inc. survive?"), ["How did Acme Inc. survive?"], "a full stop before a lower-case word");
+  assert.deepEqual(q("How did Acme Ltd.\nget through it?"), ["How did Acme Ltd. get through it?"]);
+  assert.deepEqual(q("It shows my login. Does it show the copy?"), ["Does it show the copy?"]);
+  // A full stop at a line's end waits for the next line: a capital there starts a new sentence, at the line's start.
+  assert.deepEqual(readScript("### **1 · A · 00:00**\nIt works.\nDoes it restore?\nNice and safe.\nWhy?").questions, [{ text: "Does it restore?", part: 0 }, { text: "Why?", part: 0 }]);
   assert.deepEqual(q("Was John F. Kennedy there?"), ["Was John F. Kennedy there?"]);
 });
 
