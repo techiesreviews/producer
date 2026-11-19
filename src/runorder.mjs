@@ -21,8 +21,9 @@ const PLAN_NUMBERED = /^(?:q?\d{1,3})\s*[.)]\s*(\S.*)$/i;
 const PLAN_PART = /^([1-9]\d{0,2})\s*(?:minutes|minute|mins|min|m)?\.?\s+(\S.*)$/i;
 
 /**
- * Reads a pasted plan. Gives { ok: true, show, guest, parts: [{ name, minutes }], questions, questionParts } when every
- * line is clear and there is at least one part (questionParts: per question, the index of its part, or null); { ok: false, line, text } naming the first unclear line (from 1);
+ * Reads a pasted plan. Gives { ok: true, show, guest, parts: [{ name, minutes }], questions, questionParts, questionUnder } when every
+ * line is clear and there is at least one part (questionParts: per question, the index of its part, or null;
+ * questionUnder: per question, the index of the part written above it, or null, whatever the plan's layout); { ok: false, line, text } naming the first unclear line (from 1);
  * { ok: false, noParts: true } when nothing gives a run order; { ok: false, empty: true } for nothing pasted.
  */
 export function readPlan(text) {
@@ -48,6 +49,7 @@ export function readPlan(text) {
   // Questions under two parts or more: the plan puts its questions under their parts.
   const grouped = new Set(under.filter((i) => i >= 0)).size >= 2;
   plan.questionParts = under.map((i) => (grouped && i >= 0 ? i : null));
+  plan.questionUnder = under.map((i) => (i >= 0 ? i : null));
   return plan;
 }
 
