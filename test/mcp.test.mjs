@@ -560,11 +560,12 @@ test("load_show: a good plan reaches the page cleaned, and the agent is told wha
   assert.deepEqual(s.page.calls.map((c) => c.tool), ["load_show"]);
 });
 
-test("load_show: the schema has the five fields and nothing for consent, the microphone or the tab", async () => {
+test("load_show: the schema has the six fields and nothing for consent, the microphone or the tab", async () => {
   const s = await setup();
   const tool = (await s.rpc("tools/list")).body.result.tools.find((t) => t.name === "load_show");
-  assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ["guest", "notes", "parts", "questions", "show"]);
-  assert.deepEqual(tool.inputSchema.required, ["parts"]);
+  assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), ["guest", "notes", "parts", "questions", "script", "show"]);
+  assert.equal(tool.inputSchema.required, undefined, "the parts, or the script that holds them: readLoad says which is missing");
+  assert.deepEqual(tool.inputSchema.properties.questions.items.anyOf.map((s) => s.type), ["string", "object"], "a question is its text, or its text with its part");
   assert.equal(tool.inputSchema.additionalProperties, false);
   assert.equal(tool.annotations.readOnlyHint, false);
   assert.match(tool.description, /host's own clicks|never/i);
@@ -637,6 +638,22 @@ test("load_show on the short route: the show as the body, the answer as a line o
   const bad = await plain(s, "load_show", { ...SHOW, parts: [] });
   assert.equal(bad.status, 400);
   assert.match(await bad.text(), /"parts" is needed/);
+});
+
+test("load_show with the show's prompter script: the Worker reads it, and the page gets each question with its part", async () => {
+  const s = await setup();
+  const script = "### **PREP**\n[Off air.]\n### **1 · INTRO · 00:00**\nSo how did it\nall start?\n### **2 · THE STORY · 04:00**\n[A reminder?]\nWhat went wrong first?";
+  const r = await s.call("load_show", { show: "Sample Show", script });
+  assert.equal(r.isError, undefined, JSON.stringify(r));
+  assert.match(r.content[0].text, /Loaded on the host's screen: 2 questions, 2 parts\./);
+  assert.deepEqual(s.page.loaded, {
+    show: "Sample Show", guest: "", notes: "",
+    questions: [{ text: "So how did it all start?", part: 1 }, { text: "What went wrong first?", part: 2 }],
+    parts: [{ name: "Intro", minutes: 4 }, { name: "The Story", minutes: 5 }],
+  });
+  const bad = await s.call("load_show", { script: "No headings here?" });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /no parts with a start time/);
 });
 
 test("the cue the Load button sends tells the agent to call load_show and how to go on", async () => {

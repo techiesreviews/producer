@@ -1,0 +1,18 @@
+Show: Sample Show
+Guest: Sam Sample
+
+3 Intro
+7 What A Backup Really Is
+10 Sam's Story: The Lost Week
+3 Close
+5 Only If Chat Wants More
+
+1. So what do they do now?
+2. Backups once a week: enough to sleep well?
+3. Sam, in plain words: what is a backup, and what is only a copy?
+4. Why not?
+5. Does it restore, though?
+6. What was the first sign?
+7. If you had been on holiday, would anyone have noticed?
+8. Where can people find your 2FA notes and your slides?
+9. Is a backup plugin enough, or should the host keep one too?

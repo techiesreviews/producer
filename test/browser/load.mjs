@@ -4,7 +4,9 @@
 // clock, so the 3 minutes the agent has to answer pass at once.
 // Checks: the button is switched off with its reason until an agent is connected, then ready; a press sends the load cue
 // to the agent's wait and the button says it is loading; the agent's load_show puts the show in the plan box, the top bar
-// and the run order and the button reads "Loaded by Claude Code · 4 questions · 2 parts" with the show in its tooltip;
+// and the run order and the button reads "Questions loaded by your agent · 4 questions · 2 parts ✓" (TOOLS-345) while
+// Paste it myself stays small and quiet with its box closed; a show sent as its prompter script lands with each question
+// under its part;
 // the agent can still read the show back with get_context (notes included); the host can still edit, and the button then
 // goes back; a broken or too big plan and every extra field (guest consent, the microphone, the tab) is refused with a
 // plain reason while the page stays as it was; "Guest agreed" is never ticked and no microphone or tab sharing starts;
@@ -147,12 +149,12 @@ export async function run({ browser, base, out }) {
     // The agent's load_show: the show lands in the plan box, the top bar and the button; nothing else moves.
     const loaded = await page.evaluate((show) => window.__relay.call("load_show", show), SHOW);
     assert.deepEqual(loaded.result, { loaded: true, questions: 4, parts: 2 }, `${name}: the page answers what it loaded`);
-    assert.deepEqual(await button(), { text: "Loaded by Claude Code · 4 questions · 2 parts", state: "ok", off: null, tip: "Show: Sample Show. Guest: Sample Guest. 4 questions, 2 parts, guest notes." }, `${name}: Loaded by Claude Code, with the show in its tooltip`);
+    assert.deepEqual(await button(), { text: "Questions loaded by your agent · 4 questions · 2 parts ✓", state: "ok", off: null, tip: "Your agent loads the show by itself when it connects. Press to load it again." }, `${name}: Questions loaded by your agent, as in the approved prototype`);
     assert.equal(await load.getAttribute("class"), "tb", `${name}: no longer the orange look`);
     const loadedContrast = await paintedContrast(load);
     assert.ok(loadedContrast >= 4.5, `${name}: the loaded state reads at ${loadedContrast.toFixed(2)}:1`);
     assert.equal(await page.locator("#planIn").inputValue(), SHOW_TEXT, `${name}: the show is in the plan box, in the host's own format`);
-    assert.equal(await text("#planBtn"), "4 questions · 2 parts ✓", `${name}: the plan button reads it back`);
+    assert.deepEqual([await text("#planBtn"), await page.locator("#planBtn").getAttribute("class"), await page.locator("#planBox").isHidden()], ["Paste it myself", "tb tb--quiet tb--small", true], `${name}: Paste it myself stays the small quiet button, its box closed`);
     assert.equal(await text("#showLine"), "· Sample Show · guest Sample Guest", `${name}: the top bar names the show and the guest`);
     assert.equal(await page.locator("#sPlan").getAttribute("data-done"), "", `${name}: step 3 is done`);
     await guestUntouched("after the load");
@@ -183,11 +185,18 @@ export async function run({ browser, base, out }) {
     // The biggest allowed plan: the longest label the button can get must still fit the screen.
     const most = { show: "s".repeat(200), guest: "g".repeat(80), questions: Array.from({ length: 100 }, (_, i) => `Question ${i + 1}?`), parts: Array.from({ length: 50 }, (_, i) => ({ name: `Part ${i + 1}`, minutes: 1 })) };
     assert.deepEqual((await page.evaluate((m) => window.__relay.call("load_show", m), most)).result, { loaded: true, questions: 100, parts: 50 }, `${name}: the biggest allowed plan loads`);
-    assert.equal(await text("#loadBtn"), "Loaded by Claude Code · 100 questions · 50 parts", `${name}: the longest label`);
+    assert.equal(await text("#loadBtn"), "Questions loaded by your agent · 100 questions · 50 parts ✓", `${name}: the longest label`);
     const fits = await page.evaluate(() => { const b = document.querySelector("#loadBtn").getBoundingClientRect(); const c = document.querySelector("#sPlan").getBoundingClientRect(); return { sideways: document.documentElement.scrollWidth > window.innerWidth, inside: b.right <= c.right + 0.5 && b.left >= c.left - 0.5 }; });
     assert.deepEqual(fits, { sideways: false, inside: true }, `${name}: the longest label fits the screen and the step`);
     await shot("longest");
     ok(`${name}: the biggest allowed plan loads and its label fits the screen`);
+
+    // TOOLS-345: the show's prompter script as it is: each question lands under its part, joined into one sentence.
+    const script = "### **PREP**\n[Off air.]\n### **1 · INTRO · 00:00**\nSo how did it\nall start?\n### **2 · HER STORY · 03:00**\n[A reminder?]\nWho paid first?\n### **3 · CLOSE · 11:00**\nWhat would you\nchange now?";
+    assert.deepEqual((await page.evaluate((a) => window.__relay.call("load_show", a), { show: "Sample Show", guest: "Sample Guest", script })).result, { loaded: true, questions: 3, parts: 3 }, `${name}: the script loads`);
+    assert.equal(await page.locator("#planIn").inputValue(), "Show: Sample Show\nGuest: Sample Guest\n3 min Intro\n1. So how did it all start?\n8 min Her Story\n2. Who paid first?\n5 min Close\n3. What would you change now?", `${name}: each question under its part in the plan box`);
+    assert.deepEqual([await text("#loadBtn"), await text("#planBtn")], ["Questions loaded by your agent · 3 questions · 3 parts ✓", "Paste it myself"], `${name}: the loaded line counts the script's questions and parts`);
+    ok(`${name}: a prompter script lands with each question under its part`);
 
     // The host can still edit: the button goes back; a plan the host typed is theirs.
     // The long button now shares its row with Load demo show, so Paste it myself can sit on the next line under the open tooltip: the pointer leaves first.
@@ -205,7 +214,7 @@ export async function run({ browser, base, out }) {
     assert.equal(again.cue, "load_show", `${name}: pressing the button is the host's go-ahead`);
     const over = await page.evaluate((show) => window.__relay.call("load_show", show), SHOW);
     assert.deepEqual(over.result, { loaded: true, questions: 4, parts: 2 }, `${name}: after the press the agent's show replaces the typed one`);
-    assert.equal((await button()).text, "Loaded by Claude Code · 4 questions · 2 parts", `${name}: loaded again`);
+    assert.equal((await button()).text, "Questions loaded by your agent · 4 questions · 2 parts ✓", `${name}: loaded again`);
     ok(`${name}: the host can edit (the button goes back); the agent loads over a typed plan only after the host's press`);
 
     // A refused first try does not use up the host's go-ahead: the agent's next try over their typed plan still loads.
@@ -230,7 +239,7 @@ export async function run({ browser, base, out }) {
     assert.equal(await text("#connectBtn"), "Waiting for Claude Code…", `${name}: the page now sees the agent's loop as quiet`);
     assert.deepEqual([(await button()).text, (await button()).state, (await button()).off], ["Agent is loading…", "busy", null], `${name}: the request stays shown while the agent is busy`);
     assert.deepEqual((await page.evaluate((show) => window.__relay.call("load_show", show), SHOW)).result, { loaded: true, questions: 4, parts: 2 }, `${name}: the late show lands`);
-    assert.equal((await button()).text, "Loaded by Claude Code · 4 questions · 2 parts", `${name}: loaded after a quiet spell`);
+    assert.equal((await button()).text, "Questions loaded by your agent · 4 questions · 2 parts ✓", `${name}: loaded after a quiet spell`);
     ok(`${name}: a quiet agent leaves the request shown, and a late show still lands`);
 
     // The agent's notes go with its show: a small edit keeps them, another show takes them away.

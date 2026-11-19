@@ -6,7 +6,7 @@ import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { createShowPlan, DEMO_CONFIRM_MS } from "../src/showplan.mjs";
 import { DEMO_SHOW } from "../src/demo.mjs";
-import { LOAD_WAIT_MS, planText, readLoad } from "../src/agent-load.mjs";
+import { LOAD_WAIT_MS, loadArgs, planText, readLoad } from "../src/agent-load.mjs";
 import { readPlan } from "../src/runorder.mjs";
 
 const GOOD = {
@@ -58,7 +58,8 @@ test("load_show: the agent's show lands in the box as the host's own text, with 
   assert.ok(show.run);
   const said = show.loadView("on", "Codex");
   assert.equal(said.state, "ok");
-  assert.equal(said.text, "Loaded by Claude Code · 2 questions · 2 parts", "the agent that loaded it, not the one picked now");
+  assert.equal(said.text, "Questions loaded by your agent · 2 questions · 2 parts ✓");
+  assert.equal(show.byAgent, true, "the box holds the agent's show");
   assert.equal(show.demoView().text, "Load demo show");
 });
 
@@ -70,7 +71,7 @@ test("load_show after the button: the agent named on the button loads over the h
     assert.equal(show.askAgent("Claude Code", () => true), true);
     assert.equal(show.loadView("on", "Codex").text, "Agent is loading…");
     assert.equal(show.agentLoad(GOOD, "Codex").result.loaded, true);
-    assert.equal(show.loadView("on", "Codex").text, "Loaded by Claude Code · 2 questions · 2 parts");
+    assert.equal(show.loadView("on", "Codex").text, "Questions loaded by your agent · 2 questions · 2 parts ✓");
     mock.timers.tick(LOAD_WAIT_MS);
     assert.equal(show.loadView("on", "Codex").state, "ok", "the old wait no longer fires");
     assert.equal(changes.length, 0);
@@ -266,4 +267,26 @@ test("the host's edit ends the demo and its question", () => {
   } finally {
     mock.timers.reset();
   }
+});
+
+test("TOOLS-345: the agent's show from a prompter script lands with each question under its part; the host's edit makes it theirs", () => {
+  const { show } = make();
+  const script = "### **1 · INTRO · 00:00**\nSo how did it\nall start?\n### **2 · THE STORY · 04:00**\nWhat went wrong first?\nAnd then?";
+  // What the Worker hands the page: the plan read from the script, as the tool's arguments again.
+  const args = loadArgs(readLoad({ show: "Sample Show", script }).plan);
+  assert.deepEqual(show.agentLoad(args, "Claude Code"), { result: { loaded: true, questions: 3, parts: 2 } });
+  assert.equal(show.text, "Show: Sample Show\n4 min Intro\n1. So how did it all start?\n5 min The Story\n2. What went wrong first?\n3. And then?");
+  assert.deepEqual(show.plan.questionParts, [0, 1, 1], "the search groups by part");
+  assert.equal(show.byAgent, true);
+  assert.equal(show.loadView("on", "Claude Code").text, "Questions loaded by your agent · 3 questions · 2 parts ✓");
+  show.edit(`${show.text}\n4. One more?`);
+  assert.equal(show.byAgent, false, "the host's edit: the plan button counts it again");
+  assert.equal(show.loadView("on", "Claude Code").text, "Let my agent load it");
+});
+
+test("TOOLS-345: a plan whose parts per question do not read back the same is refused", () => {
+  const { show } = make({ readBack: (text) => ({ ...readPlan(text), questionParts: [null, null] }) });
+  const args = loadArgs(readLoad({ script: "### **1 · A · 00:00**\nIs it one?\n### **2 · B · 01:00**\nIs it two?" }).plan);
+  assert.match(show.agentLoad(args, "Claude Code").error, /could not be read back clearly/);
+  assert.equal(show.text, "");
 });

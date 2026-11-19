@@ -237,7 +237,7 @@ export async function run({ browser, base, out }) {
     await press(demo);
     assert.equal((await button()).text, CONFIRM.text, `${name}: the demo button asks while the agent is loading`);
     assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).result, { loaded: true, questions: 1, parts: 1 }, `${name}: the agent's show arrives meanwhile`);
-    assert.deepEqual([await button(), (await loadText()).startsWith("Loaded by")], [IDLE, true], `${name}: the question is gone and the agent's show is in`);
+    assert.deepEqual([await button(), (await loadText()).startsWith("Questions loaded by your agent")], [IDLE, true], `${name}: the question is gone and the agent's show is in`);
     await page.clock.fastForward(9000);
     assert.deepEqual(await button(), IDLE, `${name}: the old timer does nothing`);
     await page.locator("#planIn").fill("Show: My Own\n5 Only part\n1. Typed by the host?");
@@ -247,11 +247,11 @@ export async function run({ browser, base, out }) {
     await press(load);
     await page.evaluate(() => window.__wait);
     assert.deepEqual((await page.evaluate((s) => window.__relay.call("load_show", s), AGENT_SHOW)).result, { loaded: true, questions: 1, parts: 1 }, `${name}: after a new press the agent's show loads over the demo`);
-    assert.deepEqual([await button(), (await context_()).notes, (await loadText()).startsWith("Loaded by Claude Code")], [IDLE, "Ask about the early days.", true], `${name}: the demo button goes back and the agent's notes replace the demo's`);
+    assert.deepEqual([await button(), (await context_()).notes, (await loadText()).startsWith("Questions loaded by your agent")], [IDLE, "Ask about the early days.", true], `${name}: the demo button goes back and the agent's notes replace the demo's`);
     await press(demo);
     assert.deepEqual(await button(), CONFIRM, `${name}: the agent's show is not replaced by one press either`);
     await press(demo);
-    assert.deepEqual([await button(), (await loadText()).startsWith("Loaded by"), (await context_()).notes], [LOADED, false, DEMO_NOTES], `${name}: the demo over the agent's show: its button goes back, the demo's notes return`);
+    assert.deepEqual([await button(), (await loadText()).startsWith("Questions loaded by your agent"), (await context_()).notes], [LOADED, false, DEMO_NOTES], `${name}: the demo over the agent's show: its button goes back, the demo's notes return`);
     // A failed try of the agent: loading the demo clears the failure.
     await page.evaluate(() => { window.__wait = window.__relay.call("wait_for_cue", { seq: 2, holdMs: 25000 }); });
     await press(load);

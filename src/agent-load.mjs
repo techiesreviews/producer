@@ -4,32 +4,37 @@
 // sends is checked here twice, by the Worker before the page hears it and by the page itself, with the same plain
 // reasons. The tool carries the show and nothing else: it has no field for the guest's consent, the microphone or the
 // studio tab, and any field it does not know is refused.
+// TOOLS-345: instead of the questions and parts the agent may send the show's prompter script as it is; the run order
+// and the questions are read out of it (src/script-reader.mjs), each question with its part, and a question may carry
+// its part's number when the agent sends the list itself. The plan box then writes each question under its part.
 // The cue that asks for it is CUE.load of src/protocol.mjs.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+import { readScript } from "./script-reader.mjs";
 
 /** The agent has this long to answer the button (it may ask the host in the chat first); then the button says so. A show that comes later still lands. */
 export const LOAD_WAIT_MS = 180_000; // keep it in whole minutes: the button's reason counts them
 /** The most a plan may weigh as JSON, like the Prompter's: 200 KB. */
 export const LOAD_MAX_BYTES = 200 * 1024;
-export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000 };
+export const LOAD_LIMITS = { show: 200, guest: 80, questions: 100, question: 300, parts: 50, part: 120, minutes: 999, notes: 4000, script: 100_000 };
 
-const LOAD_FIELDS = ["show", "guest", "questions", "parts", "notes"];
+const LOAD_FIELDS = ["show", "guest", "questions", "parts", "notes", "script"];
 const loadPlural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /** One line of plain text: control characters and runs of space become one space. */
 const loadLine = (v) => v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 
 /**
  * The show the agent sent, checked and cleaned: { ok: true, plan: { show, guest, questions, parts: [{ name, minutes }],
- * notes } } (show, guest and notes are "" when left out), or { ok: false, reason } in plain words. Nothing is cut: a
- * plan that is too big or not clear is refused whole.
+ * questionParts, notes } } (show, guest and notes are "" when left out; questionParts: per question, the index of its
+ * part, or null for all of them when the questions are not under two parts or more, as src/runorder.mjs reads a pasted
+ * plan), or { ok: false, reason } in plain words. Nothing is cut: a plan that is too big or not clear is refused whole.
  */
 export function readLoad(args) {
   const no = (reason) => ({ ok: false, reason });
-  if (!args || typeof args !== "object" || Array.isArray(args)) return no("Send the show as an object with show, guest, questions, parts and notes.");
+  if (!args || typeof args !== "object" || Array.isArray(args)) return no("Send the show as an object with show, guest, questions, parts and notes (or the show's prompter script).");
   // The Worker's own 200 KB request limit refuses first, so here this guards the page; a plan this big never gets past the Worker.
   if (new TextEncoder().encode(JSON.stringify(args)).length > LOAD_MAX_BYTES) return no(`The plan is too big. Limit: ${LOAD_MAX_BYTES / 1024} KB.`);
   const extra = Object.keys(args).find((k) => !LOAD_FIELDS.includes(k));
-  if (extra !== undefined) return no(`Unknown field "${extra.slice(0, 40)}". This tool loads the show only: show, guest, questions, parts and notes. Guest consent, the microphone and tab sharing are the host's own clicks.`);
+  if (extra !== undefined) return no(`Unknown field "${extra.slice(0, 40)}". This tool loads the show only: show, guest, questions, parts, notes and script. Guest consent, the microphone and tab sharing are the host's own clicks.`);
 
   const text = (name, max) => {
     const v = args[name];
@@ -46,21 +51,37 @@ export function readLoad(args) {
   const notes = text("notes", LOAD_LIMITS.notes);
   if (notes.ok === false) return notes;
 
-  let questions = [];
-  if (args.questions !== undefined) {
-    if (!Array.isArray(args.questions)) return no("\"questions\" must be a list of questions.");
-    if (args.questions.length > LOAD_LIMITS.questions) return no(`Too many questions. Limit: ${LOAD_LIMITS.questions}.`);
-    for (const [i, q] of args.questions.entries()) {
-      if (typeof q !== "string" || !loadLine(q)) return no(`Question ${i + 1} must be some text.`);
-      if (loadLine(q).length > LOAD_LIMITS.question) return no(`Question ${i + 1} is too long. Limit: ${LOAD_LIMITS.question} characters.`);
-    }
-    questions = args.questions.map(loadLine);
+  // The show's prompter script (src/script-reader.mjs) gives the run order and the questions, each with its part.
+  let given = { questions: args.questions, parts: args.parts };
+  if (args.script !== undefined) {
+    if (args.questions !== undefined || args.parts !== undefined) return no("Send the script, or the questions and parts, not both.");
+    if (typeof args.script !== "string" || !args.script.trim()) return no("\"script\" must be the show's prompter script as text.");
+    if (args.script.length > LOAD_LIMITS.script) return no(`"script" is too long. Limit: ${LOAD_LIMITS.script} characters.`);
+    const read = readScript(args.script);
+    if (!read.ok) return no(read.reason);
+    given = { questions: read.questions.map((q) => ({ text: q.text, part: q.part + 1 })), parts: read.parts };
   }
 
-  if (!Array.isArray(args.parts) || !args.parts.length) return no("\"parts\" is needed: the run order, one part for each stretch of the show, with its name and planned minutes.");
-  if (args.parts.length > LOAD_LIMITS.parts) return no(`Too many parts. Limit: ${LOAD_LIMITS.parts}.`);
+  const questions = [];
+  const partOf = []; // per question, its part's number (from 1) as sent, or undefined
+  if (given.questions !== undefined) {
+    if (!Array.isArray(given.questions)) return no("\"questions\" must be a list of questions.");
+    if (given.questions.length > LOAD_LIMITS.questions) return no(`Too many questions. Limit: ${LOAD_LIMITS.questions}.`);
+    for (const [i, q] of given.questions.entries()) {
+      const item = typeof q === "string" ? { text: q } : q;
+      if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((k) => k !== "text" && k !== "part")) return no(`Question ${i + 1} must be some text, or { "text": ..., "part": ... }.`);
+      const line = typeof item.text === "string" ? loadLine(item.text) : "";
+      if (!line) return no(`Question ${i + 1} must be some text.`);
+      if (line.length > LOAD_LIMITS.question) return no(`Question ${i + 1} is too long. Limit: ${LOAD_LIMITS.question} characters.`);
+      questions.push(line);
+      partOf.push(item.part);
+    }
+  }
+
+  if (!Array.isArray(given.parts) || !given.parts.length) return no("\"parts\" is needed: the run order, one part for each stretch of the show, with its name and planned minutes.");
+  if (given.parts.length > LOAD_LIMITS.parts) return no(`Too many parts. Limit: ${LOAD_LIMITS.parts}.`);
   const parts = [];
-  for (const [i, p] of args.parts.entries()) {
+  for (const [i, p] of given.parts.entries()) {
     if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some((k) => k !== "name" && k !== "minutes")) return no(`Part ${i + 1} must be { "name": ..., "minutes": ... }.`);
     const name = typeof p.name === "string" ? loadLine(p.name) : "";
     if (!name) return no(`Part ${i + 1} needs a name.`);
@@ -68,19 +89,41 @@ export function readLoad(args) {
     if (!Number.isSafeInteger(p.minutes) || p.minutes < 1 || p.minutes > LOAD_LIMITS.minutes) return no(`Part ${i + 1} ("${name.slice(0, 40)}") needs whole minutes from 1 to ${LOAD_LIMITS.minutes}.`);
     parts.push({ name, minutes: p.minutes });
   }
-  return { ok: true, plan: { show: show.value, guest: guest.value, questions, parts, notes: notes.value } };
+
+  // A part per question: every question has one, or none does, in show order.
+  const withPart = partOf.filter((p) => p !== undefined).length;
+  if (withPart && withPart < questions.length) return no("Give every question its part, or none of them.");
+  for (const [i, p] of withPart ? partOf.entries() : []) {
+    if (!Number.isSafeInteger(p) || p < 1 || p > parts.length) return no(`Question ${i + 1}'s part must be a part's number, from 1 to ${parts.length}.`);
+    if (i && p < partOf[i - 1]) return no(`Question ${i + 1} is in an earlier part than question ${i}. List the questions in show order.`);
+  }
+  // As a pasted plan reads (src/runorder.mjs): questions under two parts or more say which part each belongs to.
+  const grouped = new Set(partOf).size >= 2;
+  const questionParts = partOf.map((p) => (grouped ? p - 1 : null));
+  return { ok: true, plan: { show: show.value, guest: guest.value, questions, parts, questionParts, notes: notes.value } };
+}
+
+/** A plan read by readLoad as the tool's arguments again (each question with its part's number when it has one): what the Worker hands the page, which reads it once more. */
+export function loadArgs(plan) {
+  const questions = plan.questionParts.some((p) => p !== null) ? plan.questions.map((text, i) => ({ text, part: plan.questionParts[i] + 1 })) : plan.questions;
+  return { show: plan.show, guest: plan.guest, questions, parts: plan.parts, notes: plan.notes };
 }
 
 /**
  * A plan as the text the host could have pasted (the format of src/runorder.mjs), so the agent's show lands in the
  * plan box and the host edits it there. Every part says "min" outright, so a name that starts with "min" stays whole.
+ * Questions with their parts go under them; without, the questions follow the run order.
  */
 export function planText(plan) {
+  const part = (p) => `${p.minutes} min ${p.name}`;
+  const ask = (q, i) => `${i + 1}. ${q}`;
+  const under = plan.questionParts?.some((p) => p !== null);
   return [
     plan.show && `Show: ${plan.show}`,
     plan.guest && `Guest: ${plan.guest}`,
-    ...plan.parts.map((p) => `${p.minutes} min ${p.name}`),
-    ...plan.questions.map((q, i) => `${i + 1}. ${q}`),
+    ...(under
+      ? plan.parts.flatMap((p, k) => [part(p), ...plan.questions.flatMap((q, i) => (plan.questionParts[i] === k ? [ask(q, i)] : []))])
+      : [...plan.parts.map(part), ...plan.questions.map(ask)]),
   ].filter(Boolean).join("\n");
 }
 
@@ -96,8 +139,9 @@ export function loadButton({ agent, load, locked = false, solo = false }) {
     const { plan } = load;
     // On a solo show the numbered list is the host's own points.
     const counts = [plan.questions.length ? loadPlural(plan.questions.length, solo ? "point" : "question") : "", loadPlural(plan.parts.length, "part")].filter(Boolean);
-    const tip = [plan.show && `Show: ${plan.show}.`, plan.guest && `Guest: ${plan.guest}.`, `${counts.join(", ")}${plan.notes ? ", guest notes" : ""}.`].filter(Boolean).join(" ");
-    return { state: "ok", text: `Loaded by ${load.name} · ${counts.join(" · ")}`, tip, off: "", primary: false };
+    const what = !plan.questions.length ? "Show" : solo ? "Points" : "Questions";
+    const tip = locked ? "The show has started, so the plan stays as it is." : "Your agent loads the show by itself when it connects. Press to load it again.";
+    return { state: "ok", text: `${what} loaded by your agent · ${counts.join(" · ")} ✓`, tip, off: "", primary: false };
   }
   if (locked) return { state: null, text: label, tip: "", off: "The show has started, so the plan stays as it is.", primary: true };
   // A request on its way stays shown while the link is only quiet (the agent is busy with the host's outline), but not once the agent is gone.
