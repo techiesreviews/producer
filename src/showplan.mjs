@@ -27,9 +27,10 @@ export const DEMO_CONFIRM_MS = 8000;
  * list is the host's own points).
  */
 export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, readBack = readPlan, onChange = () => {} } = {}) {
-  // grouped: the box's text came from the agent with each question under its part, so questions all under one part
-  // (not the last) keep it through the host's edits, where a pasted plan would give them none (src/runorder.mjs).
-  const plan = { text: "", read: null, plan: null, run: null, parts: "", notes: "", notesFor: null, locked: false, grouped: false };
+  // grouped: the run order (as JSON) of the agent's show that gave each question its part. While the run order stays
+  // the same, questions all under one part keep it through the host's edits, where a pasted plan would give them none
+  // (src/runorder.mjs); a new run order is read as pasted.
+  const plan = { text: "", read: null, plan: null, run: null, parts: "", notes: "", notesFor: null, locked: false, grouped: "" };
   /** loaded: the demo is in the box and has not been edited since; confirm: the first press over the host's plan asked. */
   const demoState = { loaded: false, confirm: false, timer: 0 };
   /** phase: idle, asking (the cue went), loaded (the agent's show is in the box) or failed; byAgent: the box holds the agent's show;
@@ -77,8 +78,8 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       if (!plan.locked) read(text);
       const now = plan.plan;
       const under = now?.questionUnder ?? [];
-      if (plan.grouped && now && now.questionParts.every((p) => p === null) && under.length && under.every((p) => p !== null)
-        && new Set(under).size === 1 && under[0] !== now.parts.length - 1) now.questionParts = [...under];
+      if (plan.grouped && now && plan.grouped === JSON.stringify(now.parts) && now.questionParts.every((p) => p === null)
+        && under.length && under.every((p) => p !== null)) now.questionParts = [...under];
       // The agent's notes belong to the show it loaded: another show (or none) in the box takes them away, a small edit keeps them.
       if (plan.notes && (now ? now.show !== plan.notesFor?.show || now.guest !== plan.notesFor?.guest : !plan.text.trim())) plan.notes = "";
       endDemo();
@@ -100,7 +101,7 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       if (load.phase !== "idle") { clearTimeout(load.timer); load.phase = "idle"; }
       Object.assign(load, { byAgent: false, hostAsked: false });
       read(planText(demo));
-      plan.grouped = false;
+      plan.grouped = "";
       plan.notes = demo.notes;
       plan.notesFor = demo;
       demoState.loaded = true;
@@ -130,7 +131,7 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       read(text);
       // Each question's part as the agent gave it, while the box holds its show unedited (the host's edit reads the text again).
       plan.plan.questionParts = got.plan.questionParts;
-      plan.grouped = got.plan.questionParts.some((p) => p !== null);
+      plan.grouped = got.plan.questionParts.some((p) => p !== null) ? JSON.stringify(got.plan.parts) : "";
       plan.notes = got.plan.notes;
       plan.notesFor = got.plan;
       endDemo();

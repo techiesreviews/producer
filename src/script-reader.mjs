@@ -7,7 +7,8 @@
 //   [Wait ten seconds.]            a reminder, a whole line in square brackets (a link too): left out
 //   Robert, what is the one        a spoken line. A sentence may run over several short lines, so the lines are
 //   thing none of that covers?     joined and split again into sentences; a question is a sentence ending in "?"
-// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee) and initials (J. K., U.S.: scriptInitial) do not end a sentence; a pause at the
+// A pause in a line ("So… what now?", "So... what now?"), a title (Dr. Lee), initials (J. K., U.S.: scriptInitial) and a
+// full stop before a word in lower case (Acme Inc. survived) do not end a sentence; a pause at the
 // end of a line ends it unless the next line goes on in lower case ("So…" then "what now?"). A one-word question after
 // a sentence on the same line ("…safe. Right?") is a tag on that sentence, not a question to ask, so it is left out; on
 // a line of its own ("Why?") it is a question. A blank line or a new heading ends a sentence that never finished. A
@@ -44,10 +45,14 @@ function scriptEnd(text) {
   for (const m of text.matchAll(SCRIPT_END)) {
     const mark = m[0].replace(/["'”’)\]]+$/, "");
     if (!/[?!]/.test(mark) && (mark.includes("…") || mark.length > 1)) continue;
+    const after = text.slice(m.index + m[0].length).trim();
+    // A full stop at the end of the run waits for the next line, and one before a word in lower case never starts a
+    // sentence there (Acme Inc. survived): the next line or word decides.
+    if (mark === "." && (!after || /^[^\p{L}]*\p{Ll}/u.test(after))) continue;
     const words = text.slice(0, m.index).split(" ");
     const word = words.at(-1).replace(/^[^\p{L}]+/u, "");
     if (mark === "." && SCRIPT_TITLES.has(word.toLowerCase())) continue; // a title (Dr. Lee)
-    if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word, words.at(-2) ?? "", text.slice(m.index + m[0].length).trim().split(" ")[0])) continue;
+    if (mark === "." && /^(?:\p{L}\.)*\p{L}$/u.test(word) && scriptInitial(word, words.at(-2) ?? "", after.split(" ")[0])) continue;
     return m.index + m[0].length;
   }
   return -1;
@@ -75,43 +80,43 @@ const scriptName = (name) => (/\p{Ll}/u.test(name) ? name : name.split(" ").map(
 export function readScript(text) {
   const parts = []; // { name, start (seconds), at (the time as written) }
   const questions = [];
-  let open = []; // the lines of a sentence still running on to the next line
-  let spans = 0; // how many lines that sentence has run over
+  let open = ""; // a sentence still running on to the next line
+  let head = true; // that sentence starts at the start of a line (not after another sentence on its line)
   let onAir = false;
   for (const raw of String(text).split(/\r\n?|\n/)) {
     const line = raw.trim();
     const heading = line.match(SCRIPT_HEADING);
     if (heading) {
-      open = [];
-      spans = 0;
+      open = "";
       const pieces = scriptPlain(heading[1]).split("·").map((p) => p.trim()).filter(Boolean);
       const start = pieces.length ? scriptSeconds(pieces.at(-1)) : null;
       onAir = start !== null;
       if (onAir) parts.push({ name: scriptName(pieces.length > 1 ? pieces.at(-2) : ""), start, at: pieces.at(-1) });
       continue;
     }
-    if (!line) { open = []; spans = 0; continue; }
+    if (!line) { open = ""; continue; }
     if (!onAir || line.startsWith("#") || SCRIPT_REMINDER.test(line)) continue;
     const said = scriptPlain(line).replace(/\s+/g, " ").trim();
     if (!said) continue;
     // A pause at the end of the line before ends its sentence, unless this line goes on in lower case.
-    if (open.length && SCRIPT_PAUSE.test(open.at(-1)) && !/^[^\p{L}]*\p{Ll}/u.test(said)) { open = []; spans = 0; }
-    open.push(said);
-    spans += 1;
-    let run = open.join(" ");
-    let lineStart = true; // the next sentence starts this line (or an earlier one), not after another sentence on it
-    for (let end = scriptEnd(run); end > 0; end = scriptEnd(run)) {
-      const sentence = run.slice(0, end).trim();
-      const tag = !lineStart && !sentence.includes(" ");
-      if (SCRIPT_QUESTION.test(sentence) && !tag) questions.push({ text: sentence, part: parts.length - 1, ...(lineStart && spans > 1 ? { joined: true } : {}) });
-      lineStart = false;
-      run = run.slice(end).trim();
-      open = run ? [run] : [];
-      spans = open.length;
+    if (open && SCRIPT_PAUSE.test(open) && !/^[^\p{L}]*\p{Ll}/u.test(said)) open = "";
+    if (!open) head = true;
+    const run = open ? `${open} ${said}` : said;
+    const lineAt = run.length - said.length; // where this line starts in the run
+    let at = 0; // where the next sentence starts in the run
+    for (let end = scriptEnd(run.slice(at)); end > 0; end = scriptEnd(run.slice(at))) {
+      const sentence = run.slice(at, at + end).trim();
+      // A one-word question after another sentence on its line ("…safe. Right?") is a tag on that sentence.
+      const fromLine = at === lineAt || (at === 0 && head);
+      if (SCRIPT_QUESTION.test(sentence) && (fromLine || sentence.includes(" "))) questions.push({ text: sentence, part: parts.length - 1, ...(at < lineAt ? { joined: true } : {}) });
+      at += end;
+      while (run[at] === " ") at += 1;
     }
+    if (at > 0) head = at === lineAt;
+    open = run.slice(at);
     // An overlong run keeps its first SCRIPT_RUN characters, cut between words: any question it ends in is still far
     // over the limit, so it is refused, never shortened into one that loads.
-    if (open.join(" ").length > SCRIPT_RUN) { const run = open.join(" "); open = [run.slice(0, run.lastIndexOf(" ", SCRIPT_RUN))]; }
+    if (open.length > SCRIPT_RUN) { const cut = open.lastIndexOf(" ", SCRIPT_RUN); open = open.slice(0, cut > 0 ? cut : SCRIPT_RUN); }
   }
   if (!parts.length) return { ok: false, reason: "The script has no parts with a start time. A part's heading ends with the time it starts, like ### **1 · INTRO · 00:00**." };
   const out = [];

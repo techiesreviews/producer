@@ -305,9 +305,21 @@ test("TOOLS-345: questions only in the middle part keep it, also through the hos
   show.edit(`${show.text}\n3. Who else?`);
   assert.deepEqual(show.plan.questionParts, [1, 1, 2], "a question added under C: the plan now groups by itself");
   show.edit("Show: Mine\n3 Intro\n8 Story\n1. Why?\n2. How?");
-  assert.deepEqual(show.plan.questionParts, [null, null], "a plan of the host's own with every part first: no parts, as pasted (TOOLS-344)");
+  assert.deepEqual(show.plan.questionParts, [null, null], "a plan of the host's own (a new run order) with every part first: no parts, as pasted (TOOLS-344)");
   show.pressDemo();
   show.pressDemo();
   show.edit("3 Intro\n1. Why?\n8 Story");
   assert.deepEqual(show.plan.questionParts, [null], "after the demo the host's text is read as pasted");
+});
+
+test("TOOLS-345: questions all in the last part, or in a one-part show, keep their part through the host's edits", () => {
+  for (const script of ["### **1 · A · 00:00**\nHello.\n### **2 · B · 02:00**\nWho is it?\nWhy now?", "### **1 · ONLY · 00:00**\nWho is it?\nWhy now?"]) {
+    const { show } = make();
+    show.agentLoad(loadArgs(readLoad({ script }).plan), "Claude Code");
+    const last = show.plan.parts.length - 1;
+    assert.deepEqual(show.plan.questionParts, [last, last]);
+    show.edit(show.text.replace("Why now?", "Why now, then?"));
+    assert.deepEqual(show.plan.questionParts, [last, last], "a typo fixed: the part stays");
+    assert.deepEqual(findQuestions({ plan: show.plan, query: "w" }).groups.map((g) => g.name), [show.plan.parts[last].name]);
+  }
 });
