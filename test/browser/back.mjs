@@ -105,12 +105,14 @@ export async function run({ browser, base, out }) {
     assert.match(await text("#listenTxt"), /Listening/, `${name}: still listening`);
     // While the show runs, the speech choice stays as it is (a switch would stop speech to text behind the sign).
     const other = page.locator('#engineSeg [data-v="browser"]');
-    if ((await other.getAttribute("aria-disabled")) === "true" && (await other.getAttribute("data-tip")) !== "The show is running, so speech to text stays as it is.") {
-      // This browser has no speech service of its own: that reason stays.
+    if (phone) {
+      // Phones are never offered the browser's service: that reason stays.
+      assert.deepEqual([await other.getAttribute("aria-disabled"), await other.getAttribute("data-tip")], ["true", "The browser's speech service is only offered on a computer. Use the model on this computer."], `${name}: the phone keeps its own reason`);
     } else {
       assert.deepEqual([await other.getAttribute("aria-disabled"), await other.getAttribute("data-tip")], ["true", "The show is running, so speech to text stays as it is."], `${name}: the other speech choice is off with its reason`);
       await other.click({ force: true });
       assert.equal(await page.locator('#engineSeg [data-v="local"]').getAttribute("aria-pressed"), "true", `${name}: a press changes nothing`);
+      assert.match(await text("#listenTxt"), /Listening/, `${name}: and listening goes on`);
     }
     await page.clock.runFor(10_000);
     assert.equal(await text("#clockTime"), "1:15", `${name}: the clock keeps counting on the setup screen`);
