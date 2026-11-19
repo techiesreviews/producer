@@ -96,7 +96,8 @@ export async function run({ browser, base, out }) {
     }
     await press(page.locator("#runBtn")); // Start: the show clock runs
     await page.clock.runFor(65_000);
-    assert.equal(await text("#clockTime"), "1:05", `${name}: the clock runs`);
+    // Playwright's clock also runs on in real time, so a slow machine may add a second or two.
+    assert.match(await text("#clockTime"), /^1:0[5-7]$/, `${name}: the clock runs`);
     await press(page.locator("#skipBtn")); // the card moves on to the second point
     const card = await text("#qMain");
     await shot("live");
@@ -126,13 +127,14 @@ export async function run({ browser, base, out }) {
     await mic.click({ force: true });
     assert.deepEqual([await mic.getAttribute("data-state"), await text("#listenTxt")].map(String).map((s) => s.replace(/ ·.*/, "")), ["ok", "Listening"], `${name}: a press changes nothing`);
     await page.clock.runFor(10_000);
-    assert.equal(await text("#clockTime"), "1:15", `${name}: the clock keeps counting on the setup screen`);
+    assert.match(await text("#clockTime"), /^1:1[5-9]$/, `${name}: the clock keeps counting on the setup screen`);
     await shot("setup");
     ok(`${name}: Setup shows the setup while the clock and the listening keep running; the main button reads Back to producer screen`);
 
     // Back to producer screen: as it was, the clock still running, the keyboard on Setup.
     await press(go);
-    assert.deepEqual([await visible("#live"), await visible("#setup"), await text("#qMain"), await text("#clockTime")], [true, false, card, "1:15"], `${name}: the producer screen as it was`);
+    assert.deepEqual([await visible("#live"), await visible("#setup"), await text("#qMain")], [true, false, card], `${name}: the producer screen as it was`);
+    assert.match(await text("#clockTime"), /^1:1[5-9]$/, `${name}: the clock still running`);
     assert.equal(await page.evaluate(() => document.activeElement?.id), "backBtn", `${name}: the keyboard lands on Setup`);
     assert.match(await text("#listenTxt"), /Listening/, `${name}: still listening`);
     ok(`${name}: Back to producer screen brings it back as it was`);

@@ -1111,7 +1111,13 @@ function renderListening(v) {
   // Back to producer screen (the show runs while the setup shows) needs no microphone, tab or model: the top bar's Listen
   // starts listening again.
   // Only the guest's answer still counts then (the show type may change before Start).
-  switchOff(goBtn, phase.visiting() ? openBlocked({ ...v, mic: true, tabReady: true, speech: true }) : openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
+  const blocked = phase.visiting() ? openBlocked({ ...v, mic: true, tabReady: true, speech: true }) : openBlocked({ ...v, tabReady: v.tab || session.tabView().off });
+  switchOff(goBtn, blocked);
+  if (!blocked && goBtn.dataset.tip) {
+    // On again: its old reason goes, also from an open tooltip.
+    delete goBtn.dataset.tip;
+    if (goBtn.getAttribute("aria-describedby") === "tip") tooltip.hide();
+  }
 }
 
 function showMic(v) {
