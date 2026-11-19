@@ -1031,7 +1031,7 @@ function cardPress(kind) {
   renderCard();
 }
 askedBtn.addEventListener("click", (e) => { if (e.detail <= 1 && pressable(askedBtn)) cardPress("asked"); });
-skipBtn.addEventListener("click", () => { if (pressable(skipBtn)) cardPress("skipped"); });
+skipBtn.addEventListener("click", (e) => { if (e.detail <= 1 && pressable(skipBtn)) cardPress("skipped"); });
 altsBox.addEventListener("click", (e) => {
   const alt = e.target.closest(".alt");
   if (!alt) return;
