@@ -25,8 +25,7 @@ const loadLine = (v) => v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g
 /**
  * The show the agent sent, checked and cleaned: { ok: true, plan: { show, guest, questions, parts: [{ name, minutes }],
  * questionParts, notes } } (show, guest and notes are "" when left out; questionParts: per question, the index of its
- * part, or null for all of them when the questions are not under two parts or more, as src/runorder.mjs reads a pasted
- * plan), or { ok: false, reason } in plain words. Nothing is cut: a plan that is too big or not clear is refused whole.
+ * part, or null for every question when none was given one), or { ok: false, reason } in plain words. Nothing is cut: a plan that is too big or not clear is refused whole.
  */
 export function readLoad(args) {
   const no = (reason) => ({ ok: false, reason });
@@ -97,9 +96,7 @@ export function readLoad(args) {
     if (!Number.isSafeInteger(p) || p < 1 || p > parts.length) return no(`Question ${i + 1}'s part must be a part's number, from 1 to ${parts.length}.`);
     if (i && p < partOf[i - 1]) return no(`Question ${i + 1} is in an earlier part than question ${i}. List the questions in show order.`);
   }
-  // As a pasted plan reads (src/runorder.mjs): questions under two parts or more say which part each belongs to.
-  const grouped = new Set(partOf).size >= 2;
-  const questionParts = partOf.map((p) => (grouped ? p - 1 : null));
+  const questionParts = partOf.map((p) => (withPart ? p - 1 : null));
   return { ok: true, plan: { show: show.value, guest: guest.value, questions, parts, questionParts, notes: notes.value } };
 }
 

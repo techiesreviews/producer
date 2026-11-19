@@ -115,11 +115,15 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       if (!load.hostAsked && plan.text.trim() && !load.byAgent) return refuse(`The host already has a plan in the page. Ask the host to press Let my agent load it, then call ${TOOL.load} again.`);
       const text = planText(got.plan);
       const back = readBack(text);
+      // Questions all under one part read back with no part (a pasted plan's rule, src/runorder.mjs): the agent's own parts then stand.
+      const single = back.ok && back.questionParts.every((p) => p === null) && new Set(got.plan.questionParts).size === 1;
       const same = back.ok && back.show === got.plan.show && back.guest === got.plan.guest
         && JSON.stringify(back.parts) === JSON.stringify(got.plan.parts) && JSON.stringify(back.questions) === JSON.stringify(got.plan.questions)
-        && JSON.stringify(back.questionParts) === JSON.stringify(got.plan.questionParts);
+        && (single || JSON.stringify(back.questionParts) === JSON.stringify(got.plan.questionParts));
       if (!same) return refuse("That show could not be read back clearly. Use plain names and questions.");
       read(text);
+      // Each question's part as the agent gave it, while the box holds its show unedited (the host's edit reads the text again).
+      plan.plan.questionParts = got.plan.questionParts;
       plan.notes = got.plan.notes;
       plan.notesFor = got.plan;
       endDemo();

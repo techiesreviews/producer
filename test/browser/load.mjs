@@ -186,8 +186,17 @@ export async function run({ browser, base, out }) {
     const most = { show: "s".repeat(200), guest: "g".repeat(80), questions: Array.from({ length: 100 }, (_, i) => `Question ${i + 1}?`), parts: Array.from({ length: 50 }, (_, i) => ({ name: `Part ${i + 1}`, minutes: 1 })) };
     assert.deepEqual((await page.evaluate((m) => window.__relay.call("load_show", m), most)).result, { loaded: true, questions: 100, parts: 50 }, `${name}: the biggest allowed plan loads`);
     assert.equal(await text("#loadBtn"), "Questions loaded by your agent · 100 questions · 50 parts ✓", `${name}: the longest label`);
-    const fits = await page.evaluate(() => { const b = document.querySelector("#loadBtn").getBoundingClientRect(); const c = document.querySelector("#sPlan").getBoundingClientRect(); return { sideways: document.documentElement.scrollWidth > window.innerWidth, inside: b.right <= c.right + 0.5 && b.left >= c.left - 0.5 }; });
-    assert.deepEqual(fits, { sideways: false, inside: true }, `${name}: the longest label fits the screen and the step`);
+    const fits = await page.evaluate(() => {
+      const btn = document.querySelector("#loadBtn");
+      const b = btn.getBoundingClientRect();
+      const c = document.querySelector("#sPlan").getBoundingClientRect();
+      // The label itself, not only its box: a range over the button's text (TOOLS-345: it wraps inside the button on a phone).
+      const range = document.createRange();
+      range.selectNodeContents(btn);
+      const t = range.getBoundingClientRect();
+      return { sideways: document.documentElement.scrollWidth > window.innerWidth, inside: b.right <= c.right + 0.5 && b.left >= c.left - 0.5, label: t.left >= b.left - 0.5 && t.right <= b.right + 0.5 && t.top >= b.top - 0.5 && t.bottom <= b.bottom + 0.5 };
+    });
+    assert.deepEqual(fits, { sideways: false, inside: true, label: true }, `${name}: the longest label fits the screen, the step and its own button`);
     await shot("longest");
     ok(`${name}: the biggest allowed plan loads and its label fits the screen`);
 
