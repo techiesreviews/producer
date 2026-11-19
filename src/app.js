@@ -455,7 +455,8 @@ function chatRow(m, fresh) {
 /** New viewer questions since the last line, said politely to a screen reader on the producer screen; a busy chat waits
  * out CHAT_SAY_MS and then gets one line for all that came meanwhile. Nothing visible changes. */
 function sayQuestions(count) {
-  if (!phase.live()) { said.seen = count; return; }
+  // On the setup while the show runs, new questions wait to be said when the producer screen is back.
+  if (!phase.live()) { if (!phase.visiting()) said.seen = count; return; }
   if (count <= said.seen || said.timer) return;
   const speak = () => {
     said.timer = 0;
@@ -1087,8 +1088,10 @@ function renderListening(v) {
   done("sGuest", v.guest !== null);
   showSpeech(v);
   showSign(v);
-  // Back to producer screen (the show runs while the setup shows) is always on: the top bar's Listen starts listening again.
-  switchOff(goBtn, phase.visiting() ? "" : openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
+  // Back to producer screen (the show runs while the setup shows) needs no microphone, tab or model: the top bar's Listen
+  // starts listening again.
+  // Only the guest's answer still counts then (the show type may change before Start).
+  switchOff(goBtn, phase.visiting() ? openBlocked({ ...v, mic: true, tabReady: true, speech: true }) : openBlocked({ ...v, tabReady: v.tab || session.tabView().off }));
 }
 
 function showMic(v) {
@@ -1144,6 +1147,23 @@ function showSpeech(v) {
   }
   for (const b of engineSeg.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === v.engine));
   showBrowserChoice(v);
+  // While the show runs (also on the setup after Setup) the speech choice stays as it is: a switch would stop speech
+  // to text behind a sign that still says Listening. A choice this browser cannot use keeps its own reason.
+  const lock = phase.running() ? "The show is running, so speech to text stays as it is." : "";
+  for (const b of engineSeg.querySelectorAll("button")) {
+    if (b === browserChoice && !speechOf.on) continue;
+    const locked = b.dataset.runLock !== undefined;
+    if (lock && b.dataset.v !== v.engine) {
+      if (!b.querySelector(".off-mark")) b.prepend(offMark(), " ");
+      switchOff(b, lock);
+      b.dataset.runLock = "";
+    } else if (locked) {
+      delete b.dataset.runLock;
+      if (b.firstChild?.classList?.contains("off-mark")) { b.firstChild.nextSibling?.remove(); b.firstChild.remove(); }
+      switchOff(b, "");
+      if (b !== browserChoice) delete b.dataset.tip;
+    }
+  }
   done("sSpeech", v.speech);
 }
 
