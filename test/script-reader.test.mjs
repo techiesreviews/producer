@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPT_LAST_MINUTES, readScript } from "../src/script-reader.mjs";
-import { LOAD_LIMITS, planText, readLoad } from "../src/agent-load.mjs";
+import { LOAD_LIMITS, LOAD_SCRIPT_BYTES, planText, readLoad } from "../src/agent-load.mjs";
 import { readPlan } from "../src/runorder.mjs";
 import { findQuestions } from "../src/find.mjs";
 
@@ -120,8 +120,20 @@ test("a pause at the end of a line ends its sentence, unless the next line goes 
   assert.deepEqual(readScript("### **1 · A · 00:00**\nAnd (Dr. Lee) what did you see?").questions.map((q) => q.text), ["And (Dr. Lee) what did you see?"], "a title after a bracket");
 });
 
-test("the script is at most 50,000 characters, so it fits one shell argument once written as JSON", () => {
+test("the script fits one shell argument once written as JSON: at most 50,000 characters and 96 KB", () => {
   assert.match(readLoad({ script: `### **1 · A · 00:00**\n${"a".repeat(LOAD_LIMITS.script)}` }).reason, /"script" is too long\. Limit: 50000 characters/);
+  // Each apostrophe is six bytes as \u0027, each "·" two: 20,000 of them are under 50,000 characters, but not under 96 KB.
+  assert.match(readLoad({ script: `### **1 · A · 00:00**\n${"'·".repeat(20_000)}` }).reason, /"script" is too long\. Limit: 96 KB written as JSON/);
+  // The biggest script that loads, with the biggest other fields, as the connect message's B: under one shell argument (128 KB).
+  const ok = `### **1 · A · 00:00**\n${"'".repeat(Math.floor((LOAD_SCRIPT_BYTES - 40) / 6))}`;
+  assert.equal(readLoad({ script: ok }).ok, true);
+  const b = JSON.stringify({ show: "€".repeat(LOAD_LIMITS.show), guest: "€".repeat(LOAD_LIMITS.guest), notes: "'".repeat(LOAD_LIMITS.notes), script: ok }).replaceAll("'", "\\u0027");
+  assert.ok(new TextEncoder().encode(b).length < 128 * 1024, `${new TextEncoder().encode(b).length} bytes`);
+});
+
+test("initials and letters with full stops keep a question whole, on one line and over several", () => {
+  const r = readScript("### **1 · A · 00:00**\nWhat changed in the U.S. after the launch?\nDid J. K. Rowling\nsee it? Yes.\nAnd in the\nU.S.\nafter that?");
+  assert.deepEqual(r.questions.map((q) => q.text), ["What changed in the U.S. after the launch?", "Did J. K. Rowling see it?", "And in the U.S. after that?"]);
 });
 
 test("emphasis marks are dropped; a minute past 59 after an hour is no time", () => {
