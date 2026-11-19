@@ -660,7 +660,10 @@ function cueContext() {
   const position = show.run && runPosition(show.run.view(Date.now()));
   const { main } = questions.view();
   const next = main ? `${main.n ? `${solo ? "Point" : "Question"} ${main.n}: ` : ""}${main.text}` : "";
-  if (position || next) context.position = { ...position, ...(next ? { next } : {}) };
+  // The prepared questions already asked or skipped, so the agent's matches leave them out (TOOLS-346).
+  const marks = questions.marked();
+  const done = solo ? [] : [...marks.asked, ...marks.skipped].sort((a, b) => a - b);
+  if (position || next || done.length) context.position = { ...position, ...(next ? { next } : {}), ...(done.length ? { done } : {}) };
   if (solo) context.solo = true;
   return context;
 }
@@ -801,7 +804,11 @@ const findTitle = $("findTitle");
 const findCount = $("findCount");
 const findList = $("findList");
 const findSay = $("findSay");
+const relHead = $("relHead");
+const relCount = $("relCount");
+const relList = $("relList");
 const found = { key: "", plan: null, card: null, locked: false, first: null, sayTimer: 0 };
+const rel = { key: "", plan: null, shown: new Set() }; // shown: the matches on screen, so a new one fades in
 
 function renderFind() {
   const total = show.plan?.questions.length ?? 0;
@@ -823,6 +830,7 @@ function renderFind() {
   // The card's own question is a match like any other until it is the host's pick (then it is locked there already).
   found.locked = found.card !== null && main.from === "picked";
   found.first = result.groups.flatMap((g) => g.items).find((n) => !(found.locked && n === found.card)) ?? null;
+  renderRelevant(total && !searching ? questions.view().relevant : null);
   if (!searching) {
     found.key = "";
     return;
@@ -866,6 +874,55 @@ function renderFind() {
   findList.replaceChildren(...out);
   if (focused >= 0) {
     const rows = findList.querySelectorAll(".alt");
+    (rows[focused] ?? rows[rows.length - 1] ?? findIn).focus();
+  }
+}
+
+/**
+ * "Relevant now" (TOOLS-346): while the box is empty, the prepared questions of the agent's newest answer still open,
+ * best first, less the one on the card, grouped by part in the order of their best match. Hidden until the agent's
+ * first answer (matches is null). A click puts one on the card until Asked or Skip.
+ */
+function renderRelevant(matches) {
+  relHead.hidden = relList.hidden = !matches;
+  if (!matches) {
+    rel.key = "";
+    return;
+  }
+  const now = show.run?.view(Date.now()).rows.findIndex((row) => row.state === "now") ?? -1;
+  const key = JSON.stringify([matches.map((q) => q.n), now]);
+  if (key === rel.key && rel.plan === show.plan) return;
+  rel.key = key;
+  rel.plan = show.plan;
+  relCount.textContent = String(matches.length);
+  relCount.hidden = !matches.length;
+  const groups = new Map();
+  for (const q of matches) {
+    const part = show.plan.questionParts?.[q.n - 1] ?? null;
+    if (!groups.has(part)) groups.set(part, []);
+    groups.get(part).push(q);
+  }
+  const focused = [...relList.querySelectorAll(".alt")].findIndex((row) => row === document.activeElement);
+  const out = [];
+  for (const [part, items] of groups) {
+    if (part !== null) {
+      const head = make("div", "grp", `Part ${part + 1} · ${show.plan.parts[part].name}`);
+      if (part === now) head.append(make("span", "chip chip--accent", "on now"));
+      out.push(head);
+    }
+    for (const q of items) {
+      const row = make("button", rel.shown.has(q.n) ? "alt" : "alt alt--new");
+      row.type = "button";
+      row.dataset.n = String(q.n);
+      row.append(Object.assign(make("span", "alt__q", q.text), { dir: "auto" }), make("span", "chip num", `Q${q.n}`));
+      out.push(row);
+    }
+  }
+  if (!matches.length) out.push(make("p", "pool__state", "No other matches right now."));
+  relList.replaceChildren(...out);
+  rel.shown = new Set(matches.map((q) => q.n));
+  if (focused >= 0) {
+    const rows = relList.querySelectorAll(".alt");
     (rows[focused] ?? rows[rows.length - 1] ?? findIn).focus();
   }
 }
@@ -921,6 +978,10 @@ findX.addEventListener("click", () => {
 findList.addEventListener("click", (e) => {
   const row = e.target.closest(".alt");
   if (row && !(found.locked && row.dataset.s === "card")) pickFound(Number(row.dataset.n));
+});
+relList.addEventListener("click", (e) => {
+  const row = e.target.closest(".alt");
+  if (row) pickFound(Number(row.dataset.n));
 });
 
 /** A cue went (a pause, or Suggest now): the light breathes until the agent's turn on it ends (answered, passed, or a minute). */

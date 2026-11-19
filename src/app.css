@@ -188,6 +188,11 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .alt[data-s="asked"] .alt__q, .alt[data-s="skipped"] .alt__q { color: var(--muted); font-weight: 500; }
 .alt mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 0.1em; }
 .pool__state { padding: 0.9rem 0.6rem; color: var(--muted); }
+/* "Relevant now" (TOOLS-346): while the box is empty, the agent's best matches for what was just said, grouped by part.
+   A row that was not there before fades in. */
+.alt--new { animation: row-in 260ms var(--ease-out); }
+@keyframes row-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .alt--new { animation: none; } }
 .next__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.6rem 0.85rem; border-block-start: 1px solid var(--line); background: var(--raised); }
 .next__foot .end { margin-inline-start: auto; }
 /* Suggest now keeps one width through Thinking… and the seconds to wait, so the switch beside it stays put. While the
