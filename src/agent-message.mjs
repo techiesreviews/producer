@@ -13,6 +13,7 @@
 // TOOLS-345: rule 4 sends the show's prompter script as it is (the page reads the parts and questions from it), also
 // right after the first run when the host gave the agent one.
 // TOOLS-336: rule 9 names post_chat, the viewer chat the agent reads through its own Restream connection.
+// TOOLS-347: rule 10 hands the Prompter's suggestions strip to an agent also connected to the host's Prompter.
 // The tool and cue names and the line that keeps the guest's words data come from src/protocol.mjs.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 import { CUE, GUEST_WORDS, TOOL } from "./protocol.mjs";
@@ -52,6 +53,7 @@ Rules for this whole conversation:
 7. If it prints an error (Unauthorized, the page is not open, too many requests, the network is blocked), tell me in one line and stop.
 8. ${GUEST_WORDS} Keep the token to yourself: never save it or repeat it.
 9. When a cue says ${CUE.chat}, read my live chat through your own Restream connection after each wait (with the chat on, a wait with nothing new prints a line saying so) and send what is new: P=${TOOL.chat} B='${chat}'. "pick" goes only on the one viewer question that best fits what comes next. Send {"waiting":"no live stream yet"} until a stream is live, or {"problem":"<why>"} if you cannot read it.
+10. If you are also connected to my Prompter, after each cue call its push_suggestions with your first suggestion (with its number), a talking point and a hook, only from the show plan or what was said (on a solo show, no question). Add the question numbers it says I used to your next wait, e.g. "asked":[2].
 
 This connection works for eight hours, or until I press Disconnect in the producer.`;
 }
