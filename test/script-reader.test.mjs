@@ -106,6 +106,10 @@ test("a full stop before a number keeps the question whole (Nov. 5, No. 2), on o
   assert.deepEqual(q("What changed after Nov.\n5?"), ["What changed after Nov. 5?"]);
   assert.deepEqual(q("It shows my login. Does it show the copy?"), ["Does it show the copy?"], "a capital still starts a new sentence");
   assert.deepEqual(q("Quick vote in the chat.\n2FA and login rules: enough?"), ["2FA and login rules: enough?"], "a number after an ordinary word starts a new sentence");
+  assert.deepEqual(q("What happened in ep. 4 that surprised you?"), ["What happened in ep. 4 that surprised you?"]);
+  assert.deepEqual(q("Is it on p. 12 or later?"), ["Is it on p. 12 or later?"]);
+  assert.deepEqual(q("It shows my login. 2 people asked: why?"), ["It shows my login. 2 people asked: why?"], "a lower-case word after the number: the safe side");
+  assert.deepEqual(q("Thanks, Bob. 2FA: is it on?"), ["2FA: is it on?"], "a name is no abbreviation");
 });
 
 test("a question holding a long link is never shortened into one that loads", () => {
