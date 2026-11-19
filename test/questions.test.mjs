@@ -356,11 +356,10 @@ test("a first answer naming only questions already done: the card stays, the lis
 test("a later answer with nothing usable keeps a prepared question swapped below", () => {
   const q = createQuestions();
   q.setPlan(PLAN8);
-  q.suggest({ seq: 1, suggestions: [{ question: 3 }, { text: "New?" }] });
-  q.swap(0); // the new question on the card, Q3 below
-  q.pick(1);
-  q.asked(); // Q1 done; the card moves on
-  const before = texts(q.view());
+  q.asked(); // Q1 done; Q2 on the card
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }, { text: "New?" }] }); // Q3 on the card, New? below
+  q.swap(0); // New? on the card, Q3 below
+  assert.deepEqual(texts(q.view()), ["New?", "C?"]);
   assert.equal(q.suggest({ seq: 2, suggestions: [{ question: 1 }] }), false, "nothing shown changed");
-  assert.deepEqual(texts(q.view()), before, "the rows below stay as they were");
+  assert.deepEqual(texts(q.view()), ["New?", "C?"], "Q3 stays below to swap in");
 });
