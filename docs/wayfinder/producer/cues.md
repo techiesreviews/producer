@@ -23,7 +23,7 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 
 ## What comes back
 
-- The agent's answer (one to three suggestions) is kept in the page's memory as the latest suggestion, with the seconds since its cue went. An older answer never replaces a newer one; the Test's sample answer stays on the Test button.
+- The agent's answer (up to six suggestions since TOOLS-346, closest first) is kept in the page's memory as the latest suggestion, with the seconds since its cue went. An older answer never replaces a newer one; the Test's sample answer stays on the Test button.
 - The curl loop sends the same answer again on every idle round: the page takes each answer once.
 - Cues sent while the agent is still busy wait for its next call and go together, with the newest reason; a Test cue always goes alone, so its made-up talk never mixes with the show's. Asking again with the same cue number (`seq`) gives the same material, so a lost answer loses nothing, unless more than 20,000 characters pile up unconfirmed: then the oldest show cues are let go first.
 - Disconnect forgets the cues and the latest suggestion.
@@ -32,6 +32,7 @@ The rules are in `src/cues.mjs` and never name how the agent is reached (a check
 
 - From the start, and whenever the agent is slow or quiet, the card shows the next prepared question from the plan (the first one not asked or skipped), with the next two below to swap in. With no plan and no answer it reads "No question yet"; once every prepared question is asked or skipped, "No questions left".
 - An answer from the agent takes the card once: its first suggestion on the card (a prepared question by its number, or a new one), with its few words why and where it came from ("Q3 · your list" or "New"); its next suggestion and the question it replaced go below to swap in (a third suggestion gives way). A suggestion pointing at a question already asked or skipped is left out; when none is left, the card stays as it is.
+- Since TOOLS-346 the answer's other prepared questions are the "Relevant now" list under the search box (see below), and only a new question waits below to swap in. Asked and Skip then move to the best match still open.
 - Asked and Skip move to the first alternative and mark a prepared question as asked or skipped, in the page's memory (for the end report to come); a new question the host asked or skipped is left out of later answers too. An alternative pressed swaps with the question on the card.
 - While the newest cue waits for the agent's turn, Suggest now reads "Thinking…" and the small light in the card's corner breathes orange. The turn ends with the answer to that cue (an answer to an older cue leaves the light on), when the agent comes back past it with no answer, or after a minute. After a cue, Suggest now shows the seconds until it takes the next press. With no agent (or its loop gone quiet) it reads "Suggest now · no agent", switched off, and the light is grey; with the agent connected in another tab, "Suggest now · other tab". The card keeps its question.
 - The turn chip counts the cues that went to the agent this show.
@@ -74,3 +75,23 @@ Measured again with real Claude Code (Opus 5.5), the page's own modules, a local
 - Against the target (5 s middle, 10 s slowest, after the speech ends) the copied message now meets the slowest figure and misses the middle one by about 0.8 s. Connect with MCP stays the faster way (4.0 s / 4.7 s in card 10), which is why it is the recommended one and the message is labelled "slower".
 - Where the saving comes from: a first pair of runs with no prepared questions loaded gave 5.2 s (new) against 5.2 s (old) in the middle, so the shorter command alone saved almost nothing there (new: 5.2 s middle, 10.3 s slowest; old: 5.2 s middle, 6.3 s slowest: each run had one slow cue, the worst of 10, and these two happened to differ): the answer itself is most of what is typed. With the prepared questions loaded the agent answers with their numbers (the new example and rule ask for it), which is short. Both runs use the same harness; the old message's first cue was the slow one (11.0 s). A change of about a second between two runs of 10 is within what one run can vary.
 - Every cue was answered in both runs, with one to three suggestions, and the agent never wrote a file or a loop script.
+
+## Relevant now (TOOLS-346, 2026-11-19)
+
+Built to the approved questions prototype (TOOLS-343). At each pause the agent answers with up to six prepared questions on the topic just talked about, from anywhere in the list, closest first. The best one takes the card (unless the host picked one: that stays until Asked or Skip); the others show under the search box as "Relevant now", grouped by part in the order of their best match. Each cue also names the prepared questions already asked or skipped, so the agent leaves them out. Rules: `src/questions.mjs`; the agent's side: `src/mcp.mjs` and the copied message (`src/agent-message.mjs`); the screen: `src/app.js`.
+
+### A replay of Livestream 3 (2026-11-19)
+
+Livestream 3 (Melapress, with Robert Abela) has not been streamed yet, so there is no recorded transcript. The stretch was written from the show's own material (its how-it-works notes, the questions for Robert and the run of show): 11 pauses of about 40 to 70 words each, host and guest, each labelled with the prepared questions that fit it. `test/replay.test.mjs` sends each piece through the real cue rules (35 s of speech, then the pause), the real Worker over HTTP, the relay object and the page's own link to Claude Code (Opus 5.5, Connect with MCP, started from the test with no window, nothing deployed), and puts each answer through the page's question card. The show is the real prompter script (72 questions, 10 parts) loaded as the agent loads it. Times are from the pause to the answer in the card and the list; add the 1.5 s pause for "after the speech ends". One machine, 11 pauses: the slowest is just the worst of 11.
+
+| Run | Right questions shown | Middle | Slowest | From speech end: middle / slowest |
+|---|---|---|---|---|
+| First wording ("best fit what was just said") | 8 of 11 | 2.9 s | 5.4 s | 4.4 s / 6.9 s |
+| Final wording ("on the topic just talked about, from anywhere in the list") | 10 of 11 | 3.1 s | 4.0 s | 4.6 s / 5.5 s |
+
+- With the first wording the agent leaned towards the questions that come next in the plan, not the ones about what was just said (after the blind spot it offered the alerts questions). The final wording asks for the topic just talked about, from anywhere in the list, and says one the guest may have touched on still counts (the host decides).
+- The one miss in the final run: after Robert explains how long a login lasts, the agent offered the next questions (what to watch for, warning signs) instead of the ones on login length.
+- Against the speed target (5 s middle, 10 s slowest, after the speech ends) the list meets both on the fast way. Six numbered questions are short to type: the answer comes a little later than card 10's three suggestions did (4.0 s / 4.7 s), still within the target.
+- The screen's own share: from the answer arriving to the list on screen under 300 ms (the browser suite `kit specs relevant`).
+- The committed run uses a made-up show and stretch (`test/fixtures/stand-in-replay.json`) with a stand-in agent, so it proves the way through, not an agent's judgement. The real files stay out of this public repo: the real run reads `PRODUCER_REAL_SCRIPT_DIR` (the show's folder), `PRODUCER_REPLAY_FILE` (the stretch) and runs only with `PRODUCER_REPLAY_AGENT=claude`.
+- Not run: the copied message (curl loop), Codex, a real recorded show.
