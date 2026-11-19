@@ -103,6 +103,15 @@ export async function run({ browser, base, out }) {
     assert.equal(await text("#goBtn"), "Back to producer screen", `${name}: the main button says where it goes`);
     assert.equal(await go.getAttribute("aria-disabled"), null, `${name}: and is on`);
     assert.match(await text("#listenTxt"), /Listening/, `${name}: still listening`);
+    // While the show runs, the speech choice stays as it is (a switch would stop speech to text behind the sign).
+    const other = page.locator('#engineSeg [data-v="browser"]');
+    if ((await other.getAttribute("aria-disabled")) === "true" && (await other.getAttribute("data-tip")) !== "The show is running, so speech to text stays as it is.") {
+      // This browser has no speech service of its own: that reason stays.
+    } else {
+      assert.deepEqual([await other.getAttribute("aria-disabled"), await other.getAttribute("data-tip")], ["true", "The show is running, so speech to text stays as it is."], `${name}: the other speech choice is off with its reason`);
+      await other.click({ force: true });
+      assert.equal(await page.locator('#engineSeg [data-v="local"]').getAttribute("aria-pressed"), "true", `${name}: a press changes nothing`);
+    }
     await page.clock.runFor(10_000);
     assert.equal(await text("#clockTime"), "1:15", `${name}: the clock keeps counting on the setup screen`);
     await shot("setup");
@@ -125,6 +134,28 @@ export async function run({ browser, base, out }) {
     assert.deepEqual(stored, { local: 0, session: 0, cookie: "", databases: 0 }, `${name}: nothing stored`);
     assert.deepEqual(problems, [], `${name}: no console errors`);
     ok(`${name}: nothing stored, no console errors`);
+    await context.close();
+  }
+  // Before Start: a show type changed on the setup during the visit needs the guest's answer before going back.
+  {
+    const context = await browser.newContext(ownAddress(VIEWS[0]));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    await page.locator("#planBtn").click();
+    await page.locator("#planIn").fill(PLAN);
+    await page.locator("#micBtn").click();
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await page.locator("#speechBtn").click();
+    await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    await page.locator("#goBtn").click();
+    await page.locator("#backBtn").click();
+    await page.locator('#modeSeg [data-v="guest"]').click();
+    const go = page.locator("#goBtn");
+    assert.deepEqual([await go.getAttribute("aria-disabled"), await go.getAttribute("data-tip")], ["true", "Answer Guest agreed first."], "with a guest now: Back to producer screen waits for the guest's answer");
+    await page.locator("#guestSeg button").nth(1).click(); // No · my mic only
+    assert.equal(await go.getAttribute("aria-disabled"), null, "answered: Back to producer screen is on");
+    checks.push("a show type changed during the visit needs the guest's answer before Back to producer screen");
     await context.close();
   }
   return { checks, screenshots };
