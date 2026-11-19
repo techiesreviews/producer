@@ -49,18 +49,25 @@ export function createQuestions() {
     const on = new Set();
     const keep = (q) => q && open(q) && !on.has(key(q)) && on.add(key(q));
     if (main && !keep(main)) main = null; // the card's own question first, so it never shows again below
-    alts = alts.filter(keep);
     if (!main) {
-      const best = relevant?.find((q) => open(q));
-      if (best) keep(best);
-      main = best ?? alts.shift() ?? null;
+      main = relevant?.find((q) => open(q)) ?? null;
+      if (main) keep(main); // before the alternatives, so a match swapped below never shows twice
     }
+    alts = alts.filter(keep);
+    main ??= alts.shift() ?? null;
     for (let n = 1; n <= plan.length && (!main || (!relevant && alts.length < ALTS)); n++) {
       const q = prepared(n, { from: "list" });
       if (!keep(q)) continue;
       if (!main) main = q; else alts.push(q);
     }
     alts = alts.slice(0, ALTS);
+  }
+
+  // The Relevant now list as shown: the newest answer's matches still open, less the card and the rows to swap in.
+  function shown() {
+    if (!relevant) return null;
+    const below = new Set([main, ...alts].filter(Boolean).map(key));
+    return relevant.filter((q) => open(q) && !below.has(key(q)));
   }
 
   function move(kind) {
@@ -94,7 +101,12 @@ export function createQuestions() {
         const text = typeof s?.text === "string" ? s.text.trim() : "";
         return text ? { text, ...why, from: "agent" } : null;
       }).filter((q, i, all) => q && open(q) && all.findIndex((o) => o && key(o) === key(q)) === i).slice(0, MATCHES); // a repeat counts once
-      if (!fresh.length) return false;
+      if (!fresh.length) {
+        // Nothing usable (all asked or skipped): the card stays, the list says no other matches.
+        const had = shown()?.length > 0;
+        if (relevant) relevant = [];
+        return had;
+      }
       // The prepared questions it names are the Relevant now list; a new question waits below to swap in (with the new
       // question it replaced on the card, so that one is not lost).
       relevant = fresh.filter((q) => q.n);
@@ -150,9 +162,7 @@ export function createQuestions() {
       const values = [...done].filter(([n]) => n <= plan.length).map(([, kind]) => kind);
       const asked = values.filter((v) => v === "asked").length;
       const first = plan.findIndex((_, i) => !done.has(i + 1)) + 1 || null; // the first prepared question still open
-      const below = new Set([main, ...alts].filter(Boolean).map(key));
-      const matches = relevant && relevant.filter((q) => open(q) && !below.has(key(q)));
-      return { main, alts: [...alts], relevant: matches, first, counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
+      return { main, alts: [...alts], relevant: shown(), first, counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
     },
   };
 }

@@ -200,6 +200,7 @@ export async function run({ browser, base, out }) {
     await pauseAnswer([20, 21, 33], "next point");
     assert.equal(await text("#qMain"), "Question 40, in part 6?", `${name}: the pick stays on the card through the next answer`);
     assert.deepEqual(await rows(), ["# Part 3 · Part 3 topic", "Q20", "Q21", "# Part 5 · Part 5 topic", "Q33"], `${name}: the list follows the newest answer`);
+    assert.equal(await text("#relSay"), "3 relevant questions", `${name}: a screen reader hears the new list while the card stays`);
     await shot("picked");
     ok(`${name}: a click puts a match on the card and it stays through the next answer, which changes only the list`);
 
@@ -221,7 +222,7 @@ export async function run({ browser, base, out }) {
     // Every match asked or skipped: the list says so.
     await press(page.locator("#skipBtn"));
     await press(page.locator("#skipBtn"));
-    assert.deepEqual([await rows(), await page.locator("#relCount").isVisible()], [["No other matches right now."], false], `${name}: none left says so`);
+    assert.deepEqual([await rows(), await page.locator("#relCount").isVisible(), await text("#relSay")], [["No other matches right now."], false, "No other matches right now."], `${name}: none left says so, to a screen reader too`);
     ok(`${name}: the search hides the list while it holds words; none left says so`);
 
     // Start: the part on now says so.
