@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { createQuestions, suggestButton, thinkLight, turnsText, isThinking, THINK_MS } from "../src/questions.mjs";
 
 const PLAN = ["How did it start?", "Who paid first?", "What went wrong?", "What is next?"];
+const PLAN8 = ["A?", "B?", "C?", "D?", "E?", "F?", "G?", "H?"];
 const texts = (v) => [v.main?.text ?? null, ...v.alts.map((a) => a.text)];
 
 test("at the start the card shows the first prepared question, with the next two to swap in", () => {
@@ -18,29 +19,40 @@ test("at the start the card shows the first prepared question, with the next two
   assert.deepEqual(v.counts, { asked: 0, skipped: 0, left: 4 });
 });
 
-test("the agent's answer takes the card: its first suggestion, the others and the old question to swap in", () => {
+test("the agent's answer takes the card: its first suggestion; a new question waits below, the prepared ones go to Relevant now", () => {
   const q = createQuestions();
   q.setPlan(PLAN);
+  assert.equal(q.view().relevant, null, "no list before the agent's first answer");
   const shown = q.suggest({ seq: 1, suggestions: [{ question: 3, why: "she hinted at it" }, { text: "What surprised you?", why: "ties to the van" }] });
   assert.equal(shown, true);
   const v = q.view();
   assert.deepEqual(v.main, { n: 3, text: "What went wrong?", why: "she hinted at it", from: "agent" }, "a prepared question by its number");
-  assert.deepEqual(v.alts, [{ text: "What surprised you?", why: "ties to the van", from: "agent" }, { n: 1, text: "How did it start?", from: "list" }], "the second suggestion, then the question it replaced");
+  assert.deepEqual(v.alts, [{ text: "What surprised you?", why: "ties to the van", from: "agent" }], "the new question to swap in; the prepared question it replaced goes back to the list");
+  assert.deepEqual(v.relevant, [], "the only prepared match is on the card");
 });
 
-test("three suggestions: the first on the card, the second and the replaced question to swap in", () => {
+test("up to six matches: the first on the card, the other prepared ones in Relevant now, best first", () => {
   const q = createQuestions();
-  q.setPlan(PLAN);
-  q.suggest({ seq: 1, suggestions: [{ text: "New one?" }] });
-  q.suggest({ seq: 2, suggestions: [{ question: 2 }, { question: 3 }, { question: 4 }] });
-  assert.deepEqual(texts(q.view()), ["Who paid first?", "What went wrong?", "New one?"], "the replaced new question is kept, the third suggestion gives way");
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [7, 2, 5, 3, 8, 6, 4].map((n) => ({ question: n })) });
+  const v = q.view();
+  assert.equal(v.main.n, 7);
+  assert.deepEqual(v.relevant.map((r) => r.n), [2, 5, 3, 8, 6], "a seventh suggestion gives way");
+  assert.deepEqual(v.alts, [], "no rows to swap in once the agent answered with prepared questions");
+  const r = createQuestions();
+  r.setPlan(PLAN);
+  r.suggest({ seq: 1, suggestions: [{ text: "New one?" }] });
+  r.suggest({ seq: 2, suggestions: [{ question: 2 }, { question: 3 }, { question: 4 }] });
+  assert.deepEqual(texts(r.view()), ["Who paid first?", "New one?"], "the replaced new question is kept to swap back");
+  assert.deepEqual(r.view().relevant.map((x) => x.n), [3, 4]);
 });
 
 test("the agent picking the question already on the card shows it once", () => {
   const q = createQuestions();
   q.setPlan(PLAN);
-  q.suggest({ seq: 1, suggestions: [{ question: 1, why: "a good opener" }, { text: "New?" }] });
-  assert.deepEqual(texts(q.view()), ["How did it start?", "New?", "Who paid first?"]);
+  q.suggest({ seq: 1, suggestions: [{ question: 1, why: "a good opener" }, { text: "New?" }, { question: 1 }] });
+  assert.deepEqual(texts(q.view()), ["How did it start?", "New?"]);
+  assert.deepEqual(q.view().relevant, []);
   assert.equal(q.view().main.why, "a good opener");
 });
 
@@ -108,8 +120,9 @@ test("a new question the host asked or skipped never comes back", () => {
   q.setPlan(PLAN);
   q.suggest({ seq: 1, suggestions: [{ text: "Van?" }] });
   q.skip();
+  assert.equal(q.view().main.n, 1, "back to the list");
   q.suggest({ seq: 2, suggestions: [{ text: "van?" }, { question: 2 }] });
-  assert.deepEqual(texts(q.view()), ["Who paid first?", "How did it start?", "What went wrong?"], "the skipped new question is left out");
+  assert.deepEqual(texts(q.view()), ["Who paid first?"], "the skipped new question is left out");
   assert.equal(q.suggest({ seq: 3, suggestions: [{ text: "Van?" }] }), false, "only it: the card stays");
 });
 
@@ -182,17 +195,17 @@ test("pick(n): the host's pick from the search takes the card and stays there un
   assert.equal(q.pick(3), true);
   let v = q.view();
   assert.deepEqual(v.main, { n: 3, text: "What went wrong?", from: "picked" });
-  assert.equal(v.alts[0].n, 1, "the question it replaced comes first to swap back");
+  assert.equal(v.alts[0].n, 1, "before the agent's first answer, the question it replaced comes first to swap back");
   assert.equal(q.pick(3), false, "already on the card");
   assert.equal(q.pick(9), false, "not in the plan");
-  // The agent's answer does not take a picked card: its suggestions wait below to swap in.
+  // The agent's answer does not take a picked card: its matches show in Relevant now.
   q.suggest({ seq: 1, suggestions: [{ question: 2, why: "fits" }] });
   v = q.view();
   assert.equal(v.main.n, 3);
-  assert.equal(v.alts[0].n, 2);
+  assert.deepEqual(v.relevant.map((r) => r.n), [2]);
   q.asked();
   assert.deepEqual(q.marked().asked, [3]);
-  assert.notEqual(q.view().main.from, "picked", "after Asked the card moves on as usual");
+  assert.deepEqual(q.view().main, { n: 2, text: "Who paid first?", why: "fits", from: "agent" }, "after Asked the best match takes the card");
 });
 
 test("pick(n) of an asked or skipped question takes it back onto the card and out of the count", () => {
@@ -220,12 +233,22 @@ test("a picked question swapped away is an ordinary alternative; a new plan keep
   assert.equal(q.view().main.n, 2, "with no pick on the card the agent's answer takes it again");
 });
 
-test("the agent's answer under a picked card keeps the question the pick replaced to swap back", () => {
+test("under a pick, the agent's answers change only the Relevant now list", () => {
   const q = createQuestions();
-  q.setPlan(PLAN);
-  q.pick(3);
-  q.suggest({ seq: 1, suggestions: [{ question: 2 }, { question: 4 }] });
-  assert.deepEqual(q.view().alts.map((a) => a.n), [2, 1], "the agent's first suggestion, then the replaced question");
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }, { question: 5 }, { question: 7 }] });
+  assert.equal(q.pick(5), true, "a click in Relevant now");
+  let v = q.view();
+  assert.deepEqual(v.main, { n: 5, text: "E?", from: "picked" });
+  assert.deepEqual(v.relevant.map((r) => r.n), [3, 7], "the agent's best match goes back to the list; the pick leaves it");
+  assert.deepEqual(v.alts, []);
+  q.suggest({ seq: 2, suggestions: [{ question: 6 }, { question: 8 }] });
+  v = q.view();
+  assert.equal(v.main.n, 5, "the pick stays");
+  assert.deepEqual(v.relevant.map((r) => r.n), [6, 8], "the list follows the newest answer");
+  q.skip();
+  assert.equal(q.view().main.n, 6, "Skip: the best match takes the card");
+  assert.deepEqual(q.view().relevant.map((r) => r.n), [8]);
 });
 
 test("pick(n) of the question already under a viewer question marks it picked", () => {
@@ -236,19 +259,16 @@ test("pick(n) of the question already under a viewer question marks it picked", 
   assert.equal(q.pick(1), false, "already picked");
 });
 
-test("under a pick the replaced question survives every agent answer, until Asked, Skip or a swap", () => {
+test("a new question a pick replaced stays below to swap back through later answers", () => {
   const q = createQuestions();
-  q.setPlan(["A?", "B?", "C?", "D?", "E?", "F?", "G?", "H?"]);
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [{ text: "New?" }] });
   q.pick(3);
-  q.suggest({ seq: 1, suggestions: [{ question: 5 }, { question: 6 }] });
-  q.suggest({ seq: 2, suggestions: [{ question: 7 }, { question: 8 }] });
-  assert.deepEqual(q.view().alts.map((a) => a.n), [7, 1], "the newest first suggestion, then the replaced question");
-  q.asked();
-  q.pick(2);
-  q.swap(0);
-  q.pick(4);
-  q.suggest({ seq: 3, suggestions: [{ question: 6 }] });
-  assert.deepEqual(q.view().alts.map((a) => a.n), [6, 7], "a new pick after a swap keeps its own replaced question (7, which the swap put on the card)");
+  assert.deepEqual(q.view().alts.map((a) => a.text), ["New?"]);
+  q.suggest({ seq: 2, suggestions: [{ question: 5 }, { question: 6 }] });
+  q.suggest({ seq: 3, suggestions: [{ question: 7 }, { text: "Other?" }] });
+  assert.deepEqual(q.view().alts.map((a) => a.text), ["Other?", "New?"]);
+  assert.deepEqual(q.view().relevant.map((r) => r.n), [7]);
 });
 
 test("a pick that a shorter plan dropped leaves nothing behind to swap back", () => {
@@ -259,5 +279,33 @@ test("a pick that a shorter plan dropped leaves nothing behind to swap back", ()
   q.suggest({ seq: 1, suggestions: [{ question: 3 }] }); // question 3 on the card from the agent
   q.pick(3);
   q.suggest({ seq: 2, suggestions: [{ question: 2 }, { text: "New?" }] });
-  assert.deepEqual(q.view().alts.map((a) => a.n ?? a.text), [2, "New?"], "the suggestions only: no leftover question");
+  assert.deepEqual(q.view().alts.map((a) => a.n ?? a.text), ["New?"], "the new suggestion only: no leftover question");
+  assert.deepEqual(q.view().relevant.map((r) => r.n), [2]);
+});
+
+test("Asked and Skip move to the best match still open, then back to the list", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.suggest({ seq: 1, suggestions: [{ question: 3 }, { question: 5, why: "his last point" }, { question: 7 }] });
+  q.asked();
+  assert.deepEqual(q.view().main, { n: 5, text: "E?", why: "his last point", from: "agent" });
+  q.skip();
+  assert.equal(q.view().main.n, 7);
+  q.asked();
+  assert.deepEqual(q.view().main, { n: 1, text: "A?", from: "list" }, "no match left: the next prepared question");
+  assert.deepEqual(q.view().relevant, [], "the list says no other matches");
+  assert.deepEqual(q.view().alts, [], "and no rows to swap in come back");
+});
+
+test("Relevant now leaves out what was asked or skipped; a new plan reads the matches again", () => {
+  const q = createQuestions();
+  q.setPlan(PLAN8);
+  q.pick(2);
+  q.asked(); // Q2
+  q.suggest({ seq: 1, suggestions: [{ question: 4 }, { question: 2 }, { question: 6 }] });
+  assert.deepEqual(q.view().relevant.map((r) => r.n), [6], "Q2 was asked");
+  q.setPlan(["A?", "B?", "C?", "D?", "E?", "F, again?"]);
+  assert.deepEqual(q.view().relevant.map((r) => r.text), ["F, again?"]);
+  q.setPlan(PLAN8.slice(0, 5));
+  assert.deepEqual(q.view().relevant, [], "a match the plan no longer has is dropped");
 });

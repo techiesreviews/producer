@@ -1,22 +1,27 @@
 // The question card's rules (card 11): what the Next question card shows and what its controls say. The card is never
 // empty while the plan has a question left: the next prepared question shows from the start and stays while the agent
-// is slow or quiet. The agent's answer (src/agent-link.mjs, one to three suggestions) takes the card once: its first
-// suggestion on the card, its next one and the question it replaced as the two to swap in (a third gives way). Asked
-// and Skip move on and count a prepared question by its number. The host's own pick from the search (TOOLS-344) takes the
-// card and stays until Asked or Skip: the agent's answer then waits below it to swap in. All in this page's memory;
-// nothing is stored.
+// is slow or quiet. Until the agent's first answer the next two prepared questions wait below to swap in. The agent's
+// answer (src/agent-link.mjs, up to six suggestions, best first) takes the card once with its first suggestion; the
+// prepared questions it names are the "Relevant now" list (TOOLS-346), the best matches for what was just said, and a new
+// question it adds waits below to swap in. Asked and Skip move on to the best match still open and count a prepared
+// question by its number. The host's own pick (from the search, TOOLS-344, or the Relevant now list) takes the card and
+// stays until Asked or Skip: the agent's answer then only changes the list. All in this page's memory; nothing is stored.
 // The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 
 /** No answer this long after a cue: the thinking light goes back to ready (the card keeps its question). */
 export const THINK_MS = 60_000;
 const ALTS = 2;
+/** The most matches the agent's answer can name (the Relevant now list shows them, less the one on the card). */
+export const MATCHES = 6;
 
 /**
  * createQuestions(): setPlan(texts) takes the prepared questions (numbered from 1); suggest({ seq, suggestions }) the
- * agent's answer (true when it changed the card or its rows to swap in); asked(), skip() and swap(i) are the card's
- * controls; pick(n) puts prepared question n on the card (the search's click or Enter; an asked or skipped one opens
- * again); view() gives { main, alts, first, counts: { asked, skipped, left } }, first being the number of the first
- * prepared question still open; marked() gives the host's own presses for the end report: { asked, skipped }
+ * agent's answer (true when it changed the card, its rows to swap in or the Relevant now list); asked(), skip() and
+ * swap(i) are the card's controls; pick(n) puts prepared question n on the card (a click in the search or the Relevant
+ * now list, or Enter; an asked or skipped one opens again); view() gives { main, alts, relevant, first, counts: { asked,
+ * skipped, left } }: relevant is null until the agent's first answer, then the prepared questions of its newest answer
+ * still open, best first, less the one on the card; first is the number of the first prepared question still open;
+ * marked() gives the host's own presses for the end report: { asked, skipped }
  * (prepared question numbers) and newAsked (new questions asked).
  * A question is { n?, text, why?, from: "list" | "agent" | "picked" }.
  */
@@ -29,6 +34,7 @@ export function createQuestions() {
   let seen = 0; // the newest answer's seq: each answer is shown once
   let newAsked = 0; // new questions (not on the list) the host pressed Asked on
   let replaced = null; // the question the host's pick took the card from: it stays to swap back while the pick is on the card
+  let relevant = null; // the prepared questions of the agent's newest answer, best first (null until its first answer)
 
   const key = (q) => (q.n ? `#${q.n}` : `t:${q.text.toLowerCase()}`);
   const open = (q) => (q.n ? !done.has(q.n) : !gone.has(key(q)));
@@ -36,14 +42,20 @@ export function createQuestions() {
   const unpicked = (q) => (q?.from === "picked" ? { ...q, from: "list" } : q);
   const prepared = (n, extra = {}) => (Number.isInteger(n) && n >= 1 && n <= plan.length ? { n, text: plan[n - 1], ...extra } : null);
 
-  // The card from what is left: an asked question leaves, the first alternative moves up, prepared questions fill in.
+  // The card from what is left: an asked question leaves, the best match still open moves up (else the first
+  // alternative), prepared questions fill in. Once the agent has answered, the rows to swap in hold only its new
+  // questions: the prepared ones it named are the Relevant now list.
   function fill() {
     const on = new Set();
     const keep = (q) => q && open(q) && !on.has(key(q)) && on.add(key(q));
     if (main && !keep(main)) main = null; // the card's own question first, so it never shows again below
     alts = alts.filter(keep);
-    main ??= alts.shift() ?? null;
-    for (let n = 1; n <= plan.length && (!main || alts.length < ALTS); n++) {
+    if (!main) {
+      const best = relevant?.find((q) => open(q));
+      if (best) keep(best);
+      main = best ?? alts.shift() ?? null;
+    }
+    for (let n = 1; n <= plan.length && (!main || (!relevant && alts.length < ALTS)); n++) {
       const q = prepared(n, { from: "list" });
       if (!keep(q)) continue;
       if (!main) main = q; else alts.push(q);
@@ -69,6 +81,7 @@ export function createQuestions() {
       main = again(main);
       replaced = main?.from === "picked" ? again(replaced) : null; // a pick a shorter plan dropped leaves nothing behind
       alts = alts.map(again).filter(Boolean);
+      relevant &&= relevant.map(again).filter(Boolean);
       fill();
     },
 
@@ -80,18 +93,21 @@ export function createQuestions() {
         if (s?.question !== undefined) return prepared(s.question, { ...why, from: "agent" });
         const text = typeof s?.text === "string" ? s.text.trim() : "";
         return text ? { text, ...why, from: "agent" } : null;
-      }).filter((q) => q && open(q));
+      }).filter((q) => q && open(q)).slice(0, MATCHES);
       if (!fresh.length) return false;
-      // The host's pick stays on the card: the agent's first suggestion waits below it, then the question the pick replaced.
+      // The prepared questions it names are the Relevant now list; a new question waits below to swap in (with the new
+      // question it replaced on the card, so that one is not lost).
+      relevant = fresh.filter((q) => q.n);
+      const isNew = (q) => q && !q.n;
+      // The host's pick stays on the card: only the list and the new questions below it change.
       if (main?.from === "picked") {
-        alts = [fresh[0], replaced, ...fresh.slice(1), ...alts].filter(Boolean);
+        alts = [...fresh.filter(isNew), isNew(replaced) ? replaced : null, ...alts.filter(isNew)].filter(Boolean);
         fill();
         return true;
       }
       const before = main;
       main = fresh[0];
-      // The question it replaced stays to swap back, second after the agent's next pick (a third suggestion gives way).
-      alts = [fresh[1], before, ...fresh.slice(2)].filter(Boolean);
+      alts = [...fresh.slice(1).filter(isNew), isNew(before) ? before : null].filter(Boolean);
       fill();
       return true;
     },
@@ -116,8 +132,9 @@ export function createQuestions() {
         return true;
       }
       done.delete(n);
-      // The question it replaced comes first to swap back, and stays while the pick is on the card.
-      replaced = unpicked(main);
+      // The question it replaced comes first to swap back, and stays while the pick is on the card. Once the agent has
+      // answered, a prepared one goes back to the list instead (it shows in Relevant now while it is a match).
+      replaced = relevant && main?.n ? null : unpicked(main);
       alts = [replaced, ...alts].filter(Boolean);
       main = q;
       fill();
@@ -133,7 +150,9 @@ export function createQuestions() {
       const values = [...done].filter(([n]) => n <= plan.length).map(([, kind]) => kind);
       const asked = values.filter((v) => v === "asked").length;
       const first = plan.findIndex((_, i) => !done.has(i + 1)) + 1 || null; // the first prepared question still open
-      return { main, alts: [...alts], first, counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
+      const below = new Set([main, ...alts].filter(Boolean).map(key));
+      const matches = relevant && relevant.filter((q) => open(q) && !below.has(key(q)));
+      return { main, alts: [...alts], relevant: matches, first, counts: { asked, skipped: values.length - asked, left: plan.length - values.length } };
     },
   };
 }
