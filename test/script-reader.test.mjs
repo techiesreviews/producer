@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SCRIPT_LAST_MINUTES, readScript } from "../src/script-reader.mjs";
-import { planText, readLoad } from "../src/agent-load.mjs";
+import { LOAD_LIMITS, planText, readLoad } from "../src/agent-load.mjs";
 import { readPlan } from "../src/runorder.mjs";
 import { findQuestions } from "../src/find.mjs";
 
@@ -85,14 +85,25 @@ test("a pause or a title does not end a sentence: the question loads whole", () 
 });
 
 test("lines with no end mark never pile up past a question's length: the oldest lines go first", () => {
-  const lines = Array.from({ length: 40 }, (_, i) => `this is statement line number ${i + 1} with no full stop`);
-  const r = readScript(["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n"));
-  assert.equal(r.questions.length, 1);
-  const [q] = r.questions;
-  assert.ok(q.text.length <= 300 + 60, `${q.text.length} characters`);
-  assert.match(q.text, /line number 40 with no full stop Sam, what is a backup\?$/);
-  assert.doesNotMatch(q.text, /line number 1 /);
-  assert.equal(readLoad({ script: ["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n") }).ok, true, "the script still loads");
+  const lines = Array.from({ length: 40 }, (_, i) => `statement ${String(i + 1).padStart(2, "0")} ${"x".repeat(36)}`); // 49 characters each
+  const script = ["### **1 · A · 00:00**", ...lines, "Sam, what is a backup?"].join("\n");
+  const [q, ...more] = readScript(script).questions;
+  assert.equal(more.length, 0);
+  assert.ok(q.text.length <= 300, `${q.text.length} characters`);
+  assert.match(q.text, /statement 40 x{36} Sam, what is a backup\?$/);
+  assert.doesNotMatch(q.text, /statement 01/);
+  assert.equal(readLoad({ script }).ok, true, "the script still loads");
+});
+
+test("a pause at the end of a line ends its sentence, unless the next line goes on in lower case", () => {
+  assert.deepEqual(readScript("### **1 · A · 00:00**\nAnd then the backup failed…\nRobert, what did you do next?").questions.map((q) => q.text), ["Robert, what did you do next?"]);
+  assert.deepEqual(readScript("### **1 · A · 00:00**\nSo...\n\"Who called first?\"").questions.map((q) => q.text), ["\"Who called first?\""]);
+  assert.deepEqual(readScript("### **1 · A · 00:00**\nSo…\nwhat now?").questions.map((q) => q.text), ["So… what now?"]);
+  assert.deepEqual(readScript("### **1 · A · 00:00**\nAnd (Dr. Lee) what did you see?").questions.map((q) => q.text), ["And (Dr. Lee) what did you see?"], "a title after a bracket");
+});
+
+test("the script is at most 50,000 characters, so it fits one shell argument once written as JSON", () => {
+  assert.match(readLoad({ script: `### **1 · A · 00:00**\n${"a".repeat(LOAD_LIMITS.script)}` }).reason, /"script" is too long\. Limit: 50000 characters/);
 });
 
 test("emphasis marks are dropped; a minute past 59 after an hour is no time", () => {
