@@ -983,7 +983,7 @@ function cardPress(kind) {
   else questions.skip();
   renderCard();
 }
-askedBtn.addEventListener("click", () => { if (pressable(askedBtn)) cardPress("asked"); });
+askedBtn.addEventListener("click", (e) => { if (e.detail <= 1 && pressable(askedBtn)) cardPress("asked"); });
 skipBtn.addEventListener("click", () => { if (pressable(skipBtn)) cardPress("skipped"); });
 altsBox.addEventListener("click", (e) => {
   const alt = e.target.closest(".alt");
