@@ -12,6 +12,8 @@ file wins.
 - **Checks:** `kit unit` (all of `test/*.test.mjs`, a few seconds) on every change; it is the one
   entry in `checks` (`test`). GitHub runs the same files in `.github/workflows/checks.yml` on every
   pull request and every push to `dev` or `main` (Node 24, no secrets, no deploy).
+  `kit unit --affected` reads `graphFile` and `importsOf` from `scripts/agents/specs-affected.mjs` (the
+  repo's JavaScript modules, ES imports only: no `require`, on purpose) to pick the tests a change reaches.
   `test/repo-guard.test.mjs` is the public-repo guard: no `.env`, `*.key`, `*.pem` or `.dev.vars*` file, no
   obvious token or private key in any file, and README and LICENSE must exist.
 - **Own check commands** (`scripts/agents/project.d/`, run by `scripts/agents/producer-kit.mjs`):

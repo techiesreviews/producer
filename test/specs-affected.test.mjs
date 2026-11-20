@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REACHES, graphFile, importsOf, suitesFor } from "../scripts/agents/specs-affected.mjs";
@@ -18,15 +19,23 @@ test("graphFile is a regular expression for the JavaScript files the import scan
 test("importsOf lists the module names a file loads, by import, re-export and dynamic import", () => {
   const text = [
     'import { CUE, TOOL } from "./protocol.mjs";',
-    'import * as all from "../src/cues.mjs";',
+    'import * as all from "../src/no-such-module.mjs";',
     'import "./side-effect.mjs";',
     'export { thing } from "./things.mjs";',
     'export * from "./more.mjs";',
     'const late = await import("./late.mjs");',
     'import { readFileSync } from "node:fs";',
   ].join("\n");
-  assert.deepEqual(importsOf(text), ["./protocol.mjs", "../src/cues.mjs", "./side-effect.mjs", "./things.mjs", "./more.mjs", "./late.mjs", "node:fs"]);
+  assert.deepEqual(importsOf(text), ["./protocol.mjs", "../src/no-such-module.mjs", "./side-effect.mjs", "./things.mjs", "./more.mjs", "./late.mjs", "node:fs"]);
   assert.deepEqual(importsOf("export const a = 1; // import from the docs"), []);
+});
+
+test("the scan reads this repo's own test files and finds their imports", () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  for (const file of ["test/cues.test.mjs", "test/fakes.mjs"]) assert.ok(graphFile.test(file), file);
+  assert.ok(importsOf(read("test/cues.test.mjs")).includes("../src/cues.mjs"));
+  assert.ok(importsOf(read("test/fakes.mjs")).includes("../src/relay.mjs"));
+  assert.ok(importsOf(read("test/fakes.mjs")).includes("../src/protocol.mjs"));
 });
 
 test("the page suite is reached by the page, its styles and script, the build and the Worker config", () => {
