@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 
 /** For `kit unit --affected`: the files whose imports it reads (the project's JavaScript modules; docs, styles, the
  * page and fixtures hold none) and how it reads them: the module names a file loads by import, re-export or
- * dynamic import. Older kits fail without both ("Cannot read properties of undefined (reading 'test')"). */
+ * dynamic import (no `require`: the repo is ES modules only). Older kits fail without both ("Cannot read
+ * properties of undefined (reading 'test')"). */
 export const graphFile = /^(src|scripts|test)\/.*\.m?js$/;
 export const importsOf = (text) => [...text.matchAll(/\b(?:import|export)\s+(?:[^;"'`]*?\s+from\s*)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2]);
 
