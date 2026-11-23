@@ -1,14 +1,4 @@
-// Let the agent load the show (card 14, TOOLS-174): the reverse of get_context. The agent's tool load_show pushes the
-// show's name, the guest, the questions, the run order and the notes into the page; the plan step's button "Let my agent load
-// it" asks for it and shows the state. Plain facts in, words out: no page, no storage, no network. What the agent
-// sends is checked here twice, by the Worker before the page hears it and by the page itself, with the same plain
-// reasons. The tool carries the show and nothing else: it has no field for the guest's consent, the microphone or the
-// studio tab, and any field it does not know is refused.
-// TOOLS-345: instead of the questions and parts the agent may send the show's prompter script as it is; the run order
-// and the questions are read out of it (src/script-reader.mjs), each question with its part, and a question may carry
-// its part's number when the agent sends the list itself. The plan box then writes each question under its part.
-// The cue that asks for it is CUE.load of src/protocol.mjs.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+// Both the Worker and page validate load_show with readLoad; the tool never changes consent or audio settings.
 import { readScript } from "./script-reader.mjs";
 
 /** The agent has this long to answer the button (it may ask the host in the chat first); then the button says so. A show that comes later still lands. */
@@ -138,7 +128,6 @@ export function loadButton({ agent, load, locked = false, solo = false }) {
   const label = "Let my agent load it";
   if (load.phase === "loaded") {
     const { plan } = load;
-    // On a solo show the numbered list is the host's own points.
     const counts = [plan.questions.length ? loadPlural(plan.questions.length, solo ? "point" : "question") : "", loadPlural(plan.parts.length, "part")].filter(Boolean);
     const what = !plan.questions.length ? "Show" : solo ? "Points" : "Questions";
     const tip = locked ? "The show has started, so the plan stays as it is." : "Your agent loads the show by itself when it connects. Press to load it again.";

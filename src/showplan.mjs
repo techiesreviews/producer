@@ -1,9 +1,3 @@
-// The show plan: the one owner of the plan step's plan box. A show arrives one of three ways: the host's own text (pasted or
-// typed), the built-in demo show (src/demo.mjs), or the agent's load_show (src/agent-load.mjs). Each way goes through
-// here and leaves the same things in a clear state: the text, the plan as last read clearly, its run order, the
-// agent's notes, who wrote it, the lock at Start, and the exchange with the agent for "Let my agent load it". The page
-// only draws the views. It lives in this page's memory only: never stored, never sent.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
 import { createRunOrder, readPlan } from "./runorder.mjs";
 import { LOAD_WAIT_MS, loadButton, planText, readLoad } from "./agent-load.mjs";
 import { DEMO_SHOW, demoButton } from "./demo.mjs";
@@ -43,7 +37,6 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
     const got = readPlan(text);
     plan.read = got;
     plan.plan = got.ok ? got : null;
-    // A new run order only when the parts change.
     const parts = got.ok ? JSON.stringify(got.parts) : "";
     if (parts !== plan.parts) {
       plan.parts = parts;
@@ -161,8 +154,6 @@ export function createShowPlan({ loadWaitMs = LOAD_WAIT_MS, demo = DEMO_SHOW, re
       }
     },
 
-    // Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
-    // so the plan step's buttons always describe the run order on the producer screen.
     lock(now) {
       plan.run.start(now);
       plan.locked = true;

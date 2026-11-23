@@ -1,12 +1,5 @@
-// The end report (card 12; the solo show's, TOOLS-336): what the report screen shows after End & report, and the Markdown file Save report
-// writes, built from one model so the file holds exactly what the screen shows. The page fills the four numbers, the
-// run order plan against real and the questions not asked itself; the agent's post_report adds the topics and the clip
-// moments (and its word on questions the host did not press). With no agent those two parts are switched off with the
-// reason; while a slow agent works they say so, and the rest is already there. Plain facts in, words out: no page, no
-// storage, no network. The report lives in the page's memory until the tab closes, or in the file the host saves.
-// The show times follow the run order's own rule (clockText of src/runorder.mjs); the agent's report is checked by
-// readReport of src/protocol.mjs, the Worker's own check, before it reaches buildReport.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
+// The screen and Markdown file share one report model. readReport (protocol.mjs) validates the agent's report
+// before it reaches buildReport.
 import { clockText } from "./runorder.mjs";
 
 /** A slow agent gets this long for its report; then its parts switch off with the reason (a later report still fills them). */

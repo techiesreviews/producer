@@ -1,9 +1,3 @@
-// The search box over the whole question list (TOOLS-344): the host types a word and every prepared question that
-// holds it shows at once, in show order, grouped by the part the plan puts it under. A plain text search in this
-// page: no AI, nothing sent, nothing stored. Plain facts in, words out.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
-
-/** The words typed: lower case, split on spaces. */
 export const findWords = (query) => String(query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
 
 /**

@@ -1,7 +1,3 @@
-// The show plan the host pastes by hand, and the run order with its show clock. Plain facts in, words out: no page,
-// no storage, no network. The plan lives only in the page's memory and is gone when the tab closes.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
-//
 // The plan's format, one thing per line (blank lines are fine):
 //   Show: Techies Live        the show's name (optional)
 //   Guest: Jane Doe           the guest's name (optional)
@@ -46,7 +42,6 @@ export function readPlan(text) {
   }
   if (!any) return { ok: false, empty: true };
   if (!plan.parts.length) return { ok: false, noParts: true };
-  // Questions under two parts or more: the plan puts its questions under their parts.
   const grouped = new Set(under.filter((i) => i >= 0)).size >= 2;
   plan.questionParts = under.map((i) => (grouped && i >= 0 ? i : null));
   plan.questionUnder = under.map((i) => (i >= 0 ? i : null));
@@ -60,7 +55,6 @@ const PLAN_HOW = "A part is minutes, then a name (10 Intro); a question is numbe
 /** What the "Paste it myself" button says about the pasted plan: its state, its words and its tooltip. */
 export function planButton(plan, { solo = false } = {}) {
   if (plan.ok) {
-    // On a solo show the numbered list is the host's own points.
     const what = [plan.questions.length ? plural(plan.questions.length, solo ? "point" : "question") : "", plural(plan.parts.length, "part")].filter(Boolean);
     return { state: "ok", text: `${what.join(" · ")} ✓`, tip: "Click to change the plan." };
   }
