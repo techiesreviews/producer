@@ -222,8 +222,9 @@ export async function run({ browser, base, out }) {
     await page.waitForFunction(() => document.querySelector("#relSay").textContent === "2 relevant questions");
     assert.deepEqual([await page.locator("#relList").isVisible(), await rows()], [true, ["# Part 5 · Part 5 topic", "Q33", "Q34"]], `${name}: clearing brings it back`);
     // Every match asked or skipped: the list says so.
-    await press(page.locator("#skipBtn"));
-    await press(page.locator("#skipBtn"));
+    // Separate single clicks; the search suite checks the browser's grouped double-taps.
+    await page.locator("#skipBtn").click();
+    await page.locator("#skipBtn").click();
     await page.waitForFunction(() => document.querySelector("#relSay").textContent === "No other matches right now.");
     assert.deepEqual([await rows(), await page.locator("#relCount").isVisible()], [["No other matches right now."], false], `${name}: none left says so, to a screen reader too`);
     ok(`${name}: the search hides the list while it holds words; none left says so`);
