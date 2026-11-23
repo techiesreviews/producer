@@ -983,8 +983,42 @@ function cardPress(kind) {
   else questions.skip();
   renderCard();
 }
-askedBtn.addEventListener("click", (e) => { if (e.detail <= 1 && pressable(askedBtn)) cardPress("asked"); });
-skipBtn.addEventListener("click", (e) => { if (e.detail <= 1 && pressable(skipBtn)) cardPress("skipped"); });
+function cardKey() {
+  const viewer = viewers.view().card;
+  if (viewer) return `viewer:${viewer.id}`;
+  const main = questions.view().main;
+  return main ? `question:${main.n ?? ""}:${main.text}` : null;
+}
+function bindCardPress(button, kind) {
+  let target, feedback;
+  const clearFeedback = () => {
+    clearTimeout(feedback);
+    if (button.dataset.state === "busy") button.removeAttribute("data-state");
+  };
+  const ignored = () => {
+    clearFeedback();
+    button.dataset.state = "busy";
+    feedback = setTimeout(clearFeedback, 400);
+  };
+  button.addEventListener("pointerdown", () => { clearFeedback(); target = cardKey(); });
+  button.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.repeat) { e.preventDefault(); return; }
+    clearFeedback();
+    target = cardKey();
+  });
+  button.addEventListener("pointercancel", () => { target = undefined; });
+  button.addEventListener("click", (e) => {
+    const expected = target === undefined ? cardKey() : target;
+    target = undefined;
+    // The browser groups a double-click/tap into one gesture; a new single press has its own card.
+    if (e.detail > 1 || expected !== cardKey()) return ignored();
+    clearFeedback();
+    if (expected !== null && pressable(button)) cardPress(kind);
+  });
+}
+bindCardPress(askedBtn, "asked");
+bindCardPress(skipBtn, "skipped");
 altsBox.addEventListener("click", (e) => {
   const alt = e.target.closest(".alt");
   if (!alt) return;

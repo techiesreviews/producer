@@ -153,7 +153,8 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .q-act { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.4rem 1.1rem 1rem; }
 .tb--ink { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 .tb--ink:active { background: color-mix(in oklch, var(--ink) 88%, var(--bg)); }
-@media (hover: hover) and (pointer: fine) { .tb--ink:hover:not([aria-disabled="true"]) { background: color-mix(in oklch, var(--ink) 88%, var(--bg)); } }
+@media (hover: hover) and (pointer: fine) { .tb--ink:hover:not([aria-disabled="true"], [data-state="busy"]) { background: color-mix(in oklch, var(--ink) 88%, var(--bg)); } }
+.tb--ink[data-state="busy"] { background: var(--surface); border-color: var(--line-strong); }
 .alts { display: grid; padding: 0.4rem 0.5rem; border-block-start: 1px solid var(--line); }
 .alts:empty { display: none; }
 .alt {
