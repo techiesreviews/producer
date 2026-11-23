@@ -1,13 +1,3 @@
-// The question card's rules (card 11): what the Next question card shows and what its controls say. The card is never
-// empty while the plan has a question left: the next prepared question shows from the start and stays while the agent
-// is slow or quiet. Until the agent's first answer the next two prepared questions wait below to swap in. The agent's
-// answer (src/agent-link.mjs, up to six suggestions, best first) takes the card once with its first suggestion; the
-// prepared questions it names are the "Relevant now" list (TOOLS-346), the best matches for what was just said, and a new
-// question it adds waits below to swap in. Asked and Skip move on to the best match still open and count a prepared
-// question by its number. The host's own pick (from the search, TOOLS-344, or the Relevant now list) takes the card and
-// stays until Asked or Skip: the agent's answer then only changes the list. All in this page's memory; nothing is stored.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
-
 /** No answer this long after a cue: the thinking light goes back to ready (the card keeps its question). */
 export const THINK_MS = 60_000;
 const ALTS = 2;
@@ -64,7 +54,6 @@ export function createQuestions() {
     alts = alts.slice(0, ALTS);
   }
 
-  // The Relevant now list as shown: the newest answer's matches still open, less the card and the rows to swap in.
   function shown() {
     if (!relevant) return null;
     const below = new Set([main, ...alts].filter(Boolean).map(key));

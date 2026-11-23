@@ -1,19 +1,6 @@
-// The page's side of the agent connection (docs/wayfinder/producer/agent-relay.md). Copy connect message asks this
-// site for an eight-hour token and keeps a socket open to this site's relay; the host's agent then calls the page
-// through it, and the page answers every call. State: "off", "waiting" (message copied, no call yet, or the agent's
-// loop went quiet), "on" (the agent's loop is alive) and "elsewhere" (a newer tab took the relay). Test is the
-// warm-up: one sample cue, timed until the agent's answer comes back.
-// This is the agent's own part of the page: the cue rules (src/cues.mjs) hand it a cue with send(), it gives the agent
-// the show (show()) and the cues, and passes each answer on once (onSuggestions, suggestion()). asking() says whether
-// the newest show cue still waits for the agent's turn (the question card's thinking light). The agent's load_show
-// call goes to load() (card 14): the page checks and takes the show, the link only passes it on and answers. The load
-// cue (the host pressed Let my agent load it) goes alone and is not a question on the card. The agent's post_report
-// goes to report() the same way (card 12), and its post_chat to chat() (TOOLS-336). The chat cue (the host pressed
-// Connect Restream chat) goes alone like the load cue.
-// Nothing is kept: the token, the cues and the answers live in this page's memory only, and a reload starts over.
-// `net` gives the two calls the page makes, both to this site: token() and socket(protocols) (see src/app.js).
-// The tool and cue names, the token's age, the wait's hold and the relay's close codes come from src/protocol.mjs,
-// which the Worker shares. The build inlines this file and drops its import line and each `export`.
+// The page's relay connection; tokens, cues and answers stay in memory. See docs/wayfinder/producer/agent-relay.md.
+// `net` supplies this site's token() and socket(protocols) calls. Load and chat cues travel alone, outside the
+// question suggestions.
 import { CUE, RELAY_CLOSE, relayProtocols, TOKEN_MAX_AGE_MS, TOOL, WAIT_HOLD_MS } from "./protocol.mjs";
 
 /** No call and no held wait for this long: the agent's loop has stopped, so the page waits for it again. */

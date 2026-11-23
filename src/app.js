@@ -48,9 +48,6 @@ function choices(group, onPick = () => {}) {
   });
 }
 
-// The show type (TOOLS-336): a solo show (the default) or a show with a guest. A solo show has no guest step and no
-// guest tab; the list in step 4 is the host's own points and the viewer questions take the guest's place. Fixed once
-// the show clock runs.
 const modeSeg = $("modeSeg");
 let solo = true;
 choices(modeSeg, (v) => {
@@ -60,7 +57,6 @@ choices(modeSeg, (v) => {
   renderMode();
 });
 
-// Step 2 is done from the start: one choice is always picked. The studio's name is on the tab-sound button once shared.
 const streamName = () => document.querySelector('#streamSeg [aria-pressed="true"]').dataset.v;
 // OBS has no studio tab: a tab that was shared stops, and Listen will not ask for it again (src/listening.mjs). The
 // viewer chat is Restream's: another stream ends it.
@@ -71,12 +67,6 @@ choices(document.getElementById("streamSeg"), () => {
   renderChat();
 });
 
-// The AI agent step. Each agent has up to two ways (src/agent-ways.mjs): Copy connect message (paste a message into
-// the agent) and Connect with MCP (run one line in a terminal). Either copies its text with this tab's token; the
-// button then reads Waiting for the agent, then connected (a press disconnects), and the way not used steps aside.
-// While an agent is connected the other agents are switched off; while the page only waits, a new pick or the other
-// way gives the wait up and revokes its token. Test times one sample answer. The page talks
-// only to its own site: the token from /api/agent-token and the relay at /api/relay.
 const agentSeg = document.getElementById("agentSeg");
 choices(agentSeg);
 const agentKey = () => agentSeg.querySelector('[data-v][aria-pressed="true"]').dataset.v;
@@ -94,7 +84,6 @@ const offMark = () => {
 let copyFailed = false;
 let way = null; // "paste" or "mcp": the way the connection under way was started with
 
-// Each agent's note and label on its chip.
 for (const [v, w] of Object.entries(AGENT_WAYS)) {
   const chip = agentSeg.querySelector(`[data-v="${v}"]`);
   if (w.chipTip) chip.dataset.tip = w.chipTip;
@@ -233,10 +222,6 @@ addEventListener("pagehide", () => agent.disconnect());
 // listened to: a tab that was already shared stops, and Listen will not ask for it again (src/listening.mjs).
 choices($("guestSeg"), (answer) => session.answerGuest(answer));
 
-// ---- The plan step (src/showplan.mjs owns it; the format is src/runorder.mjs's). A show arrives pasted by hand,
-// from the demo button, or from the agent's load_show; this part of the page passes each one on and draws what the plan
-// says. It lives in this page's memory only: never stored, never sent. Each change is read at once; the button says what
-// was read, or which line is unclear. ----
 const planBtn = $("planBtn");
 const planBox = $("planBox");
 const planIn = $("planIn");
@@ -279,9 +264,6 @@ planBtn.addEventListener("click", () => {
   if (open) planIn.focus();
 });
 
-// Load demo show (src/demo.mjs): one click puts the built-in made-up show in the plan box, as the host's own text, with
-// its notes. The host can still edit it; the button says Demo loaded until they do. Over a plan of the host's own, the
-// first press only asks (on the button).
 function renderDemo() {
   const said = show.demoView();
   label(demoBtn, said.state, said.off || said.tip, ...(said.off ? [offMark(), " "] : []), said.text);
@@ -298,9 +280,6 @@ demoBtn.addEventListener("click", () => {
   renderLoad();
 });
 
-// Let my agent load it (src/agent-load.mjs): the button asks the agent with a cue; the agent answers with its load_show
-// tool, and the show lands in the plan box above, where the host can still change it. The tool carries the show only:
-// nothing here reads or sets "Guest agreed", the microphone or the tab sharing.
 function renderLoad() {
   const said = show.loadView(agent.view().state, AGENT_WAYS[agentKey()].name, solo);
   label(loadBtn, said.state, said.off || said.tip || null, ...(said.off ? [offMark(), " "] : []), ...(said.state === "busy" ? [dot("think")] : []), said.text);
@@ -328,11 +307,6 @@ loadBtn.addEventListener("click", () => {
 renderDemo();
 renderLoad();
 
-// ---- The viewer chat (TOOLS-336, src/chat.mjs). There is no Restream login on this site: "Connect Restream chat" asks
-// the host's own agent (a read_chat cue) to read the live chat through its own Restream connection, and the agent hands
-// the messages over with post_chat, marking the viewer question that fits what comes next as its pick. On the producer
-// screen the chat sits under the run order; Use puts a question on the card, Answered and Skip mark it. The chat lives
-// in this page's memory only. ----
 const chatBtn = $("chatBtn");
 const chatPanel = $("chat");
 const chatList = $("chatList");
@@ -392,7 +366,6 @@ function chatOff() {
   agent.unsend(CUE.chat);
 }
 
-/** A message's time on the show clock (src/chat.mjs chatStampOf): a catch-up batch keeps each message's own time. */
 function chatStamp(m) {
   const now = Date.now();
   return chatStampOf(m.time, show.run?.view(now), now);
@@ -492,11 +465,7 @@ function renderChat() {
   for (const [id, li] of chatRows) if (!kept.has(id)) { li.remove(); chatRows.delete(id); chatShown.delete(id); }
   for (const m of v.messages) chatRow(m, fresh && !chatRows.has(m.id));
   chatList.hidden = !v.messages.length;
-  // The line under the panel's head: the panel's own chat button, the setup button's twin, through every state
-  // (connect, connecting, waiting for the live stream, connected ✓, try again; a press on a connected chat disconnects
-  // it), because the setup is out of sight during the show; with what the list waits for beside it. With no agent it is
-  // switched off with a reason that never points to the setup. The line is rebuilt only when it changes, so a focused
-  // button keeps the keyboard.
+  // Rebuild only when the state changes, so a focused button keeps the keyboard.
   const link = agent.view().state;
   let state = null;
   let key = "";
@@ -534,8 +503,6 @@ qOnlyBtn.addEventListener("click", () => {
 });
 renderChatBtn();
 
-// ---- The run order and the show clock on the producer screen. Start starts the clock with the first part; Next
-// part ends the current part at that moment and starts the next. Shown only when a plan is loaded. ----
 const runs = $("runs");
 const runList = $("runList");
 const runBtn = $("runBtn");
@@ -613,8 +580,6 @@ runBtn.addEventListener("click", () => {
   phase.clockStarted();
   renderRun();
 });
-// Start: the clock runs, and the plan stays as it is from then on (back in setup the box reads, but takes no edits),
-// so the plan step's button always describes the run order on the producer screen.
 function lockPlan(now) {
   show.lock(now);
   planIn.readOnly = true;
@@ -649,10 +614,6 @@ function renderMode() {
   renderChat();
 }
 
-// ---- Cues to the agent (src/cues.mjs): at a pause once 30 s of new speech was heard, at most once a minute; Suggest
-// now at least 10 s apart; Slow down doubles both (both on the question card below). Each cue carries what was heard
-// since the last one, the run position and the guest's name. The agent's answers go to the question card. Nothing is
-// stored. ----
 const cues = createCues({ send: (item) => agent.send(item), context: cueContext });
 
 /** Where the show is when a cue goes: the current part of the run order, what is next on the card (so the agent can
@@ -685,9 +646,6 @@ function agentShow() {
   };
 }
 
-// ---- The Next question card (src/questions.mjs): the next prepared question from the start and while the agent is
-// slow or quiet; each answer from the agent takes the card once. Suggest now and the light in the corner show what the
-// agent does; Slow down is the cue rules' switch. All in this page's memory. ----
 const questions = createQuestions();
 const qMain = $("qMain");
 const qWhy = $("qWhy");
@@ -795,10 +753,6 @@ function renderCard() {
   renderFind();
 }
 
-// ---- The search box over the whole question list (TOOLS-344, src/find.mjs): the host types a word and the matching
-// prepared questions show at once under the card, grouped by part, in place of the rows to swap in. A click (or Enter for
-// the first match) puts one on the card; Asked, Said or Skip clears the search. A plain text search in this page: no AI,
-// nothing sent, nothing stored. ----
 const pool = $("pool");
 const findIn = $("findIn");
 const findX = $("findX");
@@ -983,7 +937,6 @@ findIn.addEventListener("keydown", (e) => {
     if (found.first) pickFound(found.first);
   }
 });
-// Escape from a result row empties the box too, and the keyboard goes back to it.
 findList.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || !findIn.value) return;
   e.preventDefault();
@@ -1059,12 +1012,6 @@ runsMore.addEventListener("click", () => {
   runsMore.setAttribute("aria-expanded", String(open));
 });
 
-// ---- Sound: two sources, each with its own live level meter: the host's microphone and the guest's shared tab ----
-// The listening session (src/listening.mjs) owns them, the speech engine and the rules between them; this part of the
-// page passes on the presses, draws its view and hands what was heard to the cues and the report. While listening,
-// each source's sound goes to the speech worker under its own label ("host", "guest"); the two are never mixed. The
-// sound is gathered off the page's main thread (src/audio-tap.mjs). The page never plays a sound, and the sound never
-// leaves the computer.
 
 /** A level meter: a bar that fills from the left. */
 function levelMeter(el) {
@@ -1225,8 +1172,6 @@ function showMic(v) {
   }
 }
 
-// The guest's tab: the host picks the studio's browser tab and ticks "Also share tab audio". Only the tab's sound is
-// used, kept apart from the microphone. A browser that cannot do it shows the button switched off with the reason.
 function showTab(v) {
   const ui = session.tabView();
   switchOff(tabBtn, ui.off ? ui.tip : "");
@@ -1235,10 +1180,6 @@ function showTab(v) {
   guestMeter.show(v.tab);
 }
 
-// Speech to text: the model runs in a worker of this site and is downloaded once. The engine choice: the model on this
-// computer (the default) or the browser's own speech service, which is opt-in and warned on its own label. A browser
-// without the service shows the choice switched off with its reason. Both feed the same lines (hear), and nothing is
-// kept past this page.
 function showSpeech(v) {
   const { model } = v;
   speechBtn.hidden = v.engine === "browser";
@@ -1344,7 +1285,6 @@ switchOff(speechBtn, browser.features.wasm.on ? "" : browser.features.wasm.reaso
 speechBtn.addEventListener("click", () => { if (pressed(speechBtn)) session.loadModel(); });
 choices(engineSeg, (engine) => session.pickEngine(engine));
 
-// ---- Open producer screen: needs the guest's answer, the microphone, the tab sound (or its reason) and the speech model ----
 /** The screen of the show's phase: the setup, the producer screen (with Setup, the clock, the listening sign and End &
  * report in the top bar) or the end report. While the show runs the top bar stays on the setup too (TOOLS-348), and the
  * setup's main button goes back to the producer screen. */
@@ -1380,18 +1320,12 @@ $("backBtn").addEventListener("click", () => {
   if (phase.away()) $("setupTitle").focus();
 });
 
-// The listening sign shows while the page listens; Stop ends the microphone at once; Listen starts it again.
 stopBtn.addEventListener("click", () => session.pressListen());
 // A solo show from the start (the show type's first choice): only the host's microphone is listened to.
 session.answerGuest("solo");
 renderMode();
 renderListening(session.view());
 
-// ---- End & report (card 12, src/report.mjs): listening stops, the run order is frozen where it is, the agent is asked
-// for its report (the end_report cue) and the report screen shows at once with what the page knows itself. The agent's
-// topics and clip moments join when its post_report comes; with no agent, or after REPORT_WAIT_MS, they are switched
-// off with the reason. Copy and Save report give the same Markdown the screen shows. The report lives in this page's
-// memory only; the one copy that outlives the tab is the file the host saves. ----
 const endBtn = $("endBtn");
 const copyBtn = $("copyBtn");
 const saveBtn = $("saveBtn");

@@ -1,15 +1,5 @@
-// The viewer chat (TOOLS-336): the Restream chat of a live show on the host's producer screen. There is no Restream
-// app and no Restream login on this site: the host's own agent reads the chat through its own Restream connection
-// and hands the messages over with its post_chat tool, through the same relay as everything else. The host presses
-// "Connect Restream chat" (a read_chat cue to the agent); the agent answers with post_chat: new messages, the viewer
-// question it picks as a good one for what comes next (with a few words why), "waiting" while no stream is live, or
-// "problem" when it cannot read the chat.
-// readChat is the check both sides run (the Worker before the page hears it, and the page again). createChat is the
-// page's model: the button's phase, the messages, the question on the card and the agent's pick. Use puts a question
-// on the card (again takes it off); Answered and Skip mark it (again reopens it). Nothing is stored: it lives in this
-// page's memory and is gone when the tab closes.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines), in one
-// scope with the other page files, so its own helpers carry a "chat" name.
+// readChat validates post_chat on both the Worker and page. Helpers use a chat prefix because the build inlines
+// page modules into one scope.
 import { CUE, TOOL } from "./protocol.mjs";
 import { clockText } from "./runorder.mjs";
 

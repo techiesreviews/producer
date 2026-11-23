@@ -1,14 +1,3 @@
-// The show phase: which screen the show is on. "setup" (the first-run steps), "live" (the producer screen, after Open
-// producer screen) or "ended" (the end report, after End & report). The page reads the phase from here, never from
-// which element is hidden. The moves: open() setup to live; away() live to setup while the show keeps running (the
-// top bar's Setup, TOOLS-348: the clock and the listening go on, and open() comes back); back() live, or the setup
-// while the show runs, to the setup with the show no longer running (an engine failed mid-show); end() live, or the
-// setup while the show runs, to ended, once. The show clock's ticker (a redraw every TICK_MS) runs while the show runs
-// (on the producer screen, or on the setup after Setup) and the clock has started: never before the show opens, never
-// after the end. What End & report says about the agent is
-// decided by endingAgent(), so it is tested without a browser.
-// The inlined page script keeps this file's code as it is (the build drops only `export` and the import lines).
-
 /** The show clock is redrawn this often while it runs on the producer screen. */
 export const TICK_MS = 250;
 
