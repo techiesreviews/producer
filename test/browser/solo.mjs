@@ -394,6 +394,8 @@ export async function run({ browser, base, out }) {
       await page.touchscreen.tap(...centre);
       await page.touchscreen.tap(...centre);
     } else await answer.dblclick();
+    assert.equal(await answer.getAttribute("data-state"), "busy", `${name}: the ignored Answered press shows on the button`);
+    assert.ok(await paintedContrast(answer) >= 4.5, `${name}: the ignored-press state meets text contrast`);
     assert.equal(await page.locator("#nextTitle").textContent(), "Your next point", `${name}: Answered returns to the plan`);
     assert.equal(await page.locator("#qMain").textContent(), "The late call", `${name}: double Answered leaves Point 1 unspoken`);
     assert.match(await page.locator('#chatList [data-act="answered"]').innerText(), /^Answered ✓/, `${name}: only the viewer question is answered`);

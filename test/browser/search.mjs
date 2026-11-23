@@ -292,6 +292,37 @@ export async function run({ browser, base, out }) {
     await context.close();
   }
 
+  // A fresh agent answer can replace the card between the start and release of a press.
+  for (const input of ["pointer", "keyboard"]) {
+    for (const id of ["askedBtn", "skipBtn"]) {
+      const context = await browser.newContext(ownAddress(VIEWS[0]));
+      const page = await context.newPage();
+      await page.addInitScript(standIns);
+      await page.goto(`${base}/`);
+      const plan = ["Show: Card changes during a press", "Guest: Sam Example", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+      await openScreen(page, (button) => button.click(), { plan, guest: true, agent: true });
+      await page.locator("#suggestBtn").click();
+      await page.evaluate(() => window.__relay.call("wait_for_cue", { seq: 0, holdMs: 25000 }));
+      const button = page.locator(`#${id}`);
+      if (input === "keyboard") {
+        await button.focus();
+        await page.keyboard.down("Space");
+      } else {
+        await button.hover();
+        await page.mouse.down();
+      }
+      await page.evaluate(() => window.__relay.call("post_suggestions", { suggestions: [{ question: 2, why: "new answer" }] }));
+      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: the agent replaces the held card`);
+      if (input === "keyboard") await page.keyboard.up("Space");
+      else await page.mouse.up();
+      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: releasing a press on the old card does not complete the replacement`);
+      await button.click();
+      assert.equal(await page.locator("#qMain").textContent(), "The opening", `${input} ${id}: a fresh press completes the replacement`);
+      ok(`${input} ${id}: a changed card rejects the old press and accepts a fresh one`);
+      await context.close();
+    }
+  }
+
   // TOOLS-377: completing the card twice in one gesture must not consume the next point.
   const gestures = [];
   const expectedGestures = [];
@@ -318,6 +349,7 @@ export async function run({ browser, base, out }) {
         await page.touchscreen.tap(...centre);
         await page.touchscreen.tap(...centre);
       } else await button.dblclick();
+      assert.equal(await button.getAttribute("data-state"), "busy", `${name}: the ignored second press shows on ${action.button}`);
       const path = join(out, `search-${name}-${action.button}-double-click.png`);
       await page.screenshot({ path });
       screenshots.push(path);
@@ -341,42 +373,46 @@ export async function run({ browser, base, out }) {
     await page.goto(`${base}/`);
     const plan = ["Show: Separate presses", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
     await openScreen(page, (button) => button.click(), { plan, guest: false });
+    await page.evaluate(() => {
+      window.__presses = [];
+      for (const type of ["pointerdown", "click"]) document.querySelector("#skipBtn").addEventListener(type, (e) => {
+        window.__presses.push({ type, detail: e.detail, card: document.querySelector("#qMain").textContent });
+      }, { capture: true });
+    });
     await page.locator("#skipBtn").click();
     await page.waitForTimeout(100);
     await page.locator("#skipBtn").click();
     assert.equal(await page.locator("#qMain").textContent(), "The closing", `${name}: two separate Skip clicks 100 ms apart skip two points`);
-    ok(`${name}: separate Skip clicks 100 ms apart both count`);
+    const events = await page.evaluate(() => window.__presses);
+    assert.deepEqual(events, [
+      { type: "pointerdown", detail: 0, card: "The opening" }, { type: "click", detail: 1, card: "The opening" },
+      { type: "pointerdown", detail: 0, card: "The first user" }, { type: "click", detail: 1, card: "The first user" },
+    ], `${name}: the browser reports two separate single clicks, each starting on its own card`);
+    assert.equal(await page.locator("#skipBtn").getAttribute("data-state"), null, `${name}: fresh presses are not held busy`);
+    ok(`${name}: separate Skip clicks 100 ms apart both count; event order ${events.map((e) => `${e.type}(${e.detail}) on ${e.card}`).join(", ")}`);
     await context.close();
   }
 
-  // A fresh agent answer can replace the card between the start and release of a press.
-  for (const input of ["pointer", "keyboard"]) {
-    for (const id of ["askedBtn", "skipBtn"]) {
-      const context = await browser.newContext(ownAddress(VIEWS[0]));
-      const page = await context.newPage();
-      await page.addInitScript(standIns);
-      await page.goto(`${base}/`);
-      const plan = ["Show: Card changes during a press", "Guest: Sam Example", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
-      await openScreen(page, (button) => button.click(), { plan, guest: true, agent: true });
-      const button = page.locator(`#${id}`);
-      if (input === "keyboard") {
-        await button.focus();
-        await page.keyboard.down("Space");
-      } else {
-        await button.hover();
-        await page.mouse.down();
-      }
-      await page.evaluate(() => window.__relay.call("post_suggestions", { suggestions: [{ question: 2, why: "new answer" }] }));
-      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: the agent replaces the held card`);
-      if (input === "keyboard") await page.keyboard.up("Space");
-      else await page.mouse.up();
-      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: releasing a press on the old card does not complete the replacement`);
-      await button.click();
-      assert.equal(await page.locator("#qMain").textContent(), "The opening", `${input} ${id}: a fresh press completes the replacement`);
-      ok(`${input} ${id}: a changed card rejects the old press and accepts a fresh one`);
-      await context.close();
-    }
+  for (const view of VIEWS.slice(0, 2)) {
+    const { name, ...options } = view;
+    const context = await browser.newContext(ownAddress(options));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    const plan = ["Show: Held Enter", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+    await openScreen(page, (button) => button.click(), { plan, guest: false });
+    await page.locator("#askedBtn").focus();
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    assert.equal(await page.locator("#qMain").textContent(), "The first user", `${name}: held Enter completes one point`);
+    await page.keyboard.up("Enter");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator("#qMain").textContent(), "The closing", `${name}: a new Enter press completes the next point`);
+    ok(`${name}: held Enter counts once; release and press counts again`);
+    await context.close();
   }
+
 
   return { checks, screenshots };
 }
