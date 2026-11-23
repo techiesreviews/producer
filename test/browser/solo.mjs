@@ -366,6 +366,43 @@ export async function run({ browser, base, out }) {
     ok(`${name}: nothing stored, only this site, no console errors`);
     await context.close();
   }
+  for (const view of VIEWS) {
+    const { name, ...options } = view;
+    const context = await browser.newContext(ownAddress(options));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    const press = (button) => options.hasTouch ? button.tap() : button.click();
+    await press(page.locator("#planBtn"));
+    await page.locator("#planIn").fill(PLAN);
+    await press(page.locator("#connectBtn"));
+    await page.waitForFunction(() => window.__relay.sockets[0]?.readyState === 1);
+    await page.evaluate(() => window.__relay.call("get_context"));
+    await press(page.locator("#chatBtn"));
+    await page.evaluate(() => window.__relay.call("post_chat", { messages: [{ author: "Person 1", platform: "YouTube", text: "A viewer question?", pick: "fits the opening" }] }));
+    await press(page.locator("#micBtn"));
+    await page.waitForFunction(() => document.querySelector("#micBtn").dataset.state === "ok");
+    await press(page.locator("#speechBtn"));
+    await page.waitForFunction(() => document.querySelector("#speechBtn").dataset.state === "ok");
+    await press(page.locator("#goBtn"));
+    await press(page.locator('#alts [data-act="pick"]'));
+    assert.equal(await page.locator("#nextTitle").textContent(), "Viewer question", `${name}: the pick is on the card`);
+    const answer = page.locator("#askedBtn");
+    if (options.hasTouch) {
+      const box = await answer.boundingBox();
+      const centre = [box.x + box.width / 2, box.y + box.height / 2];
+      await page.touchscreen.tap(...centre);
+      await page.touchscreen.tap(...centre);
+    } else await answer.dblclick();
+    assert.equal(await page.locator("#nextTitle").textContent(), "Your next point", `${name}: Answered returns to the plan`);
+    assert.equal(await page.locator("#qMain").textContent(), "The late call", `${name}: double Answered leaves Point 1 unspoken`);
+    assert.match(await page.locator('#chatList [data-act="answered"]').innerText(), /^Answered ✓/, `${name}: only the viewer question is answered`);
+    await press(page.locator("#endBtn"));
+    assert.equal((await page.locator("#reportStats .stat").nth(1).innerText()).replace(/\s+/g, " "), "0 of 3 points said", `${name}: double Answered says no plan points`);
+    ok(`${name}: double-click or double-tap Answered marks only the viewer question; report says 0 of 3 points said`);
+    await context.close();
+  }
+
   // A long chat (about 2,000 questions): a press updates only the row it changed; every other row stays as it is.
   {
     const context = await browser.newContext(ownAddress(VIEWS[0]));
