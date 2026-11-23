@@ -223,7 +223,6 @@ export async function run({ browser, base, out }) {
     assert.deepEqual([await page.locator("#relList").isVisible(), await rows()], [true, ["# Part 5 · Part 5 topic", "Q33", "Q34"]], `${name}: clearing brings it back`);
     // Every match asked or skipped: the list says so.
     await press(page.locator("#skipBtn"));
-    await page.waitForTimeout(700); // Skip the next card with a separate gesture.
     await press(page.locator("#skipBtn"));
     await page.waitForFunction(() => document.querySelector("#relSay").textContent === "No other matches right now.");
     assert.deepEqual([await rows(), await page.locator("#relCount").isVisible()], [["No other matches right now."], false], `${name}: none left says so, to a screen reader too`);

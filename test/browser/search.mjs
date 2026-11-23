@@ -333,5 +333,50 @@ export async function run({ browser, base, out }) {
   assert.deepEqual(gestures, expectedGestures, "Said and Skip double-clicks and double-taps finish only the picked point and keep the report accurate");
   ok("desktop and phone, light and dark: Said and Skip double-clicks and double-taps finish only the picked point; the report stays accurate");
 
+  for (const view of VIEWS) {
+    const { name, ...options } = view;
+    const context = await browser.newContext(ownAddress(options));
+    const page = await context.newPage();
+    await page.addInitScript(standIns);
+    await page.goto(`${base}/`);
+    const plan = ["Show: Separate presses", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+    await openScreen(page, (button) => button.click(), { plan, guest: false });
+    await page.locator("#skipBtn").click();
+    await page.waitForTimeout(100);
+    await page.locator("#skipBtn").click();
+    assert.equal(await page.locator("#qMain").textContent(), "The closing", `${name}: two separate Skip clicks 100 ms apart skip two points`);
+    ok(`${name}: separate Skip clicks 100 ms apart both count`);
+    await context.close();
+  }
+
+  // A fresh agent answer can replace the card between the start and release of a press.
+  for (const input of ["pointer", "keyboard"]) {
+    for (const id of ["askedBtn", "skipBtn"]) {
+      const context = await browser.newContext(ownAddress(VIEWS[0]));
+      const page = await context.newPage();
+      await page.addInitScript(standIns);
+      await page.goto(`${base}/`);
+      const plan = ["Show: Card changes during a press", "Guest: Sam Example", "3 Intro", "1. The opening", "2. The first user", "3. The closing"].join("\n");
+      await openScreen(page, (button) => button.click(), { plan, guest: true, agent: true });
+      const button = page.locator(`#${id}`);
+      if (input === "keyboard") {
+        await button.focus();
+        await page.keyboard.down("Space");
+      } else {
+        await button.hover();
+        await page.mouse.down();
+      }
+      await page.evaluate(() => window.__relay.call("post_suggestions", { suggestions: [{ question: 2, why: "new answer" }] }));
+      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: the agent replaces the held card`);
+      if (input === "keyboard") await page.keyboard.up("Space");
+      else await page.mouse.up();
+      assert.equal(await page.locator("#qMain").textContent(), "The first user", `${input} ${id}: releasing a press on the old card does not complete the replacement`);
+      await button.click();
+      assert.equal(await page.locator("#qMain").textContent(), "The opening", `${input} ${id}: a fresh press completes the replacement`);
+      ok(`${input} ${id}: a changed card rejects the old press and accepts a fresh one`);
+      await context.close();
+    }
+  }
+
   return { checks, screenshots };
 }
