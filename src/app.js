@@ -246,7 +246,8 @@ renderAgent(agent.view());
 // clipboard the text shows, selected, to copy by hand. With the Prompter switch on, its token is fetched alongside
 // (the line or message works without it when the Prompter cannot be reached or is slow: PROMPTER_TOKEN_MS), and its
 // tab opens once the copy is done: opening it earlier would take the focus the clipboard write needs. When the copy
-// failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch. Only the newest
+// failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch; a press that
+// then copies takes that box away again. Only the newest
 // click copies and opens: an older one still on its way, or one whose connection ended meanwhile (Disconnect, another
 // pick), leaves the clipboard, the message box and the tabs alone.
 async function copyWay(kind) {
@@ -264,6 +265,8 @@ async function copyWay(kind) {
   const text = tokens.then(([r, ptoken]) => (r && round === copyRound ? make(r.token, ptoken) : null));
   const copied = await copyText(text, round);
   if (round !== copyRound) return;
+  // Pressed again after a copy that failed, and this one worked: the old message to copy by hand goes.
+  if (copied && copyFailed) { copyFailed = false; messageBox.hidden = true; renderAgent(agent.view()); }
   if (withPrompter) { if (copied) prompter.open(); else prompter.hold(); }
 }
 
