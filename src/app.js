@@ -78,7 +78,10 @@ const messageBox = document.getElementById("agentMessage");
 const prompterSw = document.getElementById("prompterSw");
 const prompterSwTrack = prompterSw.querySelector(".switch__track");
 const PROMPTER_SW = "Show questions on my Prompter too";
-const dot =(kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
+// The switch's own on/off (TOOLS-464): kept here, because while the tab waits for a click (blocked or held) the control
+// is a plain "Open my Prompter" button with no checked state.
+let prompterOn = prompterSw.getAttribute("aria-checked") === "true";
+const dot = (kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
 const tag = (text) => Object.assign(document.createElement("span"), { className: "tag", textContent: text });
 const offMark = () => {
   const mark = Object.assign(document.createElement("span"), { className: "off-mark", textContent: "i" });
@@ -128,14 +131,16 @@ function renderAgent({ state, failed, test, passed }) {
   const failure = (kind) => (failed && way === kind ? "No connection · try again" : null);
   // TOOLS-464: with the switch on, the connect click sets up the Prompter too; once the Prompter tab says its agent is
   // linked, the button says both, and its click disconnects both.
-  const withPrompter = prompterSw.getAttribute("aria-checked") === "true";
+  const withPrompter = prompterOn;
   const both = state === "on" && prompter.view().state === "on";
+  // A press disconnects the Prompter's tab too while it is open: the tip says so before it is linked there.
+  const alsoPrompter = ["opened", "waiting", "elsewhere"].includes(prompter.view().state) ? " Your Prompter disconnects too." : "";
   for (const [kind, button] of [["paste", connectBtn], ["mcp", mcpBtn]]) {
     const mine = state !== "off" && kind === active; // this way carries the connection
     button.hidden = connected && !mine;
     button.removeAttribute("aria-disabled");
     if (mine && both) label(button, "ok", kind === "mcp" ? mcp.both.onTip : "Click to disconnect both.", dot("ok"), "Connected: Producer + Prompter");
-    else if (mine && state === "on") label(button, "ok", kind === "mcp" ? mcp.onTip : "Click to disconnect.", dot("ok"), `${name} connected`);
+    else if (mine && state === "on") label(button, "ok", `${kind === "mcp" ? mcp.onTip : "Click to disconnect."}${alsoPrompter}`, dot("ok"), `${name} connected`);
     else if (mine && state === "waiting") {
       const tip = kind === "mcp"
         ? (copyFailed ? "Copy the line below, then run it in a terminal." : "Line copied. Run it in a terminal.")
@@ -170,17 +175,24 @@ const PROMPTER_TIPS = {
   elsewhere: "Your Prompter is linked in another of its tabs.",
   failed: "Your Prompter could not be reached. Your questions show here only.",
   blocked: "Your browser blocked the Prompter tab. Click to open it.",
+  held: "Copy the message first, then click to open your Prompter.",
   ended: "Your Prompter tab disconnected. Your questions show here only.",
 };
+/** The tab waits for a click on the control (the browser blocked it, or the copy failed). */
+const prompterAsks = () => ["blocked", "held"].includes(prompter.view().state);
 function renderPrompterSw(agentState, on) {
   const { state } = prompter.view();
-  const locked = agentState !== "off" && state !== "blocked";
+  const asks = prompterAsks();
+  const locked = agentState !== "off" && !asks;
   if (locked) prompterSw.setAttribute("aria-disabled", "true"); else prompterSw.removeAttribute("aria-disabled");
+  // While it asks, it is a plain button that opens the tab, not a switch that is on.
+  prompterSw.setAttribute("role", asks ? "button" : "switch");
+  if (asks) prompterSw.removeAttribute("aria-checked"); else prompterSw.setAttribute("aria-checked", String(on));
   const idle = on ? "On: connecting also opens your Prompter, linked, and your agent shows its questions there." : "Off: your agent shows its questions here only.";
-  const tip = PROMPTER_TIPS[state] ?? (locked ? `${idle} Disconnect first to change it.` : idle);
-  const busy = state === "fetching" || state === "opened" || state === "waiting" || state === "blocked";
+  const tip = `${PROMPTER_TIPS[state] ?? idle}${locked ? " Disconnect first to change it." : ""}`;
+  const busy = state === "fetching" || state === "opened" || state === "waiting";
   const mark = busy ? [" ", dot("think")] : state === "on" ? [" ", dot("ok")] : [];
-  label(prompterSw, null, tip, prompterSwTrack, state === "blocked" ? "Open my Prompter" : PROMPTER_SW, ...mark);
+  label(prompterSw, null, tip, prompterSwTrack, asks ? "Open my Prompter" : PROMPTER_SW, ...mark);
 }
 
 // The Prompter half of the connection (TOOLS-464, src/prompter-link.mjs). Its own token route answers this site only.
@@ -194,9 +206,9 @@ const prompter = createPrompterLink({
 // Only the tab it opened, at the Prompter's address, is heard (prompter.heard checks both).
 addEventListener("message", (e) => prompter.heard(e));
 prompterSw.addEventListener("click", () => {
-  if (prompter.view().state === "blocked") { prompter.open(); return; }
+  if (prompterAsks()) { prompter.open(); return; }
   if (prompterSw.getAttribute("aria-disabled") === "true") return;
-  prompterSw.setAttribute("aria-checked", String(prompterSw.getAttribute("aria-checked") !== "true"));
+  prompterOn = !prompterOn;
   renderAgent(agent.view());
 });
 
@@ -206,7 +218,7 @@ const agent = createAgentLink({
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
   // A connection that ends (Disconnect, a failed token, another pick) ends the Prompter's half too: its tab is told.
-  onChange: (view) => { if (view.state === "off" && prompter.view().state !== "off") prompter.disconnect(); show.agentLink(view.state);viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
+  onChange: (view) => { if (view.state === "off" && prompter.view().state !== "off") prompter.disconnect(); show.agentLink(view.state); viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
   report: reportFromAgent,
@@ -229,42 +241,43 @@ renderAgent(agent.view());
 
 // The clipboard write starts inside the click (Safari asks for that); the text follows once the token is in. Without a
 // clipboard the text shows, selected, to copy by hand. With the Prompter switch on, its token is fetched alongside
-// (the line or message works without it when the Prompter cannot be reached), and its tab opens once the copy is done:
-// opening it earlier would take the focus the clipboard write needs.
+// (the line or message works without it when the Prompter cannot be reached or is slow: PROMPTER_TOKEN_MS), and its
+// tab opens once the copy is done: opening it earlier would take the focus the clipboard write needs. When the copy
+// failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch.
 async function copyWay(kind) {
   way = kind;
   const key = agentKey();
-  const withPrompter = prompterSw.getAttribute("aria-checked") === "true";
+  const withPrompter = prompterOn;
   const make = (token, ptoken) => {
     const linked = ptoken ? { origin: PROMPTER_ORIGIN, token: ptoken } : null;
     return kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token, prompter: linked }) : connectMessage({ origin: location.origin, token, agent: key, prompter: linked });
   };
   const text = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]).then(([r, ptoken]) => (r ? make(r.token, ptoken) : null));
-  try {
-    await copyText(text);
-  } finally {
-    if (withPrompter) prompter.open();
-  }
+  const copied = await copyText(text);
+  if (withPrompter) { if (copied) prompter.open(); else prompter.hold(); }
 }
 
+/** Copies the text once it is in; true when it reached the clipboard. */
 async function copyText(text) {
   try {
     if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((t) => { if (!t) throw new Error("no message"); return new Blob([t], { type: "text/plain" }); }) })]);
     } else {
       const t = await text;
-      if (!t) return;
+      if (!t) return false;
       await navigator.clipboard.writeText(t);
     }
+    return true;
   } catch {
     const t = await text;
-    if (!t) return;
+    if (!t) return false;
     copyFailed = true;
     messageBox.value = t;
     messageBox.hidden = false;
     renderAgent(agent.view());
     messageBox.focus();
     messageBox.select();
+    return false;
   }
 }
 

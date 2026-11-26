@@ -6,7 +6,7 @@ A live host's private "producer" screen: a static page plus one Cloudflare Worke
 
 - Agent Kit (the shared kit, `scripts/agents/kit`) for all coding: `kit doctor` first, then the commands that fit the work. Delegated work must carry this requirement.
 - This repo is public. Never commit a key, token, password, private note or the Restream app secret (it lives only in Cloudflare). `test/repo-guard.test.mjs` checks the obvious cases; it does not replace care.
-- Nothing is stored: no server-side storage of talk, chat or questions, and no logging of request bodies. `test/deploy-config.test.mjs`, `test/build.test.mjs` and `test/worker.test.mjs` guard this and the page policy: never weaken them.
+- Nothing is stored: no server-side storage of talk, chat or questions, and no logging of request bodies. `test/deploy-config.test.mjs`, `test/build.test.mjs` and `test/worker.test.mjs` guard this and the page policy: never weaken them. The one outside address the page may call is the Prompter's exact `https://prompter.techies.tools` in `connect-src` (its token route, for "Show questions on my Prompter too"; TOOLS-464, option a, Lex's choice); nothing wider, no wildcard, and `test/build.test.mjs` pins it.
 - Build only what is asked. No feature and no screen until the mock-up has Lex's approval.
 - Cloudflare free plan only. Do not deploy or change Cloudflare resources unless the lead says so. `wrangler.jsonc` and `.github/workflows/deploy-preview.yml` are written, not run: the Cloudflare token waits for TOOLS-144.
 - Layout and checks: README, section "How it is built".

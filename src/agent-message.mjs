@@ -37,7 +37,7 @@ function prompterPart({ origin, token }) {
   const command = `curl -sS -m 20 -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -d '${JSON.stringify(call)}' '${origin}/mcp'`;
   return {
     block: `\n\nMy Prompter is linked too. This one line shows your cues there (rule 10):\n\n\`\`\`bash\n${command}\n\`\`\``,
-    rule: `10. After each cue, in the same turn, run the Prompter line with your cues, changing only "items": 1 to 3, the most important first, each a "kind" and a "text" (plus "number" for a prepared question): ${PROMPTER_KINDS}. Talking points and steer lines only from the show plan or what was said, never invented (on a solo show, no question). It prints the question numbers I used there: add them to your next wait, e.g. "asked":[2]. At End report, run it first with "name":"clear_suggestions" and "arguments":{}, and put those numbers in the report's "asked".`,
+    rule: `10. After each cue, in the same turn, run the Prompter line with your cues, changing only "items": 1 to 3, the most important first, each a "kind" and a "text" (plus "number" for a prepared question): ${PROMPTER_KINDS}. In the items, write an apostrophe as \\u0027. Talking points and steer lines only from the show plan or what was said, never invented (on a solo show, no question). It prints the question numbers I used there: add them to your next wait, e.g. "asked":[2]. At End report, run it first with "name":"clear_suggestions" and "arguments":{}, and put those numbers in the report's "asked". If the Prompter line prints an error, stop using it, tell me once, and keep going with the producer.`,
   };
 }
 

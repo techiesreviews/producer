@@ -17,18 +17,28 @@ export function prompterToken(value) {
   return typeof value === "string" && /^tp1-[0-9a-z]{4,12}-[A-Za-z0-9_-]{20,64}$/.test(value) ? value : null;
 }
 
+/**
+ * How long the connect click waits for the Prompter's token: past it, the producer's own line or message goes without
+ * the Prompter (a Prompter that hangs must not hold it back, nor use up the click's time for the copy and the new tab).
+ */
+export const PROMPTER_TOKEN_MS = 3000;
+
 /** The link states the Prompter tab reports. Its "off" after the link began reads "ended" here. */
 const TAB_STATES = ["waiting", "on", "elsewhere", "off"];
 /** The states of a tab that is open and holds this round's token. */
 const LIVE = ["opened", "waiting", "on", "elsewhere"];
+/** The states with a token in hand that no tab holds yet: the next click uses it again (the Prompter has no route to revoke one). */
+const UNOPENED = ["ready", "blocked", "held"];
 
 /**
  * The Prompter half of one connection. `net.token()` asks the Prompter's token route (its HTTP Response), `net.open(url,
  * name)` opens the tab (window.open: a window, or null when the browser blocks it); `onChange(view)` after each change.
  * States: off, fetching (the token is on its way), ready (token in hand, no tab yet), failed (no token), blocked (the
- * browser stopped the new tab; open() again from a fresh click), opened (the tab is loading), then the tab's own:
- * waiting (for the agent), on (the agent is linked there), elsewhere (a newer Prompter tab took it), ended.
- * Use: `prepare()` in the connect click (resolves to the token or null), `open()` once the click's copy is done,
+ * browser stopped the new tab; open() again from a fresh click), held (the copy failed: the tab waits for a click on the
+ * switch), opened (the tab is loading), then the tab's own: waiting (for the agent), on (the agent is linked there),
+ * elsewhere (a newer Prompter tab took it), ended.
+ * Use: `prepare()` in the connect click (resolves to the token or null, null too after PROMPTER_TOKEN_MS), `open()` once
+ * the click's copy is done (`hold()` when it failed),
  * `heard(event)` for each window message, `disconnect()` for Disconnect, leaving the page or a failed connection.
  */
 export function createPrompterLink({ net, onChange }) {
@@ -39,16 +49,23 @@ export function createPrompterLink({ net, onChange }) {
   async function prepare() {
     // A second click while the tab is open and linking: it already holds this token, so both stay.
     if (link.token && link.tab && !link.tab.closed && LIVE.includes(link.state)) return link.token;
+    // A token no tab took yet (the tab was blocked, held back or not opened): the same one again, never a second left working.
+    if (link.token && !link.tab && UNOPENED.includes(link.state)) { set("ready"); return link.token; }
     const round = ++link.round;
     link.token = null;
     link.tab = null;
     link.sent = false;
     set("fetching");
     let token = null;
+    let timer;
     try {
-      const res = await net.token();
-      if (res.ok) token = prompterToken((await res.json())?.token);
-    } catch { /* the network or the Prompter is down: failed below */ }
+      const ask = (async () => {
+        const res = await net.token();
+        return res.ok ? prompterToken((await res.json())?.token) : null;
+      })();
+      const late = new Promise((resolve) => { timer = setTimeout(() => resolve(null), PROMPTER_TOKEN_MS); });
+      token = await Promise.race([ask, late]);
+    } catch { /* the network or the Prompter is down: failed below */ } finally { clearTimeout(timer); }
     if (round !== link.round) return null; // Disconnect came first: the late token is dropped
     link.token = token;
     set(token ? "ready" : "failed");
@@ -64,6 +81,12 @@ export function createPrompterLink({ net, onChange }) {
     link.tab = tab;
     link.sent = false;
     set("opened");
+  }
+
+  // The copy failed and the message box holds the text to copy by hand: a new tab now would take its focus, so the
+  // switch opens it from a click instead.
+  function hold() {
+    if (link.token && !link.tab) set("held");
   }
 
   function heard(e) {
@@ -88,5 +111,5 @@ export function createPrompterLink({ net, onChange }) {
     set("off");
   }
 
-  return { prepare, open, heard, disconnect, view };
+  return { prepare, open, hold, heard, disconnect, view };
 }

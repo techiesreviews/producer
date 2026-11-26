@@ -131,8 +131,12 @@ test("with the Prompter: the producer's block is unchanged, and a second one-lin
   assert.match(both, /"asked":\[2\]/);
   assert.match(both, /clear_suggestions/);
   assert.doesNotMatch(both, /If you are also connected to my Prompter/, "it is linked: no if");
+  // The items go inside the line's single quotes: an apostrophe ("the guest's van story") would end them early.
+  assert.match(both.match(/^10\. .*$/m)[0], /In the items, write an apostrophe as \\u0027\./);
+  // The tab's Disconnect or a closed tab makes the Prompter line fail: that must never stop the producer (rule 7).
+  assert.match(both.match(/^10\. .*$/m)[0], /If the Prompter line prints an error, stop using it, tell me once, and keep going with the producer\./);
   assert.doesNotMatch(both, /\bsleep\s+\d|nohup|&\s*$/m);
-  assert.ok(both.length < 4300, `${both.length} characters`);
+  assert.ok(both.length < 4450, `${both.length} characters`); // rule 10 grew by the apostrophe and the failed-line sentences
   assert.equal(connectMessage({ origin: LIVE, token: FAKE, prompter: null }), plain, "switch off: the message is the producer's alone");
 });
 
@@ -149,17 +153,26 @@ test("the Prompter's command, run as written in bash, sends that call with the t
   try {
     const second = blocks(connectMessage({ origin: LIVE, token: FAKE, prompter: PROMPTER }))[1];
     const local = second.replace(`${PROMPTER.origin}/mcp`, `http://127.0.0.1:${server.address().port}/mcp`);
-    const out = await new Promise((resolve) => {
-      const child = spawn("bash", ["-c", local], { env: { PATH: process.env.PATH } });
+    const run = (line) => new Promise((resolve) => {
+      const child = spawn("bash", ["-c", line], { env: { PATH: process.env.PATH } });
       let stdout = "";
       child.stdout.on("data", (d) => { stdout += d; });
       child.on("close", (code) => resolve({ code, stdout }));
     });
+    const out = await run(local);
     assert.equal(out.code, 0);
     assert.match(out.stdout, /Shown/, "the answer prints");
     assert.equal(seen.length, 1);
     assert.deepEqual({ ...seen[0], body: undefined }, { method: "POST", url: "/mcp", auth: `Bearer ${PROMPTER.token}`, type: "application/json", body: undefined });
     assert.equal(seen[0].body.params.name, "push_suggestions");
+    // Rule 10's apostrophe rule, followed: a talking point with an apostrophe stays one quoted body and parses.
+    const items = [{ kind: "point", text: "The guest\\u0027s van story" }];
+    const changed = local.replace(/"items":\[.*?\]\}\}\}'/, `"items":${JSON.stringify(items).replace(/\\\\/g, "\\")}}}}'`);
+    assert.notEqual(changed, local, "only the items changed");
+    const again = await run(changed);
+    assert.equal(again.code, 0);
+    assert.equal(seen.length, 2);
+    assert.deepEqual(seen[1].body.params.arguments.items, [{ kind: "point", text: "The guest's van story" }]);
   } finally {
     await new Promise((r) => { server.closeAllConnections(); server.close(r); });
   }

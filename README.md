@@ -4,7 +4,7 @@ A private screen for a live host: a helper beside a live stream or podcast that 
 
 - Public and free to use. Each host brings their own setup (their own stream, their own AI assistant).
 - It runs in the browser, with one small Cloudflare Worker behind it. No accounts.
-- Nothing is stored. Not the talk, not the chat, not the questions. By default nothing is sent either; one warned opt-in sends the microphone's sound to the browser maker (see Privacy).
+- Nothing is stored. Not the talk, not the chat, not the questions. Nothing is sent to anyone but the host's own agent (and, with "Show questions on my Prompter too" on, the host's own Prompter tab); one warned opt-in sends the microphone's sound to the browser maker (see Privacy).
 - It is a private screen for the host. It is never shown on stream.
 - The host's own AI assistant connects through MCP, the same way the Prompter's "Wait for MCP" works.
 - Sister project: the [Prompter](https://github.com/techiesreviews/prompter).
@@ -22,6 +22,7 @@ A private screen for a live host: a helper beside a live stream or podcast that 
 - Without headphones the host's microphone also picks up the guest from the speakers, and then the guest's voice goes to the company too. The choice's tooltip says so for a guest who said yes or no. Wear headphones, or ask the guest first.
 - Picking "On this computer" again, or pressing Stop, ends it at once. Firefox has no such service, so there the choice is switched off too.
 - What was heard stays in the page's memory as text, and is gone when the tab closes. While an agent is connected, the page hands it the text heard since the last cue, at a pause or when asked (see [the cues](docs/wayfinder/producer/cues.md)); it goes through this site's relay to the host's own agent and is not kept on the way.
+- "Show questions on my Prompter too" is on by default. Then the connect click asks the [Prompter](https://prompter.techies.tools) for its own short-lived token (the one outside address this page calls), hands it to the host's agent in the copied line or message and to the Prompter tab it opens by a window message, never in an address. The agent's suggestions then go through the Prompter's own relay to the host's Prompter tab; nothing is stored there either, and the Prompter drops the token after 8 hours. Turning the switch off before connecting keeps everything here.
 - The browser keeps the speech model (Moonshine base and its engine, about 81 MB) in this site's storage, so it downloads once from this site; the engine's small scripts (about 0.7 MB) load like any page script. Clearing the site's data in the browser removes it. Nothing else is stored in the browser.
 - The show plan (show name, guest, questions, run order) stays in the page's memory only. It is never stored; it goes only to the host's connected agent when the agent asks for it (and the guest's name and the current part with each cue). It is gone when the tab closes.
 - The viewer chat (when the host connects it) comes from the host's own agent, which reads it through its own Restream connection, so the chat also passes through the agent and its company. On the page it lives in memory only, like the plan, and is gone when the tab closes; a saved report keeps the viewer questions.
