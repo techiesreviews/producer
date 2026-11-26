@@ -216,6 +216,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 .switch[aria-checked="true"] { color: var(--text); }
 .switch[aria-checked="true"] .switch__track { background: var(--accent); }
 .switch[aria-checked="true"] .switch__track::after { translate: 0.8rem 0; }
+/* A switch with a long name (the Prompter's, TOOLS-464) may wrap on a narrow phone instead of pushing the page wider. */
+.switch--wrap { flex: 0 1 auto; min-inline-size: 0; white-space: normal; text-align: start; }
+.switch--wrap .switch__track { flex: none; }
 @media (pointer: coarse) { .switch { min-block-size: 2.75rem; } }
 @media (prefers-reduced-motion: reduce) { .switch__track, .switch__track::after { transition: none; } }
 

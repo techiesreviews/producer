@@ -102,6 +102,7 @@ export async function run({ browser, base }) {
   // The plan, then the agent: Copy connect message (the clipboard may refuse: the message then shows below).
   await page.locator("#planBtn").click();
   await page.locator("#planIn").fill(PLAN);
+  await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
   await page.locator("#connectBtn").click();
   await page.waitForFunction(() => window.__relay.sockets.length === 1);
   const before = (await page.evaluate(() => window.__relay.call("get_context"))).result;

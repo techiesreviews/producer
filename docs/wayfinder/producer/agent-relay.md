@@ -77,6 +77,7 @@ while o=$(curl -sS -m 40 -H "Authorization: Bearer $T" -d "$B" "$U/$P") && [ "$o
 - Test is the warm-up (TOOLS-154: the first answer after pasting took 7 to 25 s): it hands one made-up host and guest exchange to the waiting agent and shows the seconds until the answer arrives, with the answer in its tooltip. 90 seconds without an answer reads "no answer".
 - Disconnect revokes the token, so the agent's next call (and the wait in progress) gets 401. A reload forgets the token (nothing is stored): the host copies a new message.
 - `test/connect-message.test.mjs` runs the copied block in bash against the Worker: connect, Test, answer, Disconnect.
+- With the Prompter switch on (TOOLS-464, [the ways](agent-ways.md)), the message adds a second block: one curl line with the Prompter's token that calls its `push_suggestions` with 1 to 3 items (`kind`: question with its number, next, steer, point or audience). Rule 10 says to run it after each cue, talking points only from the show plan or what was said, to add the question numbers it prints to the next wait as `asked`, and to clear the Prompter at End report. Without the Prompter, rule 10 is the old one.
 
 ## The other ways (card 09)
 

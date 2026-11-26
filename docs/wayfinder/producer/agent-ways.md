@@ -43,6 +43,15 @@ Codex:       export PRODUCER_TOKEN='<token>'; codex mcp remove producer >/dev/nu
   - A later chat without the variable: Claude Code warns about a missing variable in every chat when the header has no default, so the header carries `:-ended` (the entry then only gets a refusal). Codex starts normally; its producer server just fails to authorise.
   - `test/agent-ways.test.mjs` runs both lines in bash with stand-in programs and checks every argument.
 
+## The Prompter too (TOOLS-464)
+
+With "Show questions on my Prompter too" on (the default), the connect click also asks the Prompter's own `/api/agent-token` for a Prompter token (the Prompter answers CORS for this site's two addresses only; the page's CSP `connect-src` names `https://prompter.techies.tools` and nothing wider) and, once the copy is done, opens a new Prompter tab at `https://prompter.techies.tools/#producer`. The token never travels in an address: the tab says ready to the page that opened it, and only that tab, at the Prompter's address, gets the token by `postMessage`, once (`src/prompter-link.mjs`; the message names match the Prompter's `PRODUCER_MESSAGES`). The tab tells its link state back (never the token); Disconnect here, or leaving the page, tells it to disconnect too. Nothing is stored.
+
+- Connect with MCP: the line adds a second entry, `producer-prompter` (its own name, so a `prompter` entry the host made earlier is never removed), with the Prompter's token in its own export (`PROMPTER_TOKEN`), and opens one chat that may use both.
+- Copy connect message: the message gets a second block, one curl line that sends the cues to the Prompter's `push_suggestions`, and rule 10 says how to use it (see [the relay](agent-relay.md)).
+- When the Prompter cannot be reached (it is down, or this is a preview address the Prompter does not answer), the line or message works without it and the switch's tooltip says the questions show here only. When the browser blocks the new tab, the switch reads "Open my Prompter".
+- Always a new tab: a Prompter tab reused by name would only change its hash and never say ready.
+
 ## Who removes the entry
 
 The host. The entry stays in the agent's settings until it is removed (`claude mcp remove producer`, run in the same folder the line was run in, because Claude Code's entry is made for that folder; `codex mcp remove producer`). The token ends after eight hours or at Disconnect, so an old entry is useless, but not tidy. The tooltip of Connect with MCP says so while idle and while connected. T3 Code has no entry to remove.

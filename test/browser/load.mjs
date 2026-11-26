@@ -125,6 +125,7 @@ export async function run({ browser, base, out }) {
     ok(`${name}: switched off with its reason until an agent is connected`);
 
     // The agent connects: the button is ready.
+    await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     await page.evaluate(() => window.__relay.call("get_context"));

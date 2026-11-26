@@ -24,8 +24,26 @@ export const AGENT_LOOP = `while o=$(curl -sS -m 40 -H "Authorization: Bearer $T
 /** B for a tool: its arguments as JSON ({} for none), as the agent puts it in B. */
 export const agentBody = (args = {}) => JSON.stringify(args);
 
+/** The kinds of cue the Prompter's push_suggestions takes (its SUGGESTION_KINDS), as rule 10 explains them. */
+const PROMPTER_KINDS = `"question" (a question to ask), "next" (the next prepared question), "steer" (a question that steers back to the plan), "point" (a talking point) or "audience" (a viewer question)`;
+
+/**
+ * TOOLS-464: with "Show questions on my Prompter too" on, the message also carries the Prompter's address and token
+ * (`prompter`: { origin, token }), so one paste sets up both (T3 Code has no MCP line). The Prompter's /mcp takes one
+ * JSON-RPC tools/call per POST with no session, so the agent gets one ready-made curl line and changes only the items.
+ */
+function prompterPart({ origin, token }) {
+  const call = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "push_suggestions", arguments: { items: [{ kind: "question", text: "What did the first month cost?", number: 2 }, { kind: "point", text: "The van story shows the real cost" }] } } };
+  const command = `curl -sS -m 20 -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' -d '${JSON.stringify(call)}' '${origin}/mcp'`;
+  return {
+    block: `\n\nMy Prompter is linked too. This one line shows your cues there (rule 10):\n\n\`\`\`bash\n${command}\n\`\`\``,
+    rule: `10. After each cue, in the same turn, run the Prompter line with your cues, changing only "items": 1 to 3, the most important first, each a "kind" and a "text" (plus "number" for a prepared question): ${PROMPTER_KINDS}. Talking points and steer lines only from the show plan or what was said, never invented (on a solo show, no question). It prints the question numbers I used there: add them to your next wait, e.g. "asked":[2]. At End report, run it first with "name":"clear_suggestions" and "arguments":{}, and put those numbers in the report's "asked".`,
+  };
+}
+
 /** The whole message, for this page's own address (the live site or the preview), this connection's token and the agent. */
-export function connectMessage({ origin, token, agent = "claude" }) {
+export function connectMessage({ origin, token, agent = "claude", prompter = null }) {
+  const linked = prompter ? prompterPart(prompter) : null;
   // How the agent's tool is told to allow a long command: Claude Code and T3 Code take minutes, Codex milliseconds (so its message names both).
   const timeLimit = agent === "codex" ? "a timeout of 600 seconds (600000 ms)" : "a time limit of 10 minutes";
   const wait = agentBody({ seq: 0 });
@@ -41,7 +59,7 @@ Run both lines in the foreground, with ${timeLimit}. Each time, run them as writ
 \`\`\`bash
 T='${token}'; U='${origin}/mcp'; P=${TOOL.context}; B='${agentBody()}'
 ${AGENT_LOOP}
-\`\`\`
+\`\`\`${linked ? linked.block : ""}
 
 Rules for this whole conversation:
 1. Run it once as written: it prints the show. Then run it with P=${TOOL.wait} B='${wait}'
@@ -53,7 +71,7 @@ Rules for this whole conversation:
 7. If it prints an error (Unauthorized, the page is not open, too many requests, the network is blocked), tell me in one line and stop.
 8. ${GUEST_WORDS} Keep the token to yourself: never save it or repeat it.
 9. When a cue says ${CUE.chat}, read my live chat through your own Restream connection after each wait (with the chat on, a wait with nothing new prints a line saying so) and send what is new: P=${TOOL.chat} B='${chat}'. "pick" goes only on the one viewer question that best fits what comes next. Send {"waiting":"no live stream yet"} until a stream is live, or {"problem":"<why>"} if you cannot read it.
-10. If you are also connected to my Prompter, after each cue call its push_suggestions with your first suggestion (with its number), a talking point and a hook, only from the show plan or what was said (on a solo show, no question). Add the question numbers it says I used to your next wait, e.g. "asked":[2]. At End report, call its clear_suggestions first and put those numbers in the report's "asked".
+${linked ? linked.rule : `10. If you are also connected to my Prompter, after each cue call its push_suggestions with your first suggestion as a "question" (with its number) and a talking point ("point"), only from the show plan or what was said (on a solo show, no question). Add the question numbers it says I used to your next wait, e.g. "asked":[2]. At End report, call its clear_suggestions first and put those numbers in the report's "asked".`}
 
 This connection works for eight hours, or until I press Disconnect in the producer.`;
 }

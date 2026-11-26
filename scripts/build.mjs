@@ -26,7 +26,7 @@ export const STYLES = ["src/theme.css", "src/app.css"];
  * page's one scope, so the build checks the name is exported there and drops the line. Any other import form, and an
  * aliased name (`a as b`), stops the build.
  */
-export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/audio-tap.mjs", "src/listening.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/chat.mjs", "src/cues.mjs", "src/questions.mjs", "src/find.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/script-reader.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/agent-link.mjs", "src/showphase.mjs"];
+export const INLINED = ["src/browser.mjs", "src/listen.mjs", "src/web-speech.mjs", "src/audio-tap.mjs", "src/listening.mjs", "src/runorder.mjs", "src/protocol.mjs", "src/chat.mjs", "src/cues.mjs", "src/questions.mjs", "src/find.mjs", "src/report.mjs", "src/ui/tooltip.mjs", "src/agent-ways.mjs", "src/agent-message.mjs", "src/script-reader.mjs", "src/agent-load.mjs", "src/demo.mjs", "src/showplan.mjs", "src/prompter-link.mjs", "src/agent-link.mjs", "src/showphase.mjs"];
 
 /** The speech worker and the modules it imports, served as they are under /speech/. */
 export const SPEECH_WORKER = ["src/speech/worker.mjs", "src/speech/lanes.mjs", "src/speech/segmenter.mjs", "src/speech/resample.mjs", "src/speech/repeat.mjs"];
@@ -91,8 +91,9 @@ export function build(dir = join(root, "dist"), { host = LIVE_HOST, speechDir = 
     `script-src ${sha256(script)} blob:`,
     `style-src ${sha256(style)}`,
     "img-src data:",
-    // Only this site: its relay (/api/relay, a WebSocket) and its token (/api/agent-token). Nothing outside.
-    "connect-src 'self'",
+    // This site: its relay (/api/relay, a WebSocket) and its token (/api/agent-token). And the Prompter's token route
+    // only (TOOLS-464, src/prompter-link.mjs: "Show questions on my Prompter too"), by its exact address, no wildcard.
+    "connect-src 'self' https://prompter.techies.tools",
     // The speech worker, from this site only (/speech/worker.mjs).
     "worker-src 'self'",
     "base-uri 'none'",

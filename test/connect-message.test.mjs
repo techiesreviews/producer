@@ -102,6 +102,69 @@ test("each agent gets the same ready-made loop, with the time limit its own tool
   assert.equal(connectMessage({ origin: LIVE, token: FAKE, agent: "nobody" }), claude, "an unknown agent gets the default");
 });
 
+// TOOLS-464: with "Show questions on my Prompter too" on, the one message also links the Prompter (T3 Code has no MCP
+// line, so this is its one paste). The producer's block stays word for word; a second ready-made command shows the
+// cues on the Prompter, and rule 10 names the kinds the Prompter takes.
+const PROMPTER = { origin: "https://prompter.techies.tools", token: ["tp1", "m0abcdef", "y".repeat(43)].join("-") };
+const blocks = (message) => [...message.matchAll(/```bash\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+
+test("with the Prompter: the producer's block is unchanged, and a second one-line command pushes the cues there", () => {
+  const plain = connectMessage({ origin: LIVE, token: FAKE });
+  const both = connectMessage({ origin: LIVE, token: FAKE, prompter: PROMPTER });
+  const [first, second, ...more] = blocks(both);
+  assert.equal(more.length, 0, "two blocks");
+  assert.equal(first, block(plain), "the producer's block, word for word");
+  assert.equal(second.split("\n").length, 1, "the Prompter's command is one line");
+  assert.equal(both.split(PROMPTER.token).length, 2, "the Prompter's token once, in its command");
+  assert.ok(second.includes(`${PROMPTER.origin}/mcp`));
+  assert.ok(!first.includes(PROMPTER.token), "and never in the producer's loop");
+  const body = JSON.parse(second.match(/ -d '([^']*)'/)[1]);
+  assert.deepEqual(Object.keys(body).sort(), ["id", "jsonrpc", "method", "params"]);
+  assert.equal(body.method, "tools/call");
+  assert.equal(body.params.name, "push_suggestions");
+  const kinds = ["question", "next", "steer", "point", "audience"];
+  assert.ok(body.params.arguments.items.length >= 1 && body.params.arguments.items.length <= 3);
+  for (const item of body.params.arguments.items) assert.ok(kinds.includes(item.kind) && typeof item.text === "string", JSON.stringify(item));
+  // Rule 10 names every kind, where talking points come from, the used numbers going back, and the clear at the end.
+  for (const kind of kinds) assert.ok(both.includes(`"${kind}"`), kind);
+  assert.match(both, /only from the show plan or what was said/);
+  assert.match(both, /"asked":\[2\]/);
+  assert.match(both, /clear_suggestions/);
+  assert.doesNotMatch(both, /If you are also connected to my Prompter/, "it is linked: no if");
+  assert.doesNotMatch(both, /\bsleep\s+\d|nohup|&\s*$/m);
+  assert.ok(both.length < 4300, `${both.length} characters`);
+  assert.equal(connectMessage({ origin: LIVE, token: FAKE, prompter: null }), plain, "switch off: the message is the producer's alone");
+});
+
+test("the Prompter's command, run as written in bash, sends that call with the token as a Bearer header", async () => {
+  const seen = [];
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, type: req.headers["content-type"], body: JSON.parse(Buffer.concat(chunks)) });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "Shown. Used: none." }] } }));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const second = blocks(connectMessage({ origin: LIVE, token: FAKE, prompter: PROMPTER }))[1];
+    const local = second.replace(`${PROMPTER.origin}/mcp`, `http://127.0.0.1:${server.address().port}/mcp`);
+    const out = await new Promise((resolve) => {
+      const child = spawn("bash", ["-c", local], { env: { PATH: process.env.PATH } });
+      let stdout = "";
+      child.stdout.on("data", (d) => { stdout += d; });
+      child.on("close", (code) => resolve({ code, stdout }));
+    });
+    assert.equal(out.code, 0);
+    assert.match(out.stdout, /Shown/, "the answer prints");
+    assert.equal(seen.length, 1);
+    assert.deepEqual({ ...seen[0], body: undefined }, { method: "POST", url: "/mcp", auth: `Bearer ${PROMPTER.token}`, type: "application/json", body: undefined });
+    assert.equal(seen[0].body.params.name, "push_suggestions");
+  } finally {
+    await new Promise((r) => { server.closeAllConnections(); server.close(r); });
+  }
+});
+
 async function serve(relay) {
   const env = { ASSETS: { fetch: async () => new Response("page") }, RELAY: { idFromName: (n) => n, get: () => ({ op: (m) => relay.op(m) }) } };
   const server = createServer(async (req, res) => {

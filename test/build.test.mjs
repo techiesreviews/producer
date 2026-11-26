@@ -9,6 +9,8 @@ import { build, INLINED, LIVE_HOST, pageScript, PREVIEW_HOST, SPEECH_WORKER } fr
 import { SPEECH_BYTES } from "../scripts/speech-files.mjs";
 
 const scratch = (name) => resolve(import.meta.dirname, "../.scratch", name);
+/** The Prompter's address (TOOLS-464): the one outside address the page may call. */
+const PROMPTER = "https://prompter.techies.tools";
 const dist = build(scratch("test-dist")).dir;
 const html = readFileSync(join(dist, "index.html"), "utf8");
 const headers = readFileSync(join(dist, "_headers"), "utf8");
@@ -42,8 +44,9 @@ test("the page is one self-contained file and asks for no outside file", () => {
   assert.doesNotMatch(html, /<script[^>]+src=/i);
   assert.doesNotMatch(html, /<link[^>]+rel="stylesheet"/i);
   assert.doesNotMatch(html, /@import|url\((?!["']?data:)/);
-  // The only address in the page is the SVG namespace inside the icon's data address.
-  assert.deepEqual([...html.matchAll(/https?:\/\/[^'"\s)]+/g)].map((m) => m[0]), ["http://www.w3.org/2000/svg"]);
+  // The only addresses in the page: the SVG namespace inside the icon's data address, and the Prompter's (TOOLS-464),
+  // written once (src/prompter-link.mjs), for its token and the tab one click opens.
+  assert.deepEqual([...html.matchAll(/https?:\/\/[^'"\s)]+/g)].map((m) => m[0]), ["http://www.w3.org/2000/svg", PROMPTER]);
   assert.doesNotMatch(html, /<(img|iframe|object|embed|video|audio|source)\b/i);
   assert.ok(!html.includes("/*@") && !html.includes("<!--@"), "every build marker is replaced");
 });
@@ -51,9 +54,10 @@ test("the page is one self-contained file and asks for no outside file", () => {
 test("the inlined script is one valid program that holds the browser's speech service, and names no outside host for it", () => {
   assert.doesNotThrow(() => new vm.Script(script), "no name is declared twice across the inlined files");
   assert.match(script, /function createBrowserSpeech\b/, "the browser's speech service is in the page");
-  // The service is the browser's own: the page names no address for it and its policy gains none (connect-src stays this site).
+  // The service is the browser's own: the page names no address for it and its policy gains none (connect-src stays this
+  // site and the Prompter's token route).
   assert.doesNotMatch(script, /google\.com|googleapis|gstatic/i);
-  assert.deepEqual(directives(header("Content-Security-Policy")).get("connect-src"), ["'self'"]);
+  assert.deepEqual(directives(header("Content-Security-Policy")).get("connect-src"), ["'self'", PROMPTER]);
 });
 
 test("the page's sound runs through the audio tap's worklet, made from the page's own script, never through the old main-thread hook", () => {
@@ -73,9 +77,19 @@ test("the page keeps nothing, logs nothing and talks only to its own agent relay
   const banned = /\b(XMLHttpRequest|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|caches|serviceWorker|importScripts|cookie|console)\b|\bimport\s*\(/;
   assert.doesNotMatch(script, banned);
   assert.doesNotMatch(script, /^\s*(import|export)\s/m, "the inlined script is plain code");
-  // Two calls, both to this site: the agent token and the relay's WebSocket (card 08). Nothing else is sent anywhere.
-  assert.deepEqual([...script.matchAll(/\bfetch\b[^)]*\)/g)].map((m) => m[0]), ['fetch("/api/agent-token", { method: "POST", cache: "no-store" })'], "one fetch: the token");
+  // Three calls: this site's agent token and the relay's WebSocket (card 08), and the Prompter's agent token (TOOLS-464),
+  // a POST with no body and no extra header, so its preflight asks for nothing the Prompter does not allow. Nothing else.
+  assert.deepEqual([...script.matchAll(/\bfetch\b[^)]*\)/g)].map((m) => m[0]), [
+    "fetch(`${PROMPTER_ORIGIN}/api/agent-token`, { method: \"POST\", cache: \"no-store\" })",
+    'fetch("/api/agent-token", { method: "POST", cache: "no-store" })',
+  ], "two fetches: the Prompter's token and this site's");
   assert.deepEqual([...script.matchAll(/\bWebSocket\b[^,]*/g)].map((m) => m[0]), ['WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`'], "one WebSocket: the relay on this host");
+  // One new tab: the Prompter, linked by `#producer` (never a token in the address), kept as this page's opened window
+  // (no noopener) so the token goes to it by message.
+  assert.deepEqual([...script.matchAll(/\bwindow\.open\([^)]*\)/g)].map((m) => m[0]), ["window.open(url, name)"]);
+  assert.ok(script.includes("open: (url, name) => window.open(url, name)"), "the page passes the Prompter link its window.open as it is");
+  assert.doesNotMatch(script, /noopener|noreferrer/);
+  assert.match(script, /`\$\{PROMPTER_ORIGIN\}\/#producer`, "_blank"/);
 });
 
 test("the policy pins the page's own script and style by hash and allows nothing from outside", () => {
@@ -86,11 +100,15 @@ test("the policy pins the page's own script and style by hash and allows nothing
   // The page makes that blob itself from its own pinned script, so no file of this site or any other runs as a script.
   assert.deepEqual(csp.get("script-src"), [hash(script), "blob:"]);
   assert.deepEqual(csp.get("style-src"), [hash(style)]);
-  assert.deepEqual(csp.get("connect-src"), ["'self'"], "the page may call only its own site (the relay and the token), nothing outside");
+  assert.deepEqual(csp.get("connect-src"), ["'self'", PROMPTER], "the page may call its own site (the relay and the token) and the Prompter's address (its token), nothing else");
   assert.deepEqual(csp.get("img-src"), ["data:"]);
   assert.deepEqual(csp.get("worker-src"), ["'self'"], "the speech worker, from this site only");
   for (const name of ["base-uri", "form-action", "frame-ancestors"]) assert.deepEqual(csp.get(name), ["'none'"], name);
-  assert.doesNotMatch(rules.get("/")["Content-Security-Policy"], /\*|unsafe-|https?:/);
+  // The Prompter's exact address is the one outside address, in connect-src only: no wildcard, nothing else.
+  const page = rules.get("/")["Content-Security-Policy"];
+  assert.equal(page.split(PROMPTER).length, 2);
+  assert.doesNotMatch(page.replace(` ${PROMPTER}`, ""), /\*|unsafe-|https?:/);
+  assert.equal(header("Cross-Origin-Opener-Policy"), undefined, "no COOP: it would cut the opened Prompter tab off from this page");
 });
 
 test("the speech worker's policy: scripts and files of this site and the engine's WebAssembly, nothing else", () => {
