@@ -1,0 +1,56 @@
+# Kitchen extras: producer
+
+`scripts/agents/kit rulebook` prints the shared rulebook, then this file. Where they differ, this
+file wins.
+
+## Branches, checks and the shared file
+
+- **Landing branch `dev`, release branch `main`** (`branches` in `scripts/agents/kit.json`). Every
+  change lands on `dev` through `scripts/agents/kit pr`; `main` only takes `dev`, through
+  `scripts/agents/kit pr --release --base main`. The repo is public, so there is no direct push to
+  `main` after the first commit.
+- **Checks:** `kit unit` (all of `test/*.test.mjs`, a few seconds) on every change; it is the one
+  entry in `checks` (`test`). GitHub runs the same files in `.github/workflows/checks.yml` on every
+  pull request and every push to `dev` or `main` (Node 24, no secrets, no deploy).
+  `kit unit --affected` reads `graphFile` and `importsOf` from `scripts/agents/specs-affected.mjs` (the
+  repo's JavaScript modules, ES imports only: no `require`, on purpose) to pick the tests a change reaches.
+  `test/repo-guard.test.mjs` is the public-repo guard: no `.env`, `*.key`, `*.pem` or `.dev.vars*` file, no
+  obvious token or private key in any file, and README and LICENSE must exist.
+- **Own check commands** (`scripts/agents/project.d/`, run by `scripts/agents/producer-kit.mjs`):
+  - `kit specs [suite]`, the browser checks, for any change to the page, the Worker or the build;
+    `kit pr` runs the suites a change reaches (`--affected`). Each file in `test/browser/` is one suite:
+    `page.mjs` is the whole page at desktop 1366x900 and phone 390x844, light and dark, served through the
+    real Worker with the page's own headers, then the setup screen in Playwright's Firefox (light and dark; Playwright's Firefox browser must be installed beside it). `speech.mjs` loads the speech model, plays `test/fixtures/two-voices.wav` (two LibriSpeech voices taking turns, 106 s) as a fake microphone and checks the delay (middle under 1.5 s), the word errors (at most 20 %), Stop and Listen, the requests and what is stored, then the sign on a phone, in dark and in Firefox. It also checks the studio tab's sound: a stand-in for the tab picker (and once Chromium's own, answered by the browser), the clip split by speaker into the microphone (the host's turns) and the shared tab (the guest's turns) at once with each text labelled with its own source and none crossed over, and the failed shares; it takes about six minutes. The build fetches the pinned speech files once into `~/.cache/producer-speech` (network on the first run only). `service.mjs` puts a stand-in for the browser's own speech service in place (the real one sends sound to Google, which a check never does) and checks the opt-in, the listening sign, Stop and Listen, a failure, switching back to the model and that nothing is requested or stored. What it checks lives in its file, not here. Screenshots land in
+    the evidence folder (`.scratch/producer/specs-<time>/`). Playwright stays outside the repo: set
+    `KIT_PLAYWRIGHT_MODULE` (the path of its `index.mjs`), else `~/Projects/native-site-editor-dev/node_modules` is used.
+  - `kit size`: bytes of the built page, its headers, the Worker source, the speech worker and the speech files (with the largest served part, which must stay under 25 MiB). Report only.
+- **Shared file:** none.
+- **Docs the shared rulebook names:** no runner guide, issue tracker guide, UX rulebook or routines
+  yet. The plan and research: `docs/wayfinder/producer/`.
+
+## Visible changes
+
+- **Feature list:** `docs/agents/features.md` (read by `kit ux`). **Screenshots:** `kit specs` (the page suite at desktop and phone, light and
+  dark, with the tooltip open, a switched-off choice with its reason, and the setup screen in Firefox). No screen
+  is built before Lex approves its mock-up; the approved look is the Producer mock-up.
+- Colours: `test/contrast.test.mjs` checks every text colour of the page on its background, light and dark.
+
+## After a merge
+
+- None yet. Nothing is deployed from this repo.
+
+## Release
+
+- Not deployed. The Worker config (`wrangler.jsonc`: `producer` and `producer-preview`) and the preview
+  step (`.github/workflows/deploy-preview.yml`, built from `dev`, only when both Cloudflare secrets exist)
+  are written. They wait for the Cloudflare token (TOOLS-144). The lead runs the first deploys; the live
+  address `producer.techies.tools` and the preview `preview-producer.techies.tools` are planned, not set up.
+
+## Other
+
+- **A temporary https link for QA:** `scripts/qa-tunnel.sh` (`npm run qa:tunnel`, README section "A temporary link for testing") runs the Worker locally with wrangler and puts a Cloudflare quick tunnel in front of it: no account, no deploy, no change to Cloudflare. It is a stop-gap until the preview deploys (TOOLS-144). Its tests run in `kit unit` with stand-ins for wrangler and cloudflared; the real run is by hand.
+- This repo is public. No key, token or private note goes in, and the Restream app secret lives only
+  in Cloudflare.
+- `docs/wayfinder/producer/` is a copy of the planning map first written in the chat project's
+  folder; it is kept here as the plan of record. The research test pages in it are throwaway tools
+  for Lex's tests, not product code.

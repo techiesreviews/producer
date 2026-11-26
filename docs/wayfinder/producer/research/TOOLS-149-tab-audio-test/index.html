@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab sound test (TOOLS-149)</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#1b1b1b; --muted:#666; --line:#ccc; --bar:#2a8a4a; --warn:#a15c00; --bad:#b3261e; --track:#eee; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161616; --fg:#eee; --muted:#9a9a9a; --line:#3a3a3a; --bar:#4cc16f; --warn:#e0a040; --bad:#ff8a80; --track:#262626; } }
+  body { background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; margin:0; padding:16px; max-width:44rem; margin-inline:auto; }
+  h1 { font-size:1.25rem; margin:0 0 .25rem; }
+  p { margin:.25rem 0 1rem; color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  button { font:inherit; padding:8px 14px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  label.opt { display:block; margin:6px 0; color:var(--muted); font-size:.9rem; }
+  .meter { margin:14px 0; }
+  .meter .name { display:flex; justify-content:space-between; font-size:.9rem; }
+  .meter .name span:last-child { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .track { position:relative; height:16px; background:var(--track); border-radius:4px; overflow:hidden; }
+  .fill { height:100%; width:0; background:var(--bar); }
+  .peak { position:absolute; top:0; bottom:0; width:2px; left:0; background:var(--fg); opacity:.7; }
+  .msg { border-left:4px solid var(--line); padding:6px 10px; margin:8px 0; }
+  .msg.warn { border-color:var(--warn); }
+  .msg.bad { border-color:var(--bad); }
+  .msg.ok { border-color:var(--bar); }
+  h2 { font-size:1rem; margin:20px 0 6px; }
+  pre { background:var(--track); padding:10px; border-radius:6px; overflow:auto; font-size:.8rem; white-space:pre-wrap; word-break:break-word; margin:0; }
+  video { width:240px; max-width:100%; background:#000; border-radius:4px; display:none; }
+</style>
+</head>
+<body>
+<h1>Tab sound test</h1>
+<p>Checks whether this browser can hear a shared tab and your microphone at the same time. Nothing is recorded, saved or sent anywhere. The sound is never played back by this page.</p>
+
+<div class="row">
+  <button id="btnTab">Share a tab with sound</button>
+  <button id="btnMic">Use microphone</button>
+  <button id="btnStop" disabled>Stop all</button>
+</div>
+<label class="opt"><input type="checkbox" id="optSuppress"> Silence the shared tab on my own speakers while sharing (echo test; Chrome and Edge only)</label>
+<label class="opt"><input type="checkbox" id="optProcess"> Use the browser's echo cancellation and noise filter on the microphone</label>
+
+<div id="messages" aria-live="polite"></div>
+
+<div class="meter"><div class="name"><span>Tab sound</span><span id="tabNum">no signal</span></div><div class="track"><div class="fill" id="tabFill"></div><div class="peak" id="tabPeak"></div></div></div>
+<div class="meter"><div class="name"><span>Microphone</span><span id="micNum">no signal</span></div><div class="track"><div class="fill" id="micFill"></div><div class="peak" id="micPeak"></div></div></div>
+<div class="meter"><div class="name"><span>Both mixed together</span><span id="mixNum">no signal</span></div><div class="track"><div class="fill" id="mixFill"></div><div class="peak" id="mixPeak"></div></div></div>
+
+<video id="preview" muted playsinline></video>
+
+<h2>What this browser reported</h2>
+<pre id="report">Loading...</pre>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var ctx = null, mix = null;
+  var tab = { stream: null, src: null, an: null, t0: 0, silentWarned: false };
+  var mic = { stream: null, src: null, an: null };
+  var mixAn = null;
+  var peaks = { tab: -100, mic: -100, mix: -100 };
+  var lastError = {};
+
+  function say(kind, text, key) {
+    var box = $('messages');
+    if (key) { var old = box.querySelector('[data-key="' + key + '"]'); if (old) old.remove(); }
+    var d = document.createElement('div');
+    d.className = 'msg ' + kind; d.textContent = text;
+    if (key) d.setAttribute('data-key', key);
+    box.appendChild(d);
+  }
+  function clearSay(key) { var old = $('messages').querySelector('[data-key="' + key + '"]'); if (old) old.remove(); }
+
+  function ensureCtx() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { say('bad', 'This browser has no Web Audio, so the page cannot measure sound at all.', 'webaudio'); return null; }
+      ctx = new AC();
+      // Mixed meter only: nothing is ever connected to ctx.destination, so no sound comes out of this page.
+      mix = ctx.createGain();
+      mixAn = ctx.createAnalyser(); mixAn.fftSize = 1024;
+      mix.connect(mixAn);
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  function levelDb(an) {
+    var buf = new Float32Array(an.fftSize);
+    an.getFloatTimeDomainData(buf);
+    var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    var rms = Math.sqrt(sum / buf.length);
+    return rms > 0 ? 20 * Math.log10(rms) : -100;
+  }
+  function draw(name, db) {
+    var pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    $(name + 'Fill').style.width = pct + '%';
+    peaks[name] = Math.max(db, peaks[name] - 0.4);
+    var pp = Math.max(0, Math.min(100, (peaks[name] + 60) / 60 * 100));
+    $(name + 'Peak').style.left = 'calc(' + pp + '% - 1px)';
+    $(name + 'Num').textContent = db <= -99 ? 'silent' : db.toFixed(0) + ' dB';
+  }
+  function frame() {
+    if (tab.an) { var t = levelDb(tab.an); draw('tab', t);
+      if (!tab.silentWarned && performance.now() - tab.t0 > 6000 && peaks.tab < -80) {
+        tab.silentWarned = true;
+        say('warn', 'The shared tab has been silent for 6 seconds. Play something in that tab (or ask your guest to talk). If the tab is muted in the browser, its sound can be silent here too (UNVERIFIED).', 'silent');
+      } }
+    if (mic.an) draw('mic', levelDb(mic.an));
+    if (mixAn && (tab.an || mic.an)) draw('mix', levelDb(mixAn));
+    requestAnimationFrame(frame);
+  }
+
+  function describeError(e, what) {
+    var n = e && e.name;
+    if (n === 'NotAllowedError') return what + ' was refused or the window was closed. Choose it again and allow it.';
+    if (n === 'NotFoundError') return 'No ' + what + ' was found on this computer.';
+    if (n === 'NotReadableError') return what + ' is busy or blocked by another app.';
+    if (n === 'SecurityError') return what + ' is blocked here (a page inside a frame needs permission from its host, or the page is not on https).';
+    if (n === 'TypeError') return 'This browser rejected the request (' + (e.message || 'TypeError') + ').';
+    return what + ' failed: ' + (n || 'unknown error') + (e && e.message ? ' (' + e.message + ')' : '');
+  }
+
+  function resetMix() { $('mixFill').style.width = '0'; $('mixNum').textContent = 'no signal'; peaks.mix = -100; $('mixPeak').style.left = '0'; }
+  function stopTab() {
+    if (tab.stream) tab.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (tab.src) tab.src.disconnect();
+    tab = { stream: null, src: null, an: null, t0: 0, silentWarned: false };
+    $('preview').style.display = 'none'; $('preview').srcObject = null;
+    $('tabFill').style.width = '0'; $('tabNum').textContent = 'no signal'; peaks.tab = -100; $('tabPeak').style.left = '0';
+    clearSay('silent');
+  }
+  function stopMic() {
+    if (mic.stream) mic.stream.getTracks().forEach(function (t) { t.stop(); });
+    if (mic.src) mic.src.disconnect();
+    mic = { stream: null, src: null, an: null };
+    $('micFill').style.width = '0'; $('micNum').textContent = 'no signal'; peaks.mic = -100; $('micPeak').style.left = '0';
+  }
+  function updateButtons() { $('btnStop').disabled = !(tab.stream || mic.stream); }
+
+  async function shareTab() {
+    clearSay('tab'); clearSay('tabfail'); clearSay('tabend');
+    if (!window.isSecureContext) say('warn', 'This page is not on a secure address (https or localhost). Browsers may refuse sharing here.', 'secure');
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+      say('bad', 'This browser cannot share a tab or screen from a web page at all, so it cannot hear a guest through a shared tab.', 'tabfail');
+      return;
+    }
+    if (!ensureCtx()) return;
+    stopTab();
+    var audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    var sup = navigator.mediaDevices.getSupportedConstraints ? navigator.mediaDevices.getSupportedConstraints() : {};
+    if ($('optSuppress').checked && sup.suppressLocalAudioPlayback) audio.suppressLocalAudioPlayback = true;
+    // Picture is not needed, only sound. Ask for a tiny, slow picture so the shared tab (which may be streaming) is not burdened. A browser may ignore this.
+    var opts = { video: { frameRate: { ideal: 2 }, width: { ideal: 320 }, height: { ideal: 180 } }, audio: audio, systemAudio: 'exclude', selfBrowserSurface: 'exclude', surfaceSwitching: 'include', monitorTypeSurfaces: 'exclude' };
+    var s;
+    try { s = await navigator.mediaDevices.getDisplayMedia(opts); }
+    catch (e) { lastError.tab = e; say('bad', describeError(e, 'Sharing'), 'tabfail'); renderReport(); return; }
+    tab.stream = s;
+    var v = $('preview'); v.srcObject = s; v.style.display = 'block'; v.play && v.play().catch(function () {});
+    var vt = s.getVideoTracks()[0];
+    var surface = vt && vt.getSettings ? vt.getSettings().displaySurface : undefined;
+    s.getTracks().forEach(function (t) { t.addEventListener('ended', function () { if (tab.stream === s) { stopTab(); say('warn', 'Sharing stopped (the tab was closed or sharing was ended in the browser).', 'tabend'); updateButtons(); renderReport(); } }); });
+    var at = s.getAudioTracks();
+    if (at.length === 0) {
+      var why = 'The tab was shared but the browser gave NO sound with it. ';
+      if (surface && surface !== 'browser') why += 'You shared a ' + (surface === 'monitor' ? 'whole screen' : 'window') + ', which usually carries no sound. Share a browser tab instead. ';
+      else why += 'In Chrome and Edge, tick "Also share tab audio" in the sharing window. ';
+      why += 'Firefox and Safari do not offer tab sound to web pages.';
+      say('bad', why, 'tab');
+    } else {
+      if (surface && surface !== 'browser') say('warn', 'You shared a ' + (surface === 'monitor' ? 'whole screen' : 'window') + ', not a browser tab. Sound is there, but it may be the whole computer\'s sound, not just that tab.', 'tab');
+      else say('ok', 'Tab sound is arriving. Play something in the shared tab to see the meter move.', 'tab');
+      tab.src = ctx.createMediaStreamSource(new MediaStream(at));
+      tab.an = ctx.createAnalyser(); tab.an.fftSize = 1024;
+      tab.src.connect(tab.an); tab.src.connect(mix);
+      tab.t0 = performance.now();
+    }
+    updateButtons(); renderReport();
+  }
+
+  async function useMic() {
+    clearSay('mic');
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      say('bad', 'This browser cannot open the microphone from a web page here (it needs https or localhost).', 'mic'); return;
+    }
+    if (!ensureCtx()) return;
+    stopMic();
+    var p = $('optProcess').checked;
+    var s;
+    try { s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: p, noiseSuppression: p, autoGainControl: p } }); }
+    catch (e) { lastError.mic = e; say('bad', describeError(e, 'The microphone'), 'mic'); renderReport(); return; }
+    mic.stream = s;
+    mic.src = ctx.createMediaStreamSource(s);
+    mic.an = ctx.createAnalyser(); mic.an.fftSize = 1024;
+    mic.src.connect(mic.an); mic.src.connect(mix);
+    s.getTracks().forEach(function (t) { t.addEventListener('ended', function () { if (mic.stream === s) { stopMic(); say('warn', 'The microphone stopped.', 'mic'); updateButtons(); renderReport(); } }); });
+    say('ok', 'Microphone is on. Speak to see the meter move.', 'mic');
+    updateButtons(); renderReport();
+  }
+
+  function pick(o, keys) { var r = {}; keys.forEach(function (k) { r[k] = o ? o[k] : undefined; }); return r; }
+  function renderReport() {
+    var md = navigator.mediaDevices;
+    var sup = md && md.getSupportedConstraints ? md.getSupportedConstraints() : null;
+    var r = {
+      userAgent: navigator.userAgent,
+      secureContext: window.isSecureContext,
+      inFrame: window.top !== window,
+      getDisplayMediaAvailable: !!(md && typeof md.getDisplayMedia === 'function'),
+      getUserMediaAvailable: !!(md && typeof md.getUserMedia === 'function'),
+      webAudioAvailable: !!(window.AudioContext || window.webkitAudioContext),
+      audioContext: ctx ? { state: ctx.state, sampleRate: ctx.sampleRate } : 'not started yet',
+      getSupportedConstraints: sup ? pick(sup, ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'suppressLocalAudioPlayback', 'displaySurface', 'deviceId', 'sampleRate', 'channelCount']) : 'unavailable',
+      note: 'systemAudio, windowAudio and selfBrowserSurface are request options, not constraints, so no browser lists them here.'
+    };
+    if (tab.stream) {
+      var vt = tab.stream.getVideoTracks()[0], at = tab.stream.getAudioTracks()[0];
+      r.sharedStream = {
+        audioTracks: tab.stream.getAudioTracks().length,
+        videoTracks: tab.stream.getVideoTracks().length,
+        videoLabel: vt && vt.label,
+        videoSettings: vt && vt.getSettings && pick(vt.getSettings(), ['displaySurface', 'width', 'height', 'frameRate']),
+        audioLabel: at ? at.label : null,
+        audioSettings: at && at.getSettings ? at.getSettings() : null,
+        audioMuted: at ? at.muted : null,
+        audioReadyState: at ? at.readyState : null
+      };
+    } else r.sharedStream = 'not shared';
+    if (mic.stream) {
+      var mt = mic.stream.getAudioTracks()[0];
+      r.microphone = { label: mt && mt.label, settings: mt && mt.getSettings ? mt.getSettings() : null };
+    } else r.microphone = 'not on';
+    if (lastError.tab) r.lastShareError = lastError.tab.name + ': ' + lastError.tab.message;
+    if (lastError.mic) r.lastMicError = lastError.mic.name + ': ' + lastError.mic.message;
+    $('report').textContent = JSON.stringify(r, null, 2);
+  }
+
+  $('btnTab').addEventListener('click', shareTab);
+  $('btnMic').addEventListener('click', useMic);
+  $('btnStop').addEventListener('click', function () { stopTab(); stopMic(); clearSay('tab'); clearSay('mic'); resetMix(); updateButtons(); renderReport(); });
+
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+    say('bad', 'This browser cannot share a tab from a web page, so "Share a tab with sound" is switched off here.', 'tabfail');
+    $('btnTab').disabled = true;
+  }
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    say('bad', 'This browser cannot open the microphone from this page (needs https or localhost).', 'mic');
+    $('btnMic').disabled = true;
+  }
+  renderReport();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

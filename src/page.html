@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Producer</title>
+<meta name="description" content="A private screen for a live host.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0722">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f5733b'/%3E%3Cpath d='M8 24V9l8 7 8-7v15' fill='none' stroke='%232a120a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>/*@CSS@*/</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="brand__mark"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6l8 6 8-6v12"/></svg></span>Producer <small id="showLine">· no show loaded yet</small></div>
+  <button type="button" class="chip private" data-tip="Only you see this window. Never share it on stream."><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><path d="m4 4 16 16"/></svg><span class="long">Private</span></button>
+  <div class="top__end" id="topLive" hidden>
+    <button class="tb tb--quiet tb--small" type="button" id="backBtn" data-tip="Back to setup. The clock and the listening keep running." hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg><span class="long">Setup</span></button>
+    <span class="clock num" id="clock" role="timer" data-tip="" hidden><span id="clockTime">0:00</span><small id="clockDelta" hidden></small></span>
+    <span class="listen" id="listen" data-on="true">
+      <span class="dot" id="listenDot" aria-hidden="true"></span>
+      <span class="listen__txt" id="listenTxt" role="status" data-tip=""><span id="listenOn"><span class="long">Listening · </span><span id="listenSrc">host mic</span><span id="listenEngine"></span></span><span id="listenOff" hidden>Not listening</span></span>
+      <span class="chip" id="guestChip" data-tip="" hidden></span>
+      <button class="tb" type="button" id="stopBtn">Stop</button>
+    </span>
+    <button class="tb tb--ink" type="button" id="endBtn"><span class="long">End &amp; report</span><span class="short" aria-hidden="true">End</span></button>
+  </div>
+</header>
+
+<main class="screen" id="screen">
+  <section class="setup" id="setup" aria-labelledby="setupTitle">
+    <div class="setup__col">
+      <h1 id="setupTitle" tabindex="-1">Set up <span class="chip" id="browserChip"></span></h1>
+      <ol class="steps" role="list" id="steps">
+        <li class="step" id="sMode" data-done>
+          <span class="step__n" aria-hidden="true">1</span><span class="step__label" id="modeLabel">Show type</span>
+          <div class="step__ctl"><div class="seg" id="modeSeg" role="group" aria-labelledby="modeLabel">
+            <button type="button" data-v="solo" aria-pressed="true" data-tip="Just you. No guest steps; viewer questions take the guest's place.">Solo show</button>
+            <button type="button" data-v="guest" aria-pressed="false">With a guest</button>
+          </div></div>
+        </li>
+        <li class="step" id="sStream" data-done>
+          <span class="step__n" aria-hidden="true">2</span><span class="step__label" id="streamLabel">I stream with</span>
+          <div class="step__ctl"><div class="seg" id="streamSeg" role="group" aria-labelledby="streamLabel">
+            <button type="button" data-v="restream" aria-pressed="true">Restream Studio</button>
+            <button type="button" data-v="wave" aria-pressed="false">Wave.video</button>
+            <button type="button" data-v="obs" aria-pressed="false">OBS</button>
+            <button type="button" data-v="other" aria-pressed="false">Other</button>
+          </div></div>
+        </li>
+        <li class="step" id="sAgent">
+          <span class="step__n" aria-hidden="true">3</span><span class="step__label" id="agentLabel">AI agent</span>
+          <div class="step__ctl">
+            <div class="seg" id="agentSeg" role="group" aria-labelledby="agentLabel">
+              <button type="button" data-v="claude" aria-pressed="true">Claude Code</button>
+              <button type="button" data-v="codex" aria-pressed="false">Codex</button>
+              <button type="button" data-v="t3" aria-pressed="false">T3 Code</button>
+              <button type="button" data-v="key" aria-pressed="false" aria-disabled="true" data-tip="Comes later: your own paid AI key, capped at about €5 per stream."><span class="off-mark" aria-hidden="true">i</span> API key</button>
+            </div>
+            <button type="button" class="tb" id="connectBtn" data-tip="Copies a message. Paste it into Claude Code.">Copy connect message</button>
+            <button type="button" class="tb" id="mcpBtn">Connect with MCP</button>
+            <button type="button" class="tb" id="testBtn" hidden>Test</button>
+            <button class="switch switch--wrap" type="button" role="switch" aria-checked="true" id="prompterSw"><span class="switch__track" aria-hidden="true"></span>Show questions on my Prompter too</button>
+            <p class="sr" id="prompterSay" aria-live="polite"></p>
+            <textarea class="agent-message" id="agentMessage" readonly hidden aria-label="Connect message" rows="4"></textarea>
+          </div>
+        </li>
+        <li class="step" id="sPlan">
+          <span class="step__n" aria-hidden="true">4</span><span class="step__label" id="planLabel">Show, points &amp; plan</span>
+          <div class="step__ctl">
+            <button type="button" class="tb tb--primary" id="loadBtn" aria-disabled="true">Let my agent load it</button>
+            <button type="button" class="tb" id="demoBtn" data-tip="Fills in a sample show to try the whole screen. Nothing is stored. You can still change it.">Load demo show</button>
+            <button type="button" class="tb tb--quiet tb--small" id="planBtn" aria-expanded="false" aria-controls="planBox" data-tip="Paste your show name, guest, questions and run order.">Paste it myself</button>
+            <div class="plan" id="planBox" hidden>
+              <textarea class="plan__in" id="planIn" rows="7" aria-labelledby="planLabel" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+              <p class="plan__eg" id="planEg"><span class="plan__eg-k">Example</span></p>
+            </div>
+          </div>
+        </li>
+        <li class="step" id="sGuest" hidden>
+          <span class="step__n" aria-hidden="true">5</span><span class="step__label" id="guestLabel" data-tip="Only you can tick this. Your agent never does.">Guest agreed</span>
+          <div class="step__ctl"><div class="seg" id="guestSeg" role="group" aria-labelledby="guestLabel">
+            <button type="button" data-v="yes" aria-pressed="false" data-tip="Ask your guest first. Yes: their voice is turned into text on this computer.">Yes</button>
+            <button type="button" data-v="no" aria-pressed="false" data-tip="Only your own microphone is listened to.">No · my mic only</button>
+          </div></div>
+        </li>
+        <li class="step" id="sChat">
+          <span class="step__n" aria-hidden="true">5</span><span class="step__label" id="chatLabel">Viewer chat</span>
+          <div class="step__ctl">
+            <button type="button" class="tb" id="chatBtn">Connect Restream chat</button>
+          </div>
+        </li>
+        <li class="step" id="sSound">
+          <span class="step__n" aria-hidden="true">6</span><span class="step__label" id="soundLabel">Sound</span>
+          <div class="step__ctl">
+            <span class="source"><button class="tb" type="button" id="micBtn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micTxt">Microphone</span></button>
+            <span class="meter" id="micMeter" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></span></span>
+            <span class="source" id="tabSource" hidden><button class="tb" type="button" id="tabBtn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg><span id="tabTxt">Share the studio tab with sound</span></button>
+            <span class="meter" id="tabMeter" role="meter" aria-label="Tab sound level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></span></span>
+          </div>
+        </li>
+        <li class="step" id="sSpeech">
+          <span class="step__n" aria-hidden="true">7</span><span class="step__label" id="speechLabel">Speech to text</span>
+          <div class="step__ctl">
+            <div class="seg" id="engineSeg" role="group" aria-labelledby="speechLabel">
+              <button type="button" data-v="local" aria-pressed="true">On this computer</button>
+              <button type="button" data-v="browser" aria-pressed="false" id="browserChoice">Browser service</button>
+            </div>
+            <button class="tb" type="button" id="speechBtn" data-tip="Free model, runs inside this browser. Downloads once, then stays in this browser."><span id="speechTxt">Load speech model · <!--@SPEECH_SIZE@--></span></button>
+          </div>
+        </li>
+      </ol>
+      <div class="setup__go">
+        <button class="tb tb--big tb--primary" type="button" id="goBtn">Open producer screen</button>
+      </div>
+    </div>
+  </section>
+  <section class="live" id="live" aria-label="Producer screen" hidden>
+    <article class="panel next" id="next" aria-labelledby="nextTitle">
+      <div class="panel__head"><h2 id="nextTitle">Your next point</h2>
+        <span class="end" id="thinkEnd" hidden><span class="dot" id="thinkDot" role="img" aria-label="No agent" data-tip=""></span></span>
+      </div>
+      <div class="next__body">
+        <p class="q-main" id="qMain" aria-live="polite" dir="auto"></p>
+        <p class="q-why" id="qWhy" dir="auto"></p>
+        <div class="q-src"><span class="chip" id="qSrc"></span></div>
+      </div>
+      <div class="q-act">
+        <button class="tb tb--ink" type="button" id="askedBtn">Said</button>
+        <button class="tb" type="button" id="skipBtn">Skip</button>
+      </div>
+      <div class="pool" id="pool" hidden>
+        <label class="find">
+          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="findIn" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" spellcheck="false" placeholder="Search all questions" aria-label="Search all questions" aria-controls="findList">
+          <button class="tb tb--quiet" type="button" id="findX" aria-label="Clear search" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </label>
+        <div class="pool__head" id="findHead" hidden><h3 id="findTitle"></h3><span class="chip num" id="findCount"></span></div>
+        <div class="pool__list" id="findList" role="group" aria-labelledby="findTitle" hidden></div>
+        <p class="sr" id="findSay" aria-live="polite"></p>
+        <div class="pool__head" id="relHead" hidden><h3 id="relTitle">Relevant now</h3><span class="chip num" id="relCount"></span></div>
+        <div class="pool__list" id="relList" role="group" aria-labelledby="relTitle" hidden></div>
+        <p class="sr" id="relSay" aria-live="polite"></p>
+      </div>
+      <div class="alts" id="alts" role="group" aria-label="Swap in"></div>
+      <div class="next__foot" id="nextFoot" hidden>
+        <button class="tb tb--primary" type="button" id="suggestBtn">Suggest now</button>
+        <button class="switch" type="button" role="switch" aria-checked="false" id="slowBtn" data-tip="On: your agent is asked half as often."><span class="switch__track" aria-hidden="true"></span>Slow down</button>
+        <span class="end chip num" id="turnChip" data-tip="">0 turns</span>
+      </div>
+    </article>
+    <section class="panel runs" id="runs" aria-labelledby="runsTitle" hidden>
+      <div class="panel__head"><h2 id="runsTitle" tabindex="-1">Run order</h2>
+        <span class="end"><button class="tb tb--quiet tb--small runs__more" type="button" id="runsMore" aria-expanded="false" aria-controls="runList">All</button><button class="tb tb--primary tb--small" type="button" id="runBtn">Start</button></span>
+      </div>
+      <ol class="runs__list" id="runList"></ol>
+    </section>
+    <section class="panel chat" id="chat" aria-labelledby="chatTitle" hidden>
+      <div class="panel__head"><h2 id="chatTitle">Viewer chat</h2>
+        <span class="chip num" id="openChip" data-tip="" hidden>0 open</span>
+        <span class="end"><button class="switch" type="button" role="switch" aria-checked="false" id="qOnlyBtn" data-tip="On: only the questions show. Hellos and other chat are hidden."><span class="switch__track" aria-hidden="true"></span>Questions only</button></span>
+      </div>
+      <ul class="chat__list" id="chatList" aria-label="Chat messages" hidden></ul>
+      <p class="chat__state" id="chatState" hidden></p>
+      <p class="sr" id="chatSay" aria-live="polite"></p>
+    </section>
+  </section>
+  <section class="report" id="report" aria-labelledby="reportTitle" hidden>
+    <div class="report__col">
+      <h1 id="reportTitle" tabindex="-1">End report <span class="chip" id="reportChip"></span></h1>
+      <ul class="stats" id="reportStats"></ul>
+      <div class="rep-grid">
+        <section class="panel" id="ansPanel" aria-labelledby="ansTitle" hidden><div class="panel__head"><h2 id="ansTitle">Viewer questions answered</h2><span class="end chip num" id="ansCount"></span></div><ul class="rows" id="ansList"></ul></section>
+        <section class="panel" id="notAnsPanel" aria-labelledby="notAnsTitle" hidden><div class="panel__head"><h2 id="notAnsTitle">Viewer questions not answered</h2><span class="end chip num" id="notAnsCount"></span></div><ul class="rows" id="notAnsList"></ul></section>
+        <section class="panel" id="clipsPanel" aria-labelledby="clipsTitle"><div class="panel__head"><h2 id="clipsTitle">Clip moments</h2></div><ul class="rows" id="clipList"></ul></section>
+        <section class="panel" aria-labelledby="realTitle"><div class="panel__head"><h2 id="realTitle">Run order · plan vs real</h2></div><ul class="rows" id="realList"></ul></section>
+        <section class="panel" id="topicsPanel" aria-labelledby="topicsTitle"><div class="panel__head"><h2 id="topicsTitle">Topics covered</h2></div><ul class="rows" id="topicList"></ul></section>
+        <section class="panel" id="notAskedPanel" aria-labelledby="notAskedTitle"><div class="panel__head"><h2 id="notAskedTitle">Questions not asked</h2></div><ul class="rows" id="notAskedList"></ul></section>
+        <section class="panel" id="notSaidPanel" aria-labelledby="notSaidTitle" hidden><div class="panel__head"><h2 id="notSaidTitle">Points not said</h2></div><ul class="rows" id="notSaidList"></ul></section>
+      </div>
+      <details class="panel heard" id="heardBox">
+        <summary class="panel__head"><svg class="i heard__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><h2>What was heard</h2><span class="end chip num" id="heardCount"></span></summary>
+        <ul class="rows" id="heardList"></ul>
+      </details>
+      <div class="report__act">
+        <button class="tb" type="button" id="copyBtn">Copy</button>
+        <button class="tb tb--big tb--primary" type="button" id="saveBtn" data-tip="Saves a file on your computer. Nothing is kept anywhere else.">Save report</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>/*@APP@*/</script>
+</body>
+</html>

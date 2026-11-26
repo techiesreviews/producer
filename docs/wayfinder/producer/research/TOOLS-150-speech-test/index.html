@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speech to text test</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1b; --muted:#666; --line:#d9d9d9; --card:#f6f6f6; --accent:#c4520a; --ok:#14733a; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161616; --fg:#eaeaea; --muted:#9a9a9a; --line:#333; --card:#202020; --accent:#ff9448; --ok:#5ed08a; --bad:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui, sans-serif; max-width:1100px; margin-inline:auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p, li { max-width:70ch; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .box { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  label { display:inline-block; margin:4px 12px 4px 0; }
+  select, input[type=number], input[type=text], button, textarea { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  input[type=text] { width: min(100%, 28rem); }
+  textarea { width:100%; min-height:110px; }
+  button { cursor:pointer; }
+  button.go { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  #live { white-space:pre-wrap; min-height:4.5em; max-height:14em; overflow:auto; border:1px dashed var(--line); border-radius:6px; padding:8px; margin-top:8px; }
+  #bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:8px 0; }
+  #bar > div { height:100%; width:0; background:var(--accent); }
+  .tablewrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:.9rem; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  td.num { white-space:nowrap; }
+  .warn { color:var(--bad); }
+  details { margin:6px 0; }
+  pre { white-space:pre-wrap; margin:6px 0 0; }
+  #log { font:12px/1.4 ui-monospace, monospace; color:var(--muted); max-height:8em; overflow:auto; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Speech to text test</h1>
+<p class="muted">TOOLS-150. Pick a recording (about 5 minutes of two people talking), optionally paste the correct words, then run each way of turning speech into text. Nothing is uploaded to us. The browser's own speech service (Chrome, Edge) sends the audio to the browser maker's service; the other ways run on this computer after a one-time model download.</p>
+
+<p class="warn" id="fileWarn" hidden><b>Open this page through a local web address, not by double-clicking the file.</b> From a file the browser blocks the model engines (Moonshine, Whisper). In a terminal, in this folder, run <code>python3 -m http.server 8765</code> and open <code>http://localhost:8765/</code>.</p>
+
+<h2>1. The recording</h2>
+<div class="box">
+  <input type="file" id="file" accept="audio/*,video/*">
+  <span id="fileInfo" class="muted"></span>
+  <div class="row" style="margin-top:8px">
+    <label>Language
+      <select id="lang"><option value="en">English</option><option value="nl">Dutch</option></select>
+    </label>
+    <label>Only play the first <input type="number" id="limit" min="0" step="10" value="0" style="width:5.5em"> seconds (0 = everything)</label>
+    <label><input type="checkbox" id="sound"> Hear it through the speakers</label>
+  </div>
+  <p class="muted" id="vadInfo"></p>
+</div>
+
+<h2>2. The correct words (optional, needed for accuracy and delay numbers)</h2>
+<div class="box">
+  <textarea id="ref" placeholder="Paste the true transcript of the recording here (only the part you will play). Write numbers the way people say them (&quot;five&quot;, not &quot;5&quot;) or the score will count them as mistakes."></textarea>
+  <div class="row"><button id="rescore">Recalculate all runs with this text</button><span id="refInfo" class="muted"></span></div>
+</div>
+
+<h2>3. Run one way</h2>
+<div class="box">
+  <div class="row">
+    <label>Way
+      <select id="engine">
+        <optgroup label="Browser's own speech service">
+          <option value="webspeech">Web Speech API (Chrome / Edge)</option>
+        </optgroup>
+        <optgroup label="Model inside the browser (transformers.js)">
+          <option value="tjs|onnx-community/moonshine-tiny-ONNX|moonshine|en">Moonshine tiny (English, 27M)</option>
+          <option value="tjs|onnx-community/moonshine-base-ONNX|moonshine|en">Moonshine base (English, 61M)</option>
+          <option value="tjs|Workmind/moonshine-streaming-small-ONNX|moonshine80|en">Moonshine v2 small, community export (English, experimental)</option>
+          <option value="tjs|onnx-community/whisper-tiny.en|whisper|en">Whisper tiny.en (English, 39M)</option>
+          <option value="tjs|onnx-community/whisper-base.en|whisper|en">Whisper base.en (English, 74M)</option>
+          <option value="tjs|onnx-community/whisper-tiny|whisper|multi">Whisper tiny (many languages)</option>
+          <option value="tjs|onnx-community/whisper-base|whisper|multi">Whisper base (many languages)</option>
+          <option value="tjs|onnx-community/whisper-small|whisper|multi">Whisper small (many languages, big download)</option>
+          <option value="tjs|custom|whisper|multi">Other Whisper-style model: type its Hugging Face id below</option>
+        </optgroup>
+        <optgroup label="Older kind of model (Vosk)">
+          <option value="vosk">Vosk small English (40 MB)</option>
+        </optgroup>
+      </select>
+    </label>
+    <label id="deviceWrap">Runs on
+      <select id="device"><option value="wasm">CPU (WASM)</option><option value="webgpu">Graphics chip (WebGPU)</option></select>
+    </label>
+    <label id="dtypeWrap">Precision
+      <select id="dtype">
+        <option value="">Browser default</option>
+        <option value="q8">q8 (smallest download)</option>
+        <option value="fp16">fp16</option>
+        <option value="fp32">fp32 (biggest)</option>
+        <option value="mix">encoder fp32 + decoder q4</option>
+      </select>
+    </label>
+  </div>
+  <div class="row" id="customWrap" hidden><label>Model id <input type="text" id="customModel" placeholder="e.g. onnx-community/whisper-base"></label></div>
+  <div class="row" id="webspeechWrap">
+    <label><input type="checkbox" id="local"> Ask the browser to recognise on this computer (processLocally)</label>
+  </div>
+  <div class="row" id="segWrap">
+    <label>Cut a piece after a pause of <input type="number" id="pauseMs" value="500" min="200" step="100" style="width:5em"> ms</label>
+    <label>longest piece <input type="number" id="maxSeg" value="12" min="4" max="25" style="width:4em"> s</label>
+    <label>show a draft every <input type="number" id="interim" value="2" min="0" step="0.5" style="width:4em"> s (0 = off)</label>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button class="go" id="start" disabled>Start (plays the recording in real time)</button>
+    <button id="stop" disabled>Stop</button>
+    <span id="status" class="muted">Pick a recording first.</span>
+  </div>
+  <div id="bar"><div></div></div>
+  <div class="muted" id="pos"></div>
+  <div id="live"></div>
+  <div id="log"></div>
+</div>
+
+<h2>4. Results</h2>
+<div class="row"><button id="copy" disabled>Copy results as text</button><span id="copyInfo" class="muted"></span></div>
+<div class="tablewrap"><table id="results"><thead><tr>
+  <th>Run</th><th>First text after speech starts</th><th>Typical delay (middle / slowest 1 in 10)</th><th>Words per second</th><th>Speed (audio seconds per computer second)</th><th>Download</th><th>Load + warm-up</th><th>Word errors</th>
+</tr></thead><tbody></tbody></table></div>
+<div id="details"></div>
+
+<h2>How the numbers are worked out</h2>
+<ul class="muted">
+  <li><b>Delay</b> is measured on the recording's own clock. Without the correct words we can only show when the first text appeared. With them, each correct word's spoken moment is estimated by spreading the words evenly over the stretches where someone is speaking (found from loudness). That is rough for a single word (about a second either way) but fair when comparing ways on the same file. The "typical delay" is the middle value of all correctly recognised words.</li>
+  <li><b>Word errors</b> = (wrong + missing + extra words) / words in the correct text. Lower is better. Capital letters and punctuation are ignored.</li>
+  <li><b>Speed</b> is how much audio the model handled per second of computer time. Under 1 means it cannot keep up live. Not available for the browser's own service.</li>
+  <li>The models are fed pieces cut at pauses (loudness based). The real tool would use a better pause detector, so treat results as slightly rough. The recording is sliced from memory, so this does not test the shared-tab-sound path (that is TOOLS-149), except for the browser's own service, which gets a real audio track.</li>
+  <li>CPU and graphics-chip load are not visible to a web page. Open the browser's Task Manager (Chrome: Shift+Esc) while a run is going and write down the CPU % of this tab and of the GPU process.</li>
+</ul>
+
+<script type="text/plain" id="worker-src">
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
+let asr = null;
+self.onmessage = async (e) => {
+  const m = e.data;
+  try {
+    if (m.type === 'load') {
+      const t0 = performance.now();
+      const opts = { device: m.device, progress_callback: (p) => self.postMessage({ type: 'progress', p }) };
+      if (m.dtype) opts.dtype = m.dtype;
+      asr = await pipeline('automatic-speech-recognition', m.model, opts);
+      const loadS = (performance.now() - t0) / 1000;
+      const w0 = performance.now();
+      await asr(new Float32Array(16000 * 2), m.warmOptions || {});
+      self.postMessage({ type: 'loaded', loadSeconds: loadS, warmSeconds: (performance.now() - w0) / 1000 });
+    } else if (m.type === 'transcribe') {
+      const t0 = performance.now();
+      const out = await asr(m.audio, m.options || {});
+      self.postMessage({ type: 'result', id: m.id, text: String(out.text || '').trim(), seconds: (performance.now() - t0) / 1000 });
+    }
+  } catch (err) {
+    self.postMessage({ type: 'error', id: m.id, message: String((err && err.message) || err) });
+  }
+};
+</script>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const SR_RATE = 16000, FRAME = 320, FRAME_S = 0.02;
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const mb = (b) => (b / 1e6).toFixed(1) + ' MB';
+const fmt = (n, d = 1) => (n === null || n === undefined || Number.isNaN(n)) ? 'n/a' : n.toFixed(d);
+function log(t) { const el = $('log'); el.textContent += t + '\n'; el.scrollTop = el.scrollHeight; }
+
+// ---------- words, alignment, scoring ----------
+function words(t) {
+  return String(t || '').toLowerCase().normalize('NFKD').replace(/\p{M}+/gu, '').replace(/['’]/g, '')
+    .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+function align(ref, hyp) {
+  const n = ref.length, m = hyp.length, W = m + 1;
+  const d = new Uint16Array((n + 1) * W);
+  for (let i = 0; i <= n; i++) d[i * W] = i;
+  for (let j = 0; j <= m; j++) d[j] = j;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const sub = d[(i - 1) * W + j - 1] + (ref[i - 1] === hyp[j - 1] ? 0 : 1);
+    d[i * W + j] = Math.min(sub, d[(i - 1) * W + j] + 1, d[i * W + j - 1] + 1);
+  }
+  let i = n, j = m, S = 0, D = 0, I = 0; const matches = [];
+  while (i > 0 || j > 0) {
+    const here = d[i * W + j];
+    if (i > 0 && j > 0 && here === d[(i - 1) * W + j - 1] + (ref[i - 1] === hyp[j - 1] ? 0 : 1)) {
+      if (ref[i - 1] === hyp[j - 1]) matches.push([i - 1, j - 1]); else S++;
+      i--; j--;
+    } else if (i > 0 && here === d[(i - 1) * W + j] + 1) { D++; i--; }
+    else { I++; j--; }
+  }
+  return { S, D, I, N: n, wer: n ? (S + D + I) / n : null, matches };
+}
+function pct(arr, p) { if (!arr.length) return null; const a = arr.slice().sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; }
+
+// ---------- audio file ----------
+let ctx = null, buf = null, mono = null, mask = null, cumActive = null, speechSeconds = 0, playDur = 0, firstSpeechAt = null;
+
+function analyse() {
+  const lim = Number($('limit').value) || 0;
+  playDur = lim > 0 ? Math.min(buf.duration, lim) : buf.duration;
+  const n = Math.floor(playDur * SR_RATE);
+  const frames = Math.floor(n / FRAME);
+  const rms = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) { let s = 0; for (let k = f * FRAME; k < (f + 1) * FRAME; k++) s += mono[k] * mono[k]; rms[f] = Math.sqrt(s / FRAME); }
+  const sorted = Array.from(rms).sort((a, b) => a - b);
+  const noise = sorted[Math.floor(frames * 0.1)] || 0, loud = sorted[Math.floor(frames * 0.95)] || 0;
+  const thr = Math.max(noise + (loud - noise) * 0.12, 0.002);
+  mask = new Uint8Array(frames);
+  for (let f = 0; f < frames; f++) mask[f] = rms[f] > thr ? 1 : 0;
+  // fill short gaps (under 200 ms) and drop tiny blips (under 60 ms)
+  for (let f = 0; f < frames;) {
+    let g = f; while (g < frames && mask[g] === mask[f]) g++;
+    const len = g - f;
+    if (mask[f] === 0 && len < 10 && f > 0 && g < frames) mask.fill(1, f, g);
+    f = g;
+  }
+  for (let f = 0; f < frames;) {
+    let g = f; while (g < frames && mask[g] === mask[f]) g++;
+    if (mask[f] === 1 && g - f < 3) mask.fill(0, f, g);
+    f = g;
+  }
+  cumActive = new Float64Array(frames + 1);
+  for (let f = 0; f < frames; f++) cumActive[f + 1] = cumActive[f] + mask[f];
+  speechSeconds = cumActive[frames] * FRAME_S;
+  const first = mask.indexOf(1);
+  firstSpeechAt = first >= 0 ? first * FRAME_S : null;
+  $('vadInfo').textContent = `Playing ${fmt(playDur, 0)} s. Speech found in about ${fmt(speechSeconds, 0)} s of it (loudness guess). First speech at ${fmt(firstSpeechAt)} s.`;
+  updateRefInfo();
+}
+function refTimes(refWords) {
+  const N = refWords.length, total = cumActive[cumActive.length - 1];
+  const out = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const target = (i + 0.5) / N * total;
+    let lo = 0, hi = cumActive.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cumActive[mid] < target) lo = mid + 1; else hi = mid; }
+    out[i] = Math.max(0, lo - 1) * FRAME_S;
+  }
+  return out;
+}
+$('file').addEventListener('change', async () => {
+  const f = $('file').files[0]; if (!f) return;
+  $('status').textContent = 'Reading the recording...'; $('start').disabled = true;
+  try {
+    if (ctx) await ctx.close();
+    ctx = new AudioContext({ sampleRate: SR_RATE });
+    buf = await ctx.decodeAudioData(await f.arrayBuffer());
+    mono = new Float32Array(buf.length);
+    for (let c = 0; c < buf.numberOfChannels; c++) { const ch = buf.getChannelData(c); for (let i = 0; i < buf.length; i++) mono[i] += ch[i] / buf.numberOfChannels; }
+    $('fileInfo').textContent = `${f.name}, ${fmt(buf.duration, 1)} s`;
+    analyse();
+    $('status').textContent = 'Ready.'; $('start').disabled = false;
+  } catch (e) { $('status').textContent = 'Could not read that file: ' + e.message; }
+});
+$('limit').addEventListener('change', () => { if (buf) analyse(); });
+$('ref').addEventListener('input', updateRefInfo);
+function updateRefInfo() { $('refInfo').textContent = words($('ref').value).length + ' words in the correct text'; }
+
+// ---------- run machinery ----------
+const runs = [];
+let cur = null; // the active run
+const SIZE_NOTE = { webspeech: 'not shown by the browser', };
+
+function newRun(label) {
+  return { id: runs.length + 1, label, updates: [], seen: [], maxWords: 0, text: '', stopped: false, error: '', downloadTotal: null, downloadNow: null,
+    loadSeconds: null, warmSeconds: null, busySeconds: 0, audioDone: 0, maxWait: 0, lang: $('lang').value, playDur: 0, endedAtPos: null, notes: [] };
+}
+function push(run, text) {
+  const pos = position();
+  run.text = text;
+  const w = words(text);
+  for (let k = run.maxWords; k < w.length; k++) run.seen[k] = pos;
+  if (w.length > run.maxWords) run.maxWords = w.length;
+  run.updates.push({ pos, n: w.length });
+  $('live').textContent = text;
+  $('live').scrollTop = $('live').scrollHeight;
+}
+let t0 = 0, srcNode = null, msDest = null, ticker = 0;
+function position() { return ctx && t0 ? Math.max(0, ctx.currentTime - t0) : 0; }
+
+function setStatus(t) { $('status').textContent = t; }
+
+$('engine').addEventListener('change', syncUi);
+function syncUi() {
+  const v = $('engine').value, kind = v.split('|')[0];
+  $('webspeechWrap').hidden = kind !== 'webspeech';
+  $('segWrap').hidden = kind !== 'tjs';
+  $('customWrap').hidden = !(kind === 'tjs' && v.split('|')[1] === 'custom');
+  $('deviceWrap').hidden = $('dtypeWrap').hidden = !(kind === 'tjs');
+}
+syncUi();
+$('fileWarn').hidden = location.protocol !== 'file:';
+
+function engineConfig() {
+  const v = $('engine').value.split('|');
+  return { kind: v[0], model: v[1] === 'custom' ? $('customModel').value.trim() : v[1], family: v[2], langs: v[3] };
+}
+
+// ---------- engines ----------
+// Web Speech API: the browser's own service, fed a real MediaStream audio track.
+function webSpeechEngine(run) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, committed = '', session = '', running = false, lastResultAt = 0, lang = $('lang').value === 'nl' ? 'nl-NL' : 'en-US';
+  const api = {
+    async prepare() {
+      if (!SR) throw new Error('This browser has no SpeechRecognition (Firefox and Safari do not).');
+      run.notes.push('language ' + lang);
+      if ($('local').checked) {
+        const o = { langs: [lang], processLocally: true };
+        if (typeof SR.available !== 'function') throw new Error('This browser cannot check on-device speech (SpeechRecognition.available missing).');
+        const st = await SR.available(o);
+        log('on-device status: ' + st);
+        if (st === 'downloadable' || st === 'downloading') { setStatus('Downloading the on-device speech pack...'); const ok = await SR.install(o); if (!ok) throw new Error('On-device pack install failed for ' + lang); }
+        else if (st !== 'available') throw new Error('On-device recognition for ' + lang + ' says: ' + st);
+        run.notes.push('on this computer');
+      } else run.notes.push('browser cloud service');
+    },
+    start() {
+      running = true; lastResultAt = performance.now();
+      const track = msDest.stream.getAudioTracks()[0];
+      const spawn = () => {
+        if (!running) return;
+        rec = new SR(); rec.lang = lang; rec.continuous = true; rec.interimResults = true;
+        if ($('local').checked && 'processLocally' in rec) rec.processLocally = true;
+        session = '';
+        rec.onresult = (e) => {
+          lastResultAt = performance.now();
+          session = Array.from(e.results).map((r) => r[0].transcript).join(' ');
+          push(run, (committed + ' ' + session).trim());
+        };
+        rec.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') { log('speech error: ' + e.error); run.notes.push('error ' + e.error); } };
+        rec.onend = () => { committed = (committed + ' ' + session).trim(); session = ''; if (running) setTimeout(spawn, 50); };
+        try { rec.start(track); } catch (err) { run.error = 'start(track) failed: ' + err.message; log(run.error); running = false; }
+      };
+      spawn();
+    },
+    tick(pos) {
+      if (pos > (firstSpeechAt || 0) + 20 && run.maxWords === 0 && !run.warned) { run.warned = true; run.notes.push('no text 20 s after speech began: this browser may be listening to the microphone instead of the track'); log(run.notes.at(-1)); }
+    },
+    audioEnded() {},
+    async drained() { await new Promise((r) => setTimeout(r, 8000)); },
+    stop() { running = false; try { rec && rec.abort(); } catch (e) { /* ok */ } },
+  };
+  return api;
+}
+
+// Chunked local models: pieces are cut at pauses and sent to a worker (transformers.js).
+function chunkEngine(run, cfg) {
+  const family = cfg.family;
+  let worker = null, queue = [], busy = false, committed = '', interimText = '', openSeg = 0, lastInterimPos = -99, frameDone = 0;
+  let inSpeech = false, segStart = 0, silenceRun = 0, lastActive = 0, finished = false, resolveDrain = null;
+  const files = {};
+  const isEn = cfg.langs === 'en';
+  const lang = $('lang').value;
+  const pauseFrames = Math.round((Number($('pauseMs').value) || 500) / 20);
+  const maxFrames = Math.round((Number($('maxSeg').value) || 12) / FRAME_S);
+  const interimEvery = Number($('interim').value) || 0;
+  if (family !== 'whisper' && lang !== 'en') run.notes.push('this model is English only; the language choice is ignored');
+
+  function options(seconds) {
+    if (family === 'whisper') { const o = { return_timestamps: false }; if (!isEn) { o.task = 'transcribe'; o.language = lang === 'nl' ? 'dutch' : 'english'; } return o; }
+    return { max_new_tokens: Math.max(8, Math.ceil(seconds * 6.5)) };
+  }
+  function dtypeValue() {
+    const v = $('dtype').value;
+    if (!v) return undefined;
+    if (v === 'mix') return { encoder_model: 'fp32', decoder_model_merged: 'q4' };
+    return v;
+  }
+  function pad80(a) { if (family !== 'moonshine80') return a; const r = a.length % 80; if (!r) return a; const o = new Float32Array(a.length + 80 - r); o.set(a); return o; }
+
+  function pump() {
+    if (busy || !worker) { return; }
+    // finals first; drop drafts when a final is waiting
+    const fi = queue.findIndex((j) => j.kind === 'final');
+    let job;
+    if (fi >= 0) { queue = queue.filter((j) => j.kind === 'final'); job = queue.shift(); }
+    else job = queue.shift();
+    if (!job) { if (finished && resolveDrain) resolveDrain(); return; }
+    busy = true;
+    job.startedAt = performance.now();
+    run.maxWait = Math.max(run.maxWait, (job.startedAt - job.queuedAt) / 1000);
+    const audio = pad80(job.audio);
+    worker.postMessage({ type: 'transcribe', id: job.id, audio, options: options(audio.length / SR_RATE) }, [audio.buffer]);
+    pump.current = job;
+  }
+  function onResult(m) {
+    const job = pump.current; busy = false; pump.current = null;
+    if (m.type === 'error') { log('model error: ' + m.message); run.notes.push('model error: ' + m.message); }
+    else if (job) {
+      run.busySeconds += m.seconds;
+      if (job.kind === 'final') {
+        run.audioDone += job.seconds;
+        committed = (committed + ' ' + m.text).trim();
+        interimText = '';
+        push(run, committed);
+      } else if (job.seg === openSeg) {
+        interimText = m.text;
+        push(run, (committed + ' ' + interimText).trim());
+      }
+    }
+    pump();
+  }
+  function closeSeg(endFrame) {
+    const a = mono.slice(segStart * FRAME, endFrame * FRAME);
+    if (a.length > SR_RATE * 0.3) queue.push({ id: 'f' + Math.random(), kind: 'final', audio: a, seconds: a.length / SR_RATE, queuedAt: performance.now(), seg: openSeg });
+    openSeg++; interimText = ''; lastInterimPos = -99;
+    pump();
+  }
+  const api = {
+    async prepare() {
+      const mdl = cfg.model; if (!mdl) throw new Error('Type a model id first.');
+      const url = URL.createObjectURL(new Blob([$('worker-src').textContent], { type: 'text/javascript' }));
+      worker = new Worker(url, { type: 'module' });
+      await new Promise((resolve, reject) => {
+        worker.onmessage = (e) => {
+          const m = e.data;
+          if (m.type === 'progress') {
+            const p = m.p || {};
+            if (p.file && (p.total || p.loaded)) { files[p.file] = { loaded: p.loaded || 0, total: p.total || files[p.file]?.total || 0 }; const tot = Object.values(files).reduce((s, x) => s + x.loaded, 0), all = Object.values(files).reduce((s, x) => s + x.total, 0); setStatus(`Downloading model... ${mb(tot)} of ${mb(all)}`); }
+          } else if (m.type === 'loaded') { run.loadSeconds = m.loadSeconds; run.warmSeconds = m.warmSeconds; resolve(); }
+          else if (m.type === 'error') reject(new Error(m.message));
+        };
+        worker.onerror = (e) => reject(new Error(e.message || 'worker failed'));
+        const dt = dtypeValue();
+        worker.postMessage({ type: 'load', model: mdl, device: $('device').value, dtype: dt, warmOptions: options(2) });
+        run.notes.push(mdl + ' on ' + $('device').value + ', precision ' + ($('dtype').value || 'browser default'));
+        setStatus('Loading the model...');
+      });
+      run.downloadTotal = Object.values(files).reduce((s, x) => s + x.total, 0) || null;
+      run.downloadNow = Object.values(files).reduce((s, x) => s + x.loaded, 0);
+      worker.onmessage = (e) => onResult(e.data);
+      worker.onerror = (e) => { log('worker error: ' + e.message); };
+    },
+    start() {},
+    tick(pos) {
+      const nowFrame = Math.min(mask.length, Math.floor(pos / FRAME_S));
+      for (let f = frameDone; f < nowFrame; f++) {
+        if (mask[f]) { if (!inSpeech) { inSpeech = true; segStart = Math.max(0, f - 10); } silenceRun = 0; lastActive = f; }
+        else if (inSpeech) { silenceRun++; if (silenceRun >= pauseFrames) { inSpeech = false; closeSeg(Math.min(mask.length, lastActive + 1 + 8)); } }
+        if (inSpeech && f + 1 - segStart >= maxFrames) { closeSeg(f + 1); segStart = f + 1; silenceRun = 0; }
+      }
+      frameDone = nowFrame;
+      if (inSpeech && interimEvery > 0 && !busy && queue.length === 0 && pos - lastInterimPos >= interimEvery && nowFrame - segStart > 25) {
+        lastInterimPos = pos;
+        queue.push({ id: 'd' + Math.random(), kind: 'draft', audio: mono.slice(segStart * FRAME, nowFrame * FRAME), seconds: (nowFrame - segStart) * FRAME_S, queuedAt: performance.now(), seg: openSeg });
+        pump();
+      }
+    },
+    audioEnded() { if (inSpeech) { inSpeech = false; closeSeg(mask.length); } finished = true; },
+    drained() { return new Promise((resolve) => { resolveDrain = resolve; const check = () => { if (!busy && queue.length === 0) resolve(); else setTimeout(check, 300); }; check(); setTimeout(resolve, 180000); }); },
+    stop() { finished = true; queue = []; if (worker) worker.terminate(); },
+  };
+  return api;
+}
+
+// Vosk: older Kaldi model compiled to WebAssembly; streams partial results.
+function voskEngine(run) {
+  let model = null, rec = null, committed = '', partial = '', sent = 0;
+  const MODEL_URL = 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-en-us-0.15.tar.gz';
+  return {
+    async prepare() {
+      if ($('lang').value !== 'en') run.notes.push('Vosk small English only; Dutch needs a repackaged model (not in this page)');
+      try { const h = await fetch(MODEL_URL, { method: 'HEAD' }); const n = Number(h.headers.get('content-length')); if (n) run.downloadTotal = n; } catch (e) { /* size unknown */ }
+      await new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js'; s.onload = resolve; s.onerror = () => reject(new Error('could not load vosk.js')); document.head.appendChild(s); });
+      const t = performance.now();
+      setStatus('Downloading and loading the Vosk model...');
+      model = await Vosk.createModel(MODEL_URL);
+      run.loadSeconds = (performance.now() - t) / 1000; run.warmSeconds = 0;
+      rec = new model.KaldiRecognizer(SR_RATE);
+      rec.on('result', (m) => { if (m.result && m.result.text) { committed = (committed + ' ' + m.result.text).trim(); partial = ''; push(run, committed); } });
+      rec.on('partialresult', (m) => { partial = (m.result && m.result.partial) || ''; push(run, (committed + ' ' + partial).trim()); });
+      run.notes.push('vosk-model-small-en-us-0.15, WASM');
+    },
+    start() {},
+    tick(pos) {
+      const to = Math.min(mono.length, Math.floor(pos * SR_RATE));
+      while (sent + 1600 <= to) { rec.acceptWaveformFloat(mono.slice(sent, sent + 1600), SR_RATE); sent += 1600; }
+    },
+    audioEnded() { try { rec.retrieveFinalResult(); } catch (e) { /* ok */ } },
+    async drained() { await new Promise((r) => setTimeout(r, 3000)); },
+    stop() { try { rec && rec.remove(); model && model.terminate(); } catch (e) { /* ok */ } },
+  };
+}
+
+// ---------- start / stop ----------
+$('start').addEventListener('click', async () => {
+  if (!buf) return;
+  const cfg = engineConfig();
+  $('start').disabled = true; $('stop').disabled = false; $('live').textContent = ''; $('log').textContent = '';
+  analyse();
+  const label = cfg.kind === 'webspeech' ? 'Web Speech' + ($('local').checked ? ' (on this computer)' : ' (cloud)')
+    : cfg.kind === 'vosk' ? 'Vosk small en' : cfg.model.split('/').pop() + ' ' + $('device').value;
+  const run = newRun(label); run.playDur = playDur; cur = run;
+  let engine;
+  try {
+    await ctx.resume();
+    engine = cfg.kind === 'webspeech' ? webSpeechEngine(run) : cfg.kind === 'vosk' ? voskEngine(run) : chunkEngine(run, cfg);
+    run.engine = engine;
+    msDest = ctx.createMediaStreamDestination();
+    setStatus('Preparing...');
+    await engine.prepare();
+    if (run.stopped) throw new Error('stopped');
+    // play
+    srcNode = ctx.createBufferSource(); srcNode.buffer = buf;
+    const gain = ctx.createGain(); gain.gain.value = $('sound').checked ? 1 : 0;
+    srcNode.connect(gain); gain.connect(ctx.destination); srcNode.connect(msDest);
+    t0 = ctx.currentTime + 0.3;
+    srcNode.start(t0, 0, playDur);
+    engine.start();
+    setStatus('Running: ' + label);
+    let ended = false;
+    ticker = setInterval(() => {
+      const pos = position();
+      $('bar').firstElementChild.style.width = Math.min(100, pos / playDur * 100) + '%';
+      $('pos').textContent = `Audio position ${fmt(pos)} s of ${fmt(playDur)} s, ${run.maxWords} words so far`;
+      try { engine.tick(pos); } catch (e) { log('tick error: ' + e.message); }
+      if (!ended && pos >= playDur) { ended = true; clearInterval(ticker); finishRun(run, engine); }
+    }, 100);
+  } catch (e) {
+    run.error = e.message;
+    if (engine) engine.stop();
+    endRunUi(run, e.message === 'stopped' ? 'Stopped.' : 'Failed: ' + e.message);
+    if (e.message !== 'stopped') { runs.push(run); render(); }
+  }
+});
+async function finishRun(run, engine) {
+  engine.audioEnded();
+  setStatus('Recording over, waiting for the last words...');
+  await engine.drained();
+  if (run.stopped || cur !== run) return; // Stop was pressed while waiting: it already saved this run
+  run.endedAtPos = position();
+  engine.stop();
+  runs.push(run); render();
+  endRunUi(run, 'Done: ' + run.label);
+}
+function endRunUi(run, msg) {
+  clearInterval(ticker); try { srcNode && srcNode.stop(); } catch (e) { /* ok */ }
+  setStatus(msg); $('start').disabled = !buf; $('stop').disabled = true; cur = null;
+}
+$('stop').addEventListener('click', () => {
+  if (!cur) return;
+  const run = cur; run.stopped = true; run.error = 'stopped early';
+  clearInterval(ticker); try { run.engine && run.engine.stop(); } catch (e) { /* ok */ }
+  runs.push(run); render(); endRunUi(run, 'Stopped.');
+});
+
+// ---------- scoring and display ----------
+function score(run) {
+  const out = { first: null, med: null, p90: null, wps: null, speed: null, wer: null, counts: null };
+  const w = words(run.text);
+  const firstUpd = run.updates.find((u) => u.n > 0);
+  if (firstUpd && firstSpeechAt !== null) out.first = firstUpd.pos - firstSpeechAt;
+  out.wps = run.playDur ? w.length / run.playDur : null;
+  if (run.busySeconds > 0) out.speed = run.audioDone / run.busySeconds;
+  const ref = words($('ref').value);
+  if (ref.length >= 5 && cumActive) {
+    const a = align(ref, w);
+    out.wer = a.wer; out.counts = a;
+    const rt = refTimes(ref), delays = [];
+    for (const [ri, hi] of a.matches) if (run.seen[hi] !== undefined) delays.push(run.seen[hi] - rt[ri]);
+    out.med = pct(delays, 0.5); out.p90 = pct(delays, 0.9); out.nDelay = delays.length;
+  }
+  return out;
+}
+function render() {
+  const tb = $('results').querySelector('tbody'); tb.innerHTML = ''; $('details').innerHTML = '';
+  runs.forEach((run) => {
+    const s = run.score = score(run);
+    const dl = run.downloadTotal ? `${mb(run.downloadTotal)}${run.downloadNow === 0 ? ' (already stored)' : ''}` : (run.label.startsWith('Web Speech') ? 'not shown by browser' : 'n/a');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><b>#${run.id}</b> ${esc(run.label)}${run.error ? '<br><span class="warn">' + esc(run.error) + '</span>' : ''}</td>`
+      + `<td class="num">${s.first === null ? 'n/a' : fmt(s.first) + ' s'}</td>`
+      + `<td class="num">${s.med === null ? 'needs correct text' : fmt(s.med) + ' s / ' + fmt(s.p90) + ' s'}</td>`
+      + `<td class="num">${fmt(s.wps, 2)}</td>`
+      + `<td class="num">${s.speed === null ? 'n/a' : fmt(s.speed, 1) + 'x' + (run.maxWait > 5 ? ' <span class="warn">fell behind ' + fmt(run.maxWait, 0) + ' s</span>' : '')}</td>`
+      + `<td class="num">${dl}</td>`
+      + `<td class="num">${run.loadSeconds === null ? 'n/a' : fmt(run.loadSeconds) + ' s + ' + fmt(run.warmSeconds) + ' s'}</td>`
+      + `<td class="num">${s.wer === null ? 'needs correct text' : fmt(s.wer * 100) + '% (' + s.counts.S + ' wrong, ' + s.counts.D + ' missing, ' + s.counts.I + ' extra of ' + s.counts.N + ')'}</td>`;
+    tb.appendChild(tr);
+    const d = document.createElement('details');
+    d.innerHTML = `<summary>#${run.id} ${esc(run.label)}: text (${run.maxWords} words)</summary><div class="muted">${esc(run.notes.join('; '))}</div><pre>${esc(run.text)}</pre>`;
+    $('details').appendChild(d);
+  });
+  $('copy').disabled = runs.length === 0;
+}
+$('rescore').addEventListener('click', render);
+$('copy').addEventListener('click', async () => {
+  const lines = ['Speech test results (TOOLS-150)', 'Browser: ' + navigator.userAgent, 'File: ' + ($('fileInfo').textContent || 'n/a'), 'Reference words: ' + words($('ref').value).length, ''];
+  runs.forEach((r) => {
+    const s = r.score || score(r);
+    lines.push(`#${r.id} ${r.label}`);
+    lines.push(`  first text after speech starts: ${s.first === null ? 'n/a' : fmt(s.first) + ' s'}`);
+    lines.push(`  delay middle / slowest 1 in 10: ${s.med === null ? 'n/a' : fmt(s.med) + ' s / ' + fmt(s.p90) + ' s'}`);
+    lines.push(`  words per second: ${fmt(s.wps, 2)}; speed: ${s.speed === null ? 'n/a' : fmt(s.speed, 1) + 'x'}; fell behind up to: ${fmt(r.maxWait, 1)} s`);
+    lines.push(`  download: ${r.downloadTotal ? mb(r.downloadTotal) : 'n/a'}; load+warm-up: ${r.loadSeconds === null ? 'n/a' : fmt(r.loadSeconds) + ' s + ' + fmt(r.warmSeconds) + ' s'}`);
+    lines.push(`  word errors: ${s.wer === null ? 'n/a' : fmt(s.wer * 100) + '%'}`);
+    lines.push(`  notes: ${r.notes.join('; ')}${r.error ? '; ERROR ' + r.error : ''}`);
+  });
+  const text = lines.join('\n');
+  try { await navigator.clipboard.writeText(text); $('copyInfo').textContent = 'Copied.'; } catch (e) { $('copyInfo').textContent = 'Could not copy; text shown in the log box.'; $('log').textContent = text; }
+});
+window.__speechTest = { runs, words, align };
+</script>
+</body>
+</html>

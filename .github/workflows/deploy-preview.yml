@@ -1,0 +1,45 @@
+# Puts a build of dev on the preview Worker (producer-preview, preview-producer.techies.tools). Nothing else.
+# It runs only when both Cloudflare secrets exist; until then it says so and does nothing. The secrets wait for
+# TOOLS-144 (the Cloudflare token). The live Worker is never touched here: it is deployed by hand by the lead.
+name: deploy-preview
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: guard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Preview deploy skipped: the Cloudflare secrets do not exist yet. It waits for TOOLS-144."
+          fi
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: steps.guard.outputs.ready == 'true'
+        run: node --test test/*.test.mjs
+      - if: steps.guard.outputs.ready == 'true'
+        name: Deploy the preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.159.0 deploy --env preview

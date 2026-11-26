@@ -1,0 +1,179 @@
+// Live relay between the host's own AI agent (MCP over HTTP on /mcp) and their open producer page (a WebSocket on
+// /api/relay), as in the Prompter. One Durable Object per hashed token. It stores only
+// { createdAt, expiresAt, revoked, agent: { name, version } }, never the talk: tool calls and their results pass
+// through memory. An alarm just after expiresAt erases the note. Nothing is logged.
+// The relay is only a pipe: the page answers every call (it holds the transcript, the questions and the run order,
+// and keeps its own cursor, "seq"). A call waits for the page up to the time the Worker asks, never past MAX_CALL_MS (plus up to TAB_GRACE_MS waiting for a page to connect).
+import { DurableObject } from "cloudflare:workers";
+import { CALL_STATUS, CALL_TIMEOUT_MS, MAX_CALL_MS, RELAY_CLOSE, RELAY_PROTOCOL, TOKEN_MAX_AGE_MS } from "./protocol.mjs";
+
+export const ALARM_SLACK_MS = 60_000;
+/** A call that finds no page (it was open a moment ago: a reload closes the old page before the new one connects) waits this long for one. */
+export const TAB_GRACE_MS = 5_000;
+const dueOf = (meta) => meta.expiresAt + ALARM_SLACK_MS;
+
+export class Relay extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.pending = new Map();
+    this.slots = new Map(); // slot name -> id of the call that holds it
+    this.graceMs = TAB_GRACE_MS;
+    this.tabWaiters = new Set(); // calls waiting a moment for a page to connect
+    this.earlyAgent = null; // an agent that said hello before any tab: kept in memory until one connects
+    // Keepalive pings from the page are answered without waking the object.
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'));
+  }
+
+  now() { return Date.now(); }
+  async meta() {
+    return (await this.ctx.storage.get("meta")) ?? null;
+  }
+  valid(meta) {
+    const now = this.now();
+    return !!meta && !meta.revoked && now - meta.createdAt < TOKEN_MAX_AGE_MS && now < meta.expiresAt;
+  }
+  // Every write sets the alarm, so no note outlives its expiry.
+  async save(meta) {
+    await this.ctx.storage.put("meta", meta);
+    await this.ctx.storage.setAlarm(dueOf(meta));
+  }
+  tab() {
+    return this.ctx.getWebSockets("tab").at(-1) ?? null;
+  }
+  // The newest page, or the next one to connect within `ms` (null when none comes).
+  tabWithin(ms) {
+    const ws = this.tab();
+    if (ws || !(ms > 0)) return Promise.resolve(ws);
+    return new Promise((resolve) => {
+      const waiter = (found) => { clearTimeout(timer); this.tabWaiters.delete(waiter); resolve(found); };
+      const timer = setTimeout(() => waiter(null), ms);
+      this.tabWaiters.add(waiter);
+    });
+  }
+  send(ws, message) {
+    try { ws.send(JSON.stringify(message)); return true; } catch { return false; }
+  }
+
+  // The page connects here. The Worker has already checked the token and passes its birth time.
+  async fetch(request) {
+    if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
+    const born = Number(request.headers.get("X-Token-Born"));
+    const now = this.now();
+    let meta = await this.meta();
+    const [client, server] = Object.values(new WebSocketPair());
+    const late = !meta && !(born > 0 && now - born < TOKEN_MAX_AGE_MS);
+    if (late || (meta && !this.valid(meta))) {
+      // Not kept: accepted only to say why (RELAY_CLOSE.ended makes the page forget the token), then closed.
+      server.accept();
+      server.close(RELAY_CLOSE.ended, meta?.revoked ? "revoked" : "expired");
+    } else {
+      if (!meta) {
+        meta = { createdAt: born, expiresAt: born + TOKEN_MAX_AGE_MS, revoked: false, agent: this.earlyAgent ?? null };
+        this.earlyAgent = null;
+        await this.save(meta);
+      }
+      // Only the newest page receives calls; the others hear RELAY_CLOSE.elsewhere and offer "Use this tab".
+      for (const old of this.ctx.getWebSockets("tab")) {
+        this.endCallsOf(old);
+        try { old.close(RELAY_CLOSE.elsewhere, "Open in another tab"); } catch { /* already closed */ }
+      }
+      this.ctx.acceptWebSocket(server, ["tab"]);
+      for (const waiter of [...this.tabWaiters]) waiter(server);
+      this.send(server, { type: "ready", createdAt: meta.createdAt });
+      if (meta.agent) this.send(server, { type: "agent", ...meta.agent });
+    }
+    return new Response(null, { status: 101, webSocket: client, headers: { "Sec-WebSocket-Protocol": RELAY_PROTOCOL } });
+  }
+
+  async webSocketMessage(ws, data) {
+    let msg;
+    try { msg = JSON.parse(typeof data === "string" ? data : new TextDecoder().decode(data)); } catch { return; }
+    if (msg?.type === "result" && typeof msg.id === "string") {
+      this.pending.get(msg.id)?.done({ status: CALL_STATUS.ok, result: msg.result, error: msg.error });
+    } else if (msg?.type === "ping") {
+      this.send(ws, { type: "pong" });
+    } else if (msg?.type === "revoke") {
+      // Disconnect. The revoked note stays until its alarm, so the token is refused until it would have
+      // expired anyway. Without a note (rare) it is kept as long as any token could live.
+      const now = this.now();
+      const meta = (await this.meta()) ?? { createdAt: now, expiresAt: now + TOKEN_MAX_AGE_MS };
+      await this.save({ ...meta, revoked: true, agent: null });
+      for (const p of this.pending.values()) p.done({ status: CALL_STATUS.unauthorized });
+      for (const waiter of [...this.tabWaiters]) waiter(null);
+      for (const s of this.ctx.getWebSockets()) { try { s.close(RELAY_CLOSE.ended, "revoked"); } catch { /* closed */ } }
+    }
+  }
+
+  // Calls that were sent to a page that is gone end at once ("superseded"): the agent then asks again and reaches
+  // the new page, or hears "no-tab", instead of sitting on a dead page for the rest of its wait.
+  endCallsOf(ws) {
+    for (const p of [...this.pending.values()]) if (p.ws === ws) p.done({ status: CALL_STATUS.superseded });
+  }
+
+  async webSocketClose(ws, code) {
+    this.endCallsOf(ws);
+    try { ws.close(code === 1005 || code === 1006 ? 1000 : code, "bye"); } catch { /* closed */ }
+  }
+
+  // The note's time is up: whatever waits is refused, the page is told, and the object is emptied.
+  async alarm() {
+    const meta = await this.meta();
+    if (meta && this.now() < dueOf(meta)) return this.ctx.storage.setAlarm(dueOf(meta));
+    for (const p of this.pending.values()) p.done({ status: CALL_STATUS.unauthorized });
+    for (const waiter of [...this.tabWaiters]) waiter(null);
+    for (const s of this.ctx.getWebSockets()) { try { s.close(RELAY_CLOSE.ended, "expired"); } catch { /* closed */ } }
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+  }
+
+  // Called by the Worker for each MCP request; message.born is the token's birth time.
+  // Answers { status, result?, error? }, the status one of CALL_STATUS (src/protocol.mjs).
+  async op(message) {
+    if (!(message.born > 0) || this.now() - message.born >= TOKEN_MAX_AGE_MS) return { status: CALL_STATUS.unauthorized };
+    const meta = await this.meta();
+    // No note yet: the page has not reached the relay (still connecting, or its socket is blocked).
+    // A young token without a note was never revoked (a revoked note stays until its alarm), so the agent is
+    // told to wait for the page ("no-tab") instead of a 401. Nothing is written here: tokens are not signed, so
+    // only a page (through /api/relay and its guard) starts a note. The agent's name waits in memory and goes
+    // into the note the page starts.
+    if (!meta) {
+      if (message.op === "agent") this.earlyAgent = { name: String(message.name ?? "").slice(0, 60), version: String(message.version ?? "").slice(0, 30) };
+      return { status: message.op === "call" ? CALL_STATUS.noTab : CALL_STATUS.ok };
+    }
+    if (!this.valid(meta)) return { status: CALL_STATUS.unauthorized };
+    if (message.op === "auth") return { status: CALL_STATUS.ok };
+    if (message.op === "agent") {
+      meta.agent = { name: String(message.name ?? "").slice(0, 60), version: String(message.version ?? "").slice(0, 30) };
+      await this.save(meta);
+      const ws = this.tab();
+      if (ws) this.send(ws, { type: "agent", ...meta.agent });
+      return { status: CALL_STATUS.ok };
+    }
+    if (message.op === "call") {
+      const ws = await this.tabWithin(this.graceMs);
+      if (!ws) {
+        // After the grace, say whether the token was revoked or ended meanwhile, else that no page is open.
+        return { status: this.valid(await this.meta()) ? CALL_STATUS.noTab : CALL_STATUS.unauthorized };
+      }
+      const id = crypto.randomUUID();
+      const timeout = Math.min(Math.max(Number(message.timeout) || CALL_TIMEOUT_MS, 1_000), MAX_CALL_MS);
+      // A call may name a slot ("wait"): a newer call in the same slot ends the older one, so an agent that
+      // restarted its loop never leaves a cue stuck on a dead call.
+      const slot = typeof message.slot === "string" && message.slot ? message.slot.slice(0, 20) : null;
+      if (slot) this.pending.get(this.slots.get(slot))?.done({ status: CALL_STATUS.superseded });
+      return await new Promise((resolve) => {
+        const timer = setTimeout(() => { settle({ status: CALL_STATUS.timeout }); }, timeout);
+        const settle = (r) => {
+          clearTimeout(timer);
+          this.pending.delete(id);
+          if (slot && this.slots.get(slot) === id) this.slots.delete(slot);
+          resolve(r);
+        };
+        this.pending.set(id, { done: settle, ws });
+        if (slot) this.slots.set(slot, id);
+        if (!this.send(ws, { type: "call", id, tool: message.tool, args: message.args ?? {} })) settle({ status: CALL_STATUS.noTab });
+      });
+    }
+    return { status: CALL_STATUS.ok };
+  }
+}
