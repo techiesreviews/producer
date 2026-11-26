@@ -1317,6 +1317,34 @@ export async function run({ browser, playwright, base, out }) {
     await giveUp();
     await tab4.close();
 
+    // A copy the browser refuses while the Prompter cannot be reached, then pressed again once both work: the newest
+    // message is copied, the old one to copy by hand goes, and the button says the message was copied.
+    await page.route(`${PROMPTER}/api/agent-token`, (route) => route.fulfill({ status: 503, body: "down" }));
+    await page.evaluate(() => {
+      const real = navigator.clipboard.write.bind(navigator.clipboard);
+      navigator.clipboard.write = () => { navigator.clipboard.write = real; return Promise.reject(new DOMException("refused", "NotAllowedError")); };
+    });
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => !document.getElementById("agentMessage").hidden);
+    const byHand = await page.evaluate(() => ({ text: document.getElementById("agentMessage").value, tip: document.getElementById("connectBtn").dataset.tip }));
+    assert.ok(byHand.text.includes("T='") && !byHand.text.includes(PROMPTER), "a refused copy without the Prompter: the producer's message shows to copy by hand");
+    assert.equal(byHand.tip, "Copy the message below, then paste it into Claude Code.", "a refused copy: the button says to copy the message below");
+    await page.unroute(`${PROMPTER}/api/agent-token`);
+    const pagesRetry = context.pages().length;
+    await page.locator("#connectBtn").click();
+    const retried = await copiedNow();
+    await page.waitForTimeout(300);
+    await page.bringToFront();
+    assert.ok(retried.includes("T='"), "a copy pressed again that works: the newest message is copied");
+    assert.deepEqual(
+      await page.evaluate(() => ({ box: !document.getElementById("agentMessage").hidden, tip: document.getElementById("connectBtn").dataset.tip })),
+      { box: false, tip: "Message copied. Paste it into Claude Code." },
+      "a copy pressed again that works: the old message to copy by hand goes and the button says the message was copied",
+    );
+    await giveUp();
+    for (const extra of context.pages().slice(pagesRetry)) await extra.close();
+
     // A failed producer token with the switch on: no Prompter tab, the switch on and free again.
     await page.route(`${base}/api/agent-token`, (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
     const before = context.pages().length;
@@ -1327,7 +1355,7 @@ export async function run({ browser, playwright, base, out }) {
     assert.deepEqual(await swNow(), { label: "Show questions on my Prompter too", role: "switch", checked: "true", locked: false, tip: SW_ON }, "a failed producer token: the switch is on and free again");
     await context.close();
   }
-  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, two quick clicks, a closed Prompter tab, an older copy that fails late, a failed producer token");
+  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, two quick clicks, a closed Prompter tab, an older copy that fails late, a refused copy pressed again that works, a failed producer token");
 
   // A 320px phone with both connected (the Prompter switch on, its tab linked), at normal and at 200% text: the
   // combined label and every control fit, with no sideways scroll.
