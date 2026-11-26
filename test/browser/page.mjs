@@ -20,6 +20,33 @@ const STREAM = ["Restream Studio", "Wave.video", "OBS", "Other"];
 let nextClient = 0;
 const ownAddress = (context) => context.setExtraHTTPHeaders({ "cf-connecting-ip": `203.0.113.${++nextClient}` });
 
+// TOOLS-464: a stand-in Prompter, so no check calls the real site. Its token route answers this page (CORS, this
+// address only) with a made-up token; its page says ready to the page that opened it, keeps what it hears and says
+// "waiting" once it has the token, as the real Prompter does. A check makes it say "on" (its agent linked) itself.
+const PROMPTER = "https://prompter.techies.tools";
+const PROMPTER_TOKEN = ["tp1", "standin", "A".repeat(32)].join("-");
+const standInPrompter = (context, base) => context.route(`${PROMPTER}/**`, (route) => {
+  const r = route.request();
+  const cors = { "access-control-allow-origin": base, "access-control-allow-methods": "POST", "access-control-allow-headers": "*" };
+  if (r.url() !== `${PROMPTER}/api/agent-token`) {
+    const tab = `<!doctype html><title>Prompter</title><script>
+      const base = ${JSON.stringify(base)};
+      window.__heard = [];
+      addEventListener("message", (e) => {
+        if (e.origin !== base || e.source !== opener) return;
+        __heard.push(e.data);
+        if (e.data.type === "prompter:token") opener.postMessage({ type: "prompter:link", state: "waiting" }, base);
+      });
+      opener.postMessage({ type: "prompter:ready" }, base);
+    </script>`;
+    return route.fulfill({ status: 200, contentType: "text/html", body: tab });
+  }
+  if (r.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+  return route.fulfill({ status: 200, contentType: "application/json", headers: cors, body: JSON.stringify({ token: PROMPTER_TOKEN }) });
+});
+// The suites that check something else turn the Prompter switch off (it is on by default).
+const prompterOff = (page) => page.locator("#prompterSw").evaluate((b) => b.click());
+
 const AGENTS = "Claude Code Codex T3 Code slower i API key";
 const CODEX_TIP = "Codex blocks the network in safe mode: allow network or use the MCP line";
 const T3_TIP = "Slower: about 6 seconds an answer. T3 Code cannot take a private MCP line, so it uses the connect message.";
@@ -59,7 +86,7 @@ async function checkSetup(page, name, { phone, touch, chip, tabOff, service = tr
   const words = (await page.locator("#screen").innerText()).replace(/\s+/g, " ").trim();
   const label = await page.locator("#browserChip").innerText();
   assert.match(label, chip, `${name}: the browser chip names this browser`);
-  assert.match(words, new RegExp(`^Set up ${label} 1 Show type Solo show With a guest 2 I stream with ${STREAM.join(" ")} 3 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended 4 Show, points & plan i Let my agent load it Load demo show Paste it myself 5 Viewer chat i Connect Restream chat 6 Sound Microphone 7 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
+  assert.match(words, new RegExp(`^Set up ${label} 1 Show type Solo show With a guest 2 I stream with ${STREAM.join(" ")} 3 AI agent ${AGENTS} Copy connect message slower Connect with MCP recommended Show questions on my Prompter too 4 Show, points & plan i Let my agent load it Load demo show Paste it myself 5 Viewer chat i Connect Restream chat 6 Sound Microphone 7 Speech to text On this computer ${service ? "Browser service · audio goes to Google" : "i Browser service"} Load speech model · \\d+ MB Open producer screen$`), `${name}: the screen says only its labels`);
   assert.equal(await page.locator(".step").count(), 8, `${name}: eight steps, one per feature that exists (the guest step hidden on a solo show)`);
   const options = page.locator("#streamSeg button");
   assert.deepEqual(await options.allInnerTexts(), STREAM, `${name}: the four choices`);
@@ -455,12 +482,27 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   const key = page.locator('#agentSeg [data-v="key"]');
   assert.equal(await key.getAttribute("aria-disabled"), "true", `${name}: the API key is switched off`);
   assert.equal(await key.getAttribute("data-tip"), KEY_TIP, `${name}: and says when it comes`);
-  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: off, Test hidden`);
+  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code. Opens your Prompter too.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: off, Test hidden`);
+  // TOOLS-464: "Show questions on my Prompter too" is on by default, free to change, its state on itself.
+  const sw = () => page.evaluate(() => {
+    const b = document.getElementById("prompterSw");
+    return { label: b.textContent.trim(), checked: b.getAttribute("aria-checked"), locked: b.getAttribute("aria-disabled") === "true", tip: b.dataset.tip ?? null, dot: b.querySelector(".dot")?.className ?? null };
+  });
+  const SW_ON = "On: connecting also opens your Prompter, linked, and your agent shows its questions there.";
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: false, tip: SW_ON, dot: null }, `${name}: the Prompter switch is on, free to change`);
   await shoot("off");
 
-  // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token.
+  // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token. The same
+  // click gets the Prompter's token and opens the Prompter (the stand-in), which takes the token by message only.
+  const opened = page.context().waitForEvent("page");
   await press(connect);
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+  const tab = await opened;
+  assert.equal(tab.url(), `${PROMPTER}/#producer`, `${name}: the Prompter opens linked, with no token in its address`);
+  await tab.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
+  assert.deepEqual(await tab.evaluate(() => __heard), [{ type: "prompter:token", token: PROMPTER_TOKEN }], `${name}: the Prompter tab got its token once, by message`);
+  await page.waitForFunction(() => document.getElementById("prompterSw").dataset.tip?.startsWith("Your Prompter is open."));
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your Prompter is open. Waiting for your agent to link to it.", dot: "dot dot--think" }, `${name}: the switch says the Prompter waits, locked while connecting`);
   const waiting = await state();
   assert.equal(waiting.state, "busy", `${name}: waiting is the busy look`);
   assert.equal(waiting.dot, "dot dot--think", `${name}: with the breathing dot`);
@@ -477,6 +519,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     assert.ok(copied.includes(`T='${agentToken}'; U='${base}/mcp'`), `${name}: the message carries this page's address and token`);
     assert.match(copied, /```bash\n[\s\S]*while o=\$\(curl -sS -m 40 [\s\S]*```/, `${name}: and the ready-made loop`);
+    assert.ok(copied.includes(`-H 'Authorization: Bearer ${PROMPTER_TOKEN}'`) && copied.includes(`'${PROMPTER}/mcp'`), `${name}: and the Prompter's line with its own token`);
   }
   if (clipboard) assert.equal(boxShown, false, `${name}: the message box stays hidden when the copy worked`);
   else if (boxShown) assert.match(await page.locator("#agentMessage").inputValue(), /while o=\$\(curl/, `${name}: the shown message holds the loop`);
@@ -488,7 +531,16 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
   const open = await page.evaluate(() => document.querySelector("#tip[data-on]")?.textContent ?? null);
   assert.ok(open === null || open === "Click to disconnect.", `${name}: an open tooltip follows the new state (${open})`);
-  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected`);
+  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected (the Prompter still waits)`);
+  // The agent links to the Prompter too: the button says both, the switch shows the steady dot.
+  await tab.evaluate((base) => opener.postMessage({ type: "prompter:link", state: "on" }, base), base);
+  await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Connected: Producer + Prompter");
+  assert.deepEqual(await state(), { label: "Connected: Producer + Prompter", state: "ok", tip: "Click to disconnect both.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected to both`);
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your agent is linked to your Prompter: your questions show there too.", dot: "dot dot--ok" }, `${name}: the switch says the Prompter is linked`);
+  // A message from another page, or from the Prompter's address but not the tab this page opened, changes nothing.
+  await page.evaluate(() => postMessage({ type: "prompter:link", state: "off" }, "*"));
+  await page.waitForTimeout(100);
+  assert.equal((await state()).label, "Connected: Producer + Prompter", `${name}: only the opened Prompter tab is heard`);
   const green = await page.evaluate(() => getComputedStyle(document.getElementById("connectBtn")).color);
   assert.deepEqual(await paint(page, green), await token(page, "agent-ink"), `${name}: connected reads green`);
   await shoot("connected");
@@ -530,16 +582,24 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   await press(connect);
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Copy connect message slower");
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: Disconnect revokes the token`);
-  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: back to off`);
+  await tab.waitForFunction(() => __heard.at(-1)?.type === "prompter:disconnect");
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: false, tip: SW_ON, dot: null }, `${name}: Disconnect tells the Prompter tab too, and frees the switch`);
+  await tab.close();
+  assert.deepEqual(await state(), { label: "Copy connect message slower", state: null, tip: "Copies a message. Paste it into Claude Code. Opens your Prompter too.", dot: null, test: null, testTip: TEST_TIP, done: false }, `${name}: back to off`);
   const kept = await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length, cookie: document.cookie }));
   assert.deepEqual(kept, { local: 0, session: 0, cookie: "" }, `${name}: the token was never stored`);
-  // Leaving or reloading the page revokes the token too (the page keeps none).
+  // Leaving or reloading the page revokes the token too (the page keeps none), and tells the Prompter tab.
+  const reopened = page.context().waitForEvent("page");
   await press(connect);
   await page.waitForFunction(() => __relay.sockets.length === 2);
+  const tab2 = await reopened;
+  await tab2.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
   await page.evaluate(() => __relay.call("get_context"));
   await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
   await page.evaluate(() => { __relay.revoked = false; dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })); });
   assert.equal(await page.evaluate(() => __relay.revoked), true, `${name}: leaving the page revokes the token`);
+  await tab2.waitForFunction(() => __heard.at(-1)?.type === "prompter:disconnect");
+  await tab2.close();
   assert.equal((await state()).label, "Copy connect message slower", `${name}: and the step starts over`);
   await page.evaluate(() => document.activeElement?.blur());
   return shots;
@@ -584,6 +644,12 @@ async function checkWays(page, name, out, { base, touch, clipboard }) {
   };
   const pick = async (v) => { await press(chip(v)); await page.mouse.move(1, 1); await page.keyboard.press("Escape"); };
   const reset = () => page.evaluate(() => document.activeElement?.blur());
+
+  // With the Prompter switch on (the default), Connect with MCP says it opens the Prompter too (checkAgent covers that
+  // flow); this card checks the ways themselves with it off.
+  assert.equal(await page.locator("#mcpBtn").getAttribute("data-tip"), AGENT_WAYS.claude.mcp.both.idleTip, `${name}: with the Prompter switch on, the MCP tip says it opens the Prompter too`);
+  await prompterOff(page);
+  assert.equal(await page.locator("#prompterSw").getAttribute("data-tip"), "Off: your agent shows its questions here only.", `${name}: the switch, off, says so on itself`);
 
   // Each chip's note, by mouse or tap: Claude Code none, Codex and T3 Code theirs.
   await press(chip("codex"));
@@ -831,6 +897,7 @@ export async function run({ browser, playwright, base, out }) {
     const { name, ...options } = view;
     const context = await browser.newContext(options);
     await ownAddress(context);
+    await standInPrompter(context, base);
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
     const page = await context.newPage();
     await page.addInitScript(fakeRelay);
@@ -925,7 +992,10 @@ export async function run({ browser, playwright, base, out }) {
 
     screenshots.push(...await checkAgent(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
     screenshots.push(...await checkWays(page, name, out, { base, touch: Boolean(options.hasTouch), clipboard: true }));
-    assert.deepEqual(requests, [`${base}/`, ...Array(7).fill(`${base}/api/agent-token`)], `${name}: besides the page, only this site's token was asked for (once per connection)`);
+    // The Prompter's token was asked for (from the stand-in) only on the two connections made with its switch on.
+    const own = requests.filter((u) => !u.startsWith(PROMPTER));
+    assert.deepEqual(own, [`${base}/`, ...Array(7).fill(`${base}/api/agent-token`)], `${name}: besides the page, only this site's token was asked for (once per connection)`);
+    assert.deepEqual(requests.filter((u) => u.startsWith(PROMPTER)), Array(2).fill(`${PROMPTER}/api/agent-token`), `${name}: and the Prompter's token, once per connection with the switch on`);
     assert.deepEqual(problems, [], `${name}: no console error, warning or policy violation while connecting`);
     ok(`${name}: step 2 (copy the connect message, waiting, connected, Test with its seconds, Disconnect), by ${options.hasTouch ? "tap" : "mouse"} and keyboard`);
     ok(`${name}: step 2 ways (each agent's note by ${options.hasTouch ? "tap" : "mouse"} and keyboard, the slower label on the message way and the recommended label on Connect with MCP for Claude Code and Codex, none for T3 Code, the agents locked while connected)`);
@@ -1060,6 +1130,7 @@ export async function run({ browser, playwright, base, out }) {
     await page.addInitScript(fakeRelay);
     await page.clock.install();
     await page.goto(`${base}/`);
+    await prompterOff(page);
     await page.locator("#mcpBtn").tap();
     await page.waitForFunction(() => __relay.sockets.length === 1);
     await page.evaluate(() => __relay.call("get_context"));
@@ -1094,6 +1165,7 @@ export async function run({ browser, playwright, base, out }) {
     });
     await page.route("**/api/agent-token", (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
     await page.goto(`${base}/`);
+    await prompterOff(page);
     const connect = page.locator("#connectBtn");
     await connect.click();
     await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "No connection · try again");
@@ -1141,6 +1213,7 @@ export async function run({ browser, playwright, base, out }) {
     const tried = [];
     plain.on("websocket", (ws) => tried.push(ws.url()));
     await plain.goto(`${base}/`);
+    await prompterOff(plain);
     await plain.locator("#connectBtn").click();
     await plain.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
     for (let i = 0; i < 50 && !tried.length; i++) await plain.waitForTimeout(20);
@@ -1161,6 +1234,7 @@ export async function run({ browser, playwright, base, out }) {
       const name = `firefox-desktop-${colorScheme}`;
       const context = await fox.newContext({ colorScheme, viewport: { width: 1366, height: 900 } });
       await ownAddress(context);
+      await standInPrompter(context, base);
       const page = await context.newPage();
       const requests = [];
       const problems = [];

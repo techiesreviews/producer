@@ -15,6 +15,7 @@ import { installTooltip } from "./ui/tooltip.mjs";
 import { AGENT_WAYS, LOCK_TIP, mcpLine, NO_MCP_TIP, TEST_TIP } from "./agent-ways.mjs";
 import { connectMessage } from "./agent-message.mjs";
 import { createShowPlan } from "./showplan.mjs";
+import { createPrompterLink, PROMPTER_ORIGIN } from "./prompter-link.mjs";
 import { AGENT_TEST_MS, createAgentLink } from "./agent-link.mjs";
 import { createShowPhase, endingAgent } from "./showphase.mjs";
 
@@ -74,7 +75,10 @@ const connectBtn = document.getElementById("connectBtn");
 const mcpBtn = document.getElementById("mcpBtn");
 const testBtn = document.getElementById("testBtn");
 const messageBox = document.getElementById("agentMessage");
-const dot = (kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
+const prompterSw = document.getElementById("prompterSw");
+const prompterSwTrack = prompterSw.querySelector(".switch__track");
+const PROMPTER_SW = "Show questions on my Prompter too";
+const dot =(kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
 const tag = (text) => Object.assign(document.createElement("span"), { className: "tag", textContent: text });
 const offMark = () => {
   const mark = Object.assign(document.createElement("span"), { className: "off-mark", textContent: "i" });
@@ -122,19 +126,24 @@ function renderAgent({ state, failed, test, passed }) {
   messageBox.setAttribute("aria-label", active === "mcp" ? "Connect line" : "Connect message");
 
   const failure = (kind) => (failed && way === kind ? "No connection · try again" : null);
+  // TOOLS-464: with the switch on, the connect click sets up the Prompter too; once the Prompter tab says its agent is
+  // linked, the button says both, and its click disconnects both.
+  const withPrompter = prompterSw.getAttribute("aria-checked") === "true";
+  const both = state === "on" && prompter.view().state === "on";
   for (const [kind, button] of [["paste", connectBtn], ["mcp", mcpBtn]]) {
     const mine = state !== "off" && kind === active; // this way carries the connection
     button.hidden = connected && !mine;
     button.removeAttribute("aria-disabled");
-    if (mine && state === "on") label(button, "ok", kind === "mcp" ? mcp.onTip : "Click to disconnect.", dot("ok"), `${name} connected`);
+    if (mine && both) label(button, "ok", kind === "mcp" ? mcp.both.onTip : "Click to disconnect both.", dot("ok"), "Connected: Producer + Prompter");
+    else if (mine && state === "on") label(button, "ok", kind === "mcp" ? mcp.onTip : "Click to disconnect.", dot("ok"), `${name} connected`);
     else if (mine && state === "waiting") {
       const tip = kind === "mcp"
         ? (copyFailed ? "Copy the line below, then run it in a terminal." : "Line copied. Run it in a terminal.")
         : (copyFailed ? `Copy the message below, then paste it into ${name}.` : `Message copied. Paste it into ${name}.`);
       label(button, "busy", tip, dot("think"), `Waiting for ${name}…`);
     } else if (mine) label(button, null, `${name} is connected in another tab. Click to use this tab.`, "Use this tab");
-    else if (kind === "paste") label(button, null, `Copies a message. Paste it into ${name}.${pasteNote ? ` ${pasteNote}.` : ""}`, failure("paste") ?? "Copy connect message", ...(!failure("paste") && pasteSlow && mcp ? [" ", tag("slower")] : []));
-    else if (mcp) label(button, null, mcp.idleTip, failure("mcp") ?? "Connect with MCP", ...(!failure("mcp") ? [" ", tag("recommended")] : []));
+    else if (kind === "paste") label(button, null, `Copies a message. Paste it into ${name}.${withPrompter ? " Opens your Prompter too." : ""}${pasteNote ? ` ${pasteNote}.` : ""}`, failure("paste") ?? "Copy connect message", ...(!failure("paste") && pasteSlow && mcp ? [" ", tag("slower")] : []));
+    else if (mcp) label(button, null, withPrompter ? mcp.both.idleTip : mcp.idleTip, failure("mcp") ?? "Connect with MCP", ...(!failure("mcp") ? [" ", tag("recommended")] : []));
     else {
       label(button, null, NO_MCP_TIP, offMark(), " Connect with MCP");
       button.setAttribute("aria-disabled", "true");
@@ -147,14 +156,57 @@ function renderAgent({ state, failed, test, passed }) {
   else if (test.state === "fail") label(testBtn, null, `No answer in ${AGENT_TEST_MS / 1000} seconds. Check ${name}, then test again.`, "Test · no answer");
   else label(testBtn, null, TEST_TIP, "Test");
   document.getElementById("sAgent").toggleAttribute("data-done", state === "on" && passed);
+  renderPrompterSw(state, withPrompter);
 }
+
+// The Prompter switch shows its link on itself: a breathing dot while the tab opens and waits for the agent, a steady
+// one once the agent is linked there, the reason in its tip. It changes only while no agent is connecting or connected
+// (the copied line was made with it or without it); a tab the browser blocked opens from a click on it.
+const PROMPTER_TIPS = {
+  fetching: "Getting your Prompter ready…",
+  opened: "Opening your Prompter…",
+  waiting: "Your Prompter is open. Waiting for your agent to link to it.",
+  on: "Your agent is linked to your Prompter: your questions show there too.",
+  elsewhere: "Your Prompter is linked in another of its tabs.",
+  failed: "Your Prompter could not be reached. Your questions show here only.",
+  blocked: "Your browser blocked the Prompter tab. Click to open it.",
+  ended: "Your Prompter tab disconnected. Your questions show here only.",
+};
+function renderPrompterSw(agentState, on) {
+  const { state } = prompter.view();
+  const locked = agentState !== "off" && state !== "blocked";
+  if (locked) prompterSw.setAttribute("aria-disabled", "true"); else prompterSw.removeAttribute("aria-disabled");
+  const idle = on ? "On: connecting also opens your Prompter, linked, and your agent shows its questions there." : "Off: your agent shows its questions here only.";
+  const tip = PROMPTER_TIPS[state] ?? (locked ? `${idle} Disconnect first to change it.` : idle);
+  const busy = state === "fetching" || state === "opened" || state === "waiting" || state === "blocked";
+  const mark = busy ? [" ", dot("think")] : state === "on" ? [" ", dot("ok")] : [];
+  label(prompterSw, null, tip, prompterSwTrack, state === "blocked" ? "Open my Prompter" : PROMPTER_SW, ...mark);
+}
+
+// The Prompter half of the connection (TOOLS-464, src/prompter-link.mjs). Its own token route answers this site only.
+const prompter = createPrompterLink({
+  net: {
+    token: () => fetch(`${PROMPTER_ORIGIN}/api/agent-token`, { method: "POST", cache: "no-store" }),
+    open: (url, name) => window.open(url, name),
+  },
+  onChange: () => renderAgent(agent.view()),
+});
+// Only the tab it opened, at the Prompter's address, is heard (prompter.heard checks both).
+addEventListener("message", (e) => prompter.heard(e));
+prompterSw.addEventListener("click", () => {
+  if (prompter.view().state === "blocked") { prompter.open(); return; }
+  if (prompterSw.getAttribute("aria-disabled") === "true") return;
+  prompterSw.setAttribute("aria-checked", String(prompterSw.getAttribute("aria-checked") !== "true"));
+  renderAgent(agent.view());
+});
 
 const agent = createAgentLink({
   net: {
     token: () => fetch("/api/agent-token", { method: "POST", cache: "no-store" }),
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
-  onChange: (view) => { show.agentLink(view.state); viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
+  // A connection that ends (Disconnect, a failed token, another pick) ends the Prompter's half too: its tab is told.
+  onChange: (view) => { if (view.state === "off" && prompter.view().state !== "off") prompter.disconnect(); show.agentLink(view.state);viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
   report: reportFromAgent,
@@ -176,12 +228,26 @@ agentSeg.addEventListener("click", () => {
 renderAgent(agent.view());
 
 // The clipboard write starts inside the click (Safari asks for that); the text follows once the token is in. Without a
-// clipboard the text shows, selected, to copy by hand.
+// clipboard the text shows, selected, to copy by hand. With the Prompter switch on, its token is fetched alongside
+// (the line or message works without it when the Prompter cannot be reached), and its tab opens once the copy is done:
+// opening it earlier would take the focus the clipboard write needs.
 async function copyWay(kind) {
   way = kind;
   const key = agentKey();
-  const make = (token) => (kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token }) : connectMessage({ origin: location.origin, token, agent: key }));
-  const text = agent.connect().then((r) => (r ? make(r.token) : null));
+  const withPrompter = prompterSw.getAttribute("aria-checked") === "true";
+  const make = (token, ptoken) => {
+    const linked = ptoken ? { origin: PROMPTER_ORIGIN, token: ptoken } : null;
+    return kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token, prompter: linked }) : connectMessage({ origin: location.origin, token, agent: key, prompter: linked });
+  };
+  const text = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]).then(([r, ptoken]) => (r ? make(r.token, ptoken) : null));
+  try {
+    await copyText(text);
+  } finally {
+    if (withPrompter) prompter.open();
+  }
+}
+
+async function copyText(text) {
   try {
     if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((t) => { if (!t) throw new Error("no message"); return new Blob([t], { type: "text/plain" }); }) })]);
@@ -216,7 +282,7 @@ for (const [button, kind] of [[connectBtn, "paste"], [mcpBtn, "mcp"]]) {
 testBtn.addEventListener("click", () => agent.test());
 // Leaving or reloading the page ends the connection: the page keeps no token, so the old one is revoked rather than
 // left working for whoever holds the message.
-addEventListener("pagehide", () => agent.disconnect());
+addEventListener("pagehide", () => { agent.disconnect(); prompter.disconnect(); });
 
 // Step 5 (with a guest only): the host's own answer for the guest. Nothing else sets it. A guest who said no, or a solo show, is never
 // listened to: a tab that was already shared stops, and Listen will not ask for it again (src/listening.mjs).

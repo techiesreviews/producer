@@ -95,6 +95,14 @@ Each entry:
 - Spec: `test/browser/page.mjs`
 - Steps: none yet (no kit shots command)
 
+### F-setup-14 "Show questions on my Prompter too": one click sets up the Prompter
+- Try: In the AI agent step leave "Show questions on my Prompter too" on (it is on by default) and press Copy connect message or Connect with MCP; a new Prompter tab opens; paste into your agent and let it connect to both; hover or tap the switch and the connected button; press the connected button to disconnect. Turn the switch off and connect again: no Prompter tab opens.
+- Good: The same click that copies also opens the Prompter, already linked: the host never copies a second message or a token. The switch shows its state on itself, with no status text: a breathing dot while the Prompter opens and waits for the agent, a steady green dot once the agent is linked there, and its tooltip says each in words. The connected button reads "Connected: Producer + Prompter" and one press disconnects both. While connected the switch is locked ("Disconnect first to change it."). When the browser blocks the new tab the switch reads "Open my Prompter" and a press opens it. When the Prompter cannot be reached the tooltip says the questions show here only, and the Producer works as before. The switch wraps on a narrow phone, never widens the page.
+- Files: `src/page.html`, `src/app.css`, `src/app.js`, `src/prompter-link.mjs`, `src/agent-ways.mjs`, `src/agent-message.mjs`
+- Phone: yes
+- Spec: `test/browser/page.mjs`
+- Steps: none yet (no kit shots command)
+
 ### F-setup-07 The plan step ("Show, points & plan", or questions with a guest): paste the plan by hand
 - Try: Press Paste it myself; paste a plan (Show:, Guest:, parts like "10 Intro", numbered questions); then paste a line the page cannot read; press the button again.
 - Good: The box opens under the button with the example's lines under it (the only words beyond the labels: no other explainer); the button reads "12 questions · 5 parts ✓" in green and the step turns green; the top bar names the show and the guest. A bad line reads "Line 4 not clear" on the button (orange, the rule in its tooltip) and the box gets an orange edge. No toast. The plan is never stored.

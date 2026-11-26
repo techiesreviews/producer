@@ -172,6 +172,7 @@ export async function run({ browser, base, out }) {
     assert.equal(await page.locator("#sChat").getAttribute("data-done"), "", `${name}: not needed with OBS, so the step is done`);
     await press(page.locator('#streamSeg [data-v="restream"]'));
 
+    await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     await relayCall("get_context", {});
@@ -375,6 +376,7 @@ export async function run({ browser, base, out }) {
     const press = (button) => options.hasTouch ? button.tap() : button.click();
     await press(page.locator("#planBtn"));
     await page.locator("#planIn").fill(PLAN);
+    await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets[0]?.readyState === 1);
     await page.evaluate(() => window.__relay.call("get_context"));
@@ -413,6 +415,7 @@ export async function run({ browser, base, out }) {
     await page.addInitScript(standIns);
     await page.goto(`${base}/`);
     const relayCall = (tool, args) => page.evaluate(([t, a]) => window.__relay.call(t, a), [tool, args]);
+    await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
     await page.locator("#connectBtn").click();
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     await relayCall("get_context", {});

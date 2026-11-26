@@ -177,6 +177,7 @@ export async function run({ browser, base, out }) {
     ok(`${name}: one click loads the demo into the box, the top bar and the button; readable, fits, asks nobody, stores nothing`);
 
     // The agent reads it back (the notes belong to the demo).
+    await page.locator("#prompterSw").evaluate((b) => b.click()); // the producer alone: the Prompter half has its own checks (page.mjs)
     await press(page.locator("#connectBtn"));
     await page.waitForFunction(() => window.__relay.sockets.length === 1 && window.__relay.sockets[0].readyState === 1);
     const back = await context_();
