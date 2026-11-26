@@ -32,25 +32,34 @@ const UNOPENED = ["ready", "blocked", "held"];
 
 /**
  * The Prompter half of one connection. `net.token()` asks the Prompter's token route (its HTTP Response), `net.open(url,
- * name)` opens the tab (window.open: a window, or null when the browser blocks it); `onChange(view)` after each change.
+ * name)` opens the tab (window.open: a window, or null when the browser blocks it); `onChange(view)` after each change;
+ * `timers` (setInterval, clearInterval) watch the open tab for closing.
  * States: off, fetching (the token is on its way), ready (token in hand, no tab yet), failed (no token), blocked (the
  * browser stopped the new tab; open() again from a fresh click), held (the copy failed: the tab waits for a click on the
  * switch), opened (the tab is loading), then the tab's own: waiting (for the agent), on (the agent is linked there),
- * elsewhere (a newer Prompter tab took it), ended.
+ * elsewhere (a newer Prompter tab took it), ended (the tab disconnected or was closed).
  * Use: `prepare()` in the connect click (resolves to the token or null, null too after PROMPTER_TOKEN_MS), `open()` once
  * the click's copy is done (`hold()` when it failed),
  * `heard(event)` for each window message, `disconnect()` for Disconnect, leaving the page or a failed connection.
  */
-export function createPrompterLink({ net, onChange }) {
-  const link = { state: "off", token: null, tab: null, sent: false, round: 0 };
+export function createPrompterLink({ net, onChange, timers = globalThis }) {
+  const link = { state: "off", token: null, tab: null, sent: false, round: 0, pending: null, watch: 0 };
   const set = (state) => { if (link.state !== state) { link.state = state; onChange(view()); } };
   const view = () => ({ state: link.state });
+  const unwatch = () => { if (link.watch) timers.clearInterval(link.watch); link.watch = 0; };
 
-  async function prepare() {
+  function prepare() {
     // A second click while the tab is open and linking: it already holds this token, so both stay.
-    if (link.token && link.tab && !link.tab.closed && LIVE.includes(link.state)) return link.token;
+    if (link.token && link.tab && !link.tab.closed && LIVE.includes(link.state)) return Promise.resolve(link.token);
     // A token no tab took yet (the tab was blocked, held back or not opened): the same one again, never a second left working.
-    if (link.token && !link.tab && UNOPENED.includes(link.state)) { set("ready"); return link.token; }
+    if (link.token && !link.tab && UNOPENED.includes(link.state)) { set("ready"); return Promise.resolve(link.token); }
+    // A second click while the token is still on its way: the same request, never a second token.
+    if (!link.pending) link.pending = ask();
+    return link.pending;
+  }
+
+  async function ask() {
+    unwatch();
     const round = ++link.round;
     link.token = null;
     link.tab = null;
@@ -67,6 +76,7 @@ export function createPrompterLink({ net, onChange }) {
       token = await Promise.race([ask, late]);
     } catch { /* the network or the Prompter is down: failed below */ } finally { clearTimeout(timer); }
     if (round !== link.round) return null; // Disconnect came first: the late token is dropped
+    link.pending = null;
     link.token = token;
     set(token ? "ready" : "failed");
     return token;
@@ -81,6 +91,16 @@ export function createPrompterLink({ net, onChange }) {
     link.tab = tab;
     link.sent = false;
     set("opened");
+    // A tab the host closes says nothing on its way out, so it is looked at: once closed, the link reads ended and
+    // nothing here still says the Prompter is connected.
+    link.watch = timers.setInterval(() => {
+      if (link.tab !== tab || !tab.closed) return;
+      unwatch();
+      link.tab = null;
+      link.token = null;
+      link.sent = false;
+      set("ended");
+    }, 1000);
   }
 
   // The copy failed and the message box holds the text to copy by hand: a new tab now would take its focus, so the
@@ -102,6 +122,8 @@ export function createPrompterLink({ net, onChange }) {
 
   function disconnect() {
     link.round += 1;
+    link.pending = null;
+    unwatch();
     if (link.tab) {
       try { link.tab.postMessage({ type: PROMPTER_MESSAGES.disconnect }, PROMPTER_ORIGIN); } catch { /* the tab is closed */ }
     }

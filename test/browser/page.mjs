@@ -1230,6 +1230,41 @@ export async function run({ browser, playwright, base, out }) {
       await page.unroute(`${PROMPTER}/api/agent-token`);
     }
 
+    // Two quick clicks while the first Prompter token is slow to come: one token request, one tab, and the copied
+    // message is the newest click's, with the Prompter's line (an older click never overwrites it).
+    let asked = 0;
+    await page.route(`${PROMPTER}/api/agent-token`, async (route) => {
+      if (route.request().method() === "POST" && ++asked === 1) await new Promise((r) => setTimeout(r, 600));
+      await route.fallback();
+    });
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    const pagesBefore = context.pages().length;
+    opened = context.waitForEvent("page");
+    await page.locator("#connectBtn").click();
+    await page.locator("#connectBtn").click();
+    const tab3 = await opened;
+    await tab3.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
+    await page.waitForTimeout(800);
+    const twice = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(asked, 1, "two quick clicks: one Prompter token request, never a second token left working");
+    assert.equal(context.pages().length, pagesBefore + 1, "two quick clicks: one Prompter tab");
+    assert.ok(twice.includes(PROMPTER_TOKEN) && twice.includes("T='"), "two quick clicks: the copied message carries both connections");
+    await page.unroute(`${PROMPTER}/api/agent-token`);
+
+    // The host closes the linked Prompter tab: the button no longer says both, the switch's dot goes, its tip says why.
+    await tab3.evaluate((b) => opener.postMessage({ type: "prompter:link", state: "on" }, b), base);
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Connected: Producer + Prompter");
+    await tab3.close();
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Claude Code connected", null, { timeout: 4000 });
+    assert.deepEqual(
+      await page.evaluate(() => ({ dot: !!document.querySelector("#prompterSw .dot"), tip: document.getElementById("prompterSw").dataset.tip })),
+      { dot: false, tip: "Your Prompter tab disconnected. Your questions show here only. Disconnect first to change it." },
+      "a closed Prompter tab: no green dot, and the tip says so",
+    );
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => !document.getElementById("prompterSw").hasAttribute("aria-disabled"));
+
     // A failed producer token with the switch on: no Prompter tab, the switch on and free again.
     await page.route(`${base}/api/agent-token`, (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
     const before = context.pages().length;
@@ -1240,7 +1275,44 @@ export async function run({ browser, playwright, base, out }) {
     assert.deepEqual(await swNow(), { label: "Show questions on my Prompter too", role: "switch", checked: "true", locked: false, tip: SW_ON }, "a failed producer token: the switch is on and free again");
     await context.close();
   }
-  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, a failed producer token");
+  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, two quick clicks, a closed Prompter tab, a failed producer token");
+
+  // A 320px phone with both connected (the Prompter switch on, its tab linked), at normal and at 200% text: the
+  // combined label and every control fit, with no sideways scroll.
+  for (const big of [false, true]) {
+    const context = await browser.newContext({ viewport: { width: 320, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID });
+    await ownAddress(context);
+    await standInPrompter(context, base);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    const page = await context.newPage();
+    await page.addInitScript(fakeRelay);
+    await page.goto(`${base}/`);
+    // The page's CSP refuses an added style sheet; the root's own style (set by script) is what a 200% text setting does.
+    if (big) await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+    const opened = context.waitForEvent("page");
+    await page.locator("#mcpBtn").tap();
+    const tab = await opened;
+    await tab.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
+    await tab.evaluate((b) => opener.postMessage({ type: "prompter:link", state: "on" }, b), base);
+    await page.waitForFunction(() => __relay.sockets.length === 1);
+    await page.evaluate(() => __relay.call("get_context"));
+    await page.waitForFunction(() => document.getElementById("mcpBtn").textContent === "Connected: Producer + Prompter");
+    const fit = await page.evaluate(() => ({
+      width: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      // The whole label is checked on the controls this card adds or changes (the agent picker above them is older).
+      boxes: [...document.querySelectorAll("#sAgent button:not([hidden])")].map((b) => ({ ...b.getBoundingClientRect().toJSON(), clipped: ["mcpBtn", "connectBtn", "testBtn", "prompterSw"].includes(b.id) && b.scrollWidth > b.clientWidth + 1, name: b.id || b.textContent.trim() })),
+    }));
+    const size = big ? "200% text" : "normal text";
+    assert.ok(fit.scrollWidth <= fit.width, `320px, both connected, ${size}: no sideways scroll (${fit.scrollWidth} > ${fit.width})`);
+    for (const b of fit.boxes) {
+      assert.ok(b.left >= 0 && b.right <= fit.width + 0.5, `320px, both connected, ${size}: ${b.name} fits the window`);
+      assert.ok(!b.clipped, `320px, both connected, ${size}: ${b.name} shows its whole label`);
+      assert.ok(b.height >= 44, `320px, both connected, ${size}: ${b.name} is finger-sized (${b.height}px)`);
+    }
+    await context.close();
+  }
+  ok("a 320px phone with both connected fits, at normal and 200% text");
 
   // Step 2 when things go wrong, in Chromium: no token (the Worker says too many tries), no clipboard (the message
   // shows, selected, to copy by hand), and the real relay socket under the page's policy.

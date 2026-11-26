@@ -18,15 +18,24 @@ function tab() {
 function rig({ reply = { ok: true, json: async () => ({ token: FAKE, createdAt: 1 }) }, win = tab() } = {}) {
   const calls = { token: 0, open: [] };
   const changes = [];
+  // The tab watch's interval, run by hand: `watching.size` is how many are set.
+  const watching = new Map();
+  let ids = 0;
+  const timers = {
+    setInterval: (fn, ms) => { watching.set(++ids, { fn, ms }); return ids; },
+    clearInterval: (id) => watching.delete(id),
+  };
   const link = createPrompterLink({
     net: {
-      token: async () => { calls.token += 1; if (reply instanceof Error) throw reply; return reply; },
+      token: async () => { calls.token += 1; if (typeof reply === "function") return reply(); if (reply instanceof Error) throw reply; return reply; },
       open: (url, name) => { calls.open.push({ url, name }); return win; },
     },
     onChange: (view) => changes.push(view.state),
+    timers,
   });
   const from = (data, { origin = PROMPTER_ORIGIN, source = win } = {}) => link.heard({ data, origin, source });
-  return { link, calls, changes, win, from };
+  const watch = () => { for (const { fn } of [...watching.values()]) fn(); };
+  return { link, calls, changes, win, from, watching, watch };
 }
 
 test("the messages and the address match the Prompter's own wire list", () => {
@@ -145,6 +154,7 @@ test("a blocked new tab reads blocked; open again (a fresh click) tries once mor
   link.heard({ data: { type: PROMPTER_MESSAGES.ready }, origin: PROMPTER_ORIGIN, source: win });
   assert.deepEqual(win.posted[0].data, { type: PROMPTER_MESSAGES.token, token: FAKE });
   assert.equal(calls.length, 2);
+  link.disconnect(); // stops the tab watch's real interval
 });
 
 test("a Disconnect while the token is still on its way: the late token is dropped", async () => {
@@ -227,6 +237,39 @@ test("a copy that failed holds the tab back: the switch opens it from a click, o
   off.link.disconnect();
   off.link.hold();
   assert.equal(off.link.view().state, "off", "nothing to hold without a token");
+});
+
+test("two quick clicks share the token request still on its way: one token, and both get it", async () => {
+  let answer;
+  const { link, calls } = rig({ reply: () => new Promise((r) => { answer = r; }) });
+  const first = link.prepare();
+  const second = link.prepare();
+  answer({ ok: true, json: async () => ({ token: FAKE }) });
+  assert.deepEqual(await Promise.all([first, second]), [FAKE, FAKE]);
+  assert.equal(calls.token, 1, "never a second token left working");
+  assert.equal(link.view().state, "ready");
+});
+
+test("a Prompter tab the host closes reads ended here, so nothing still says both are connected", async () => {
+  const { link, win, from, watching, watch } = rig();
+  await link.prepare();
+  assert.equal(watching.size, 0, "nothing to watch before a tab opens");
+  link.open();
+  assert.equal(watching.size, 1, "the open tab is watched");
+  assert.ok([...watching.values()][0].ms <= 1000, "checked at least once a second");
+  from({ type: PROMPTER_MESSAGES.ready });
+  from({ type: PROMPTER_MESSAGES.link, state: "on" });
+  watch();
+  assert.equal(link.view().state, "on", "an open tab stays on");
+  win.closed = true;
+  watch();
+  assert.equal(link.view().state, "ended");
+  assert.equal(watching.size, 0, "the watch stops with the tab");
+  const off = rig();
+  await off.link.prepare();
+  off.link.open();
+  off.link.disconnect();
+  assert.equal(off.watching.size, 0, "Disconnect stops the watch");
 });
 
 test("a closed tab is not kept: the next round gets a new token and tab", async () => {

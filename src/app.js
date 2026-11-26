@@ -202,6 +202,7 @@ const prompter = createPrompterLink({
     open: (url, name) => window.open(url, name),
   },
   onChange: () => renderAgent(agent.view()),
+  timers: window,
 });
 // Only the tab it opened, at the Prompter's address, is heard (prompter.heard checks both).
 addEventListener("message", (e) => prompter.heard(e));
@@ -243,8 +244,11 @@ renderAgent(agent.view());
 // clipboard the text shows, selected, to copy by hand. With the Prompter switch on, its token is fetched alongside
 // (the line or message works without it when the Prompter cannot be reached or is slow: PROMPTER_TOKEN_MS), and its
 // tab opens once the copy is done: opening it earlier would take the focus the clipboard write needs. When the copy
-// failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch.
+// failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch. Only the newest
+// click copies and opens: an older one still on its way leaves the clipboard and the tabs alone.
+let copyRound = 0;
 async function copyWay(kind) {
+  const round = ++copyRound;
   way = kind;
   const key = agentKey();
   const withPrompter = prompterOn;
@@ -252,8 +256,9 @@ async function copyWay(kind) {
     const linked = ptoken ? { origin: PROMPTER_ORIGIN, token: ptoken } : null;
     return kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token, prompter: linked }) : connectMessage({ origin: location.origin, token, agent: key, prompter: linked });
   };
-  const text = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]).then(([r, ptoken]) => (r ? make(r.token, ptoken) : null));
+  const text = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]).then(([r, ptoken]) => (r && round === copyRound ? make(r.token, ptoken) : null));
   const copied = await copyText(text);
+  if (round !== copyRound) return;
   if (withPrompter) { if (copied) prompter.open(); else prompter.hold(); }
 }
 
