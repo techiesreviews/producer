@@ -1265,6 +1265,29 @@ export async function run({ browser, playwright, base, out }) {
     await page.locator("#connectBtn").click();
     await page.waitForFunction(() => !document.getElementById("prompterSw").hasAttribute("aria-disabled"));
 
+    // Another agent picked once the producer's token is in but while the Prompter's is still on its way (no Prompter
+    // tab is linked now, so a new one is asked for): the wait is given up, so when the Prompter's token comes nothing
+    // is copied, no message shows to copy by hand and no tab opens.
+    await page.route(`${PROMPTER}/api/agent-token`, async (route) => {
+      if (route.request().method() === "POST") await new Promise((r) => setTimeout(r, 1200));
+      await route.fallback();
+    });
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    const pagesThen = context.pages().length;
+    const ownToken = page.waitForResponse(`${base}/api/agent-token`);
+    await page.locator("#connectBtn").click();
+    await ownToken;
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+    await giveUp();
+    await page.waitForTimeout(1600);
+    assert.deepEqual(
+      await page.evaluate(async () => ({ copied: await navigator.clipboard.readText(), box: !document.getElementById("agentMessage").hidden })),
+      { copied: "", box: false },
+      "another agent picked while the Prompter's token comes: nothing copied, no message to copy by hand",
+    );
+    assert.equal(context.pages().length, pagesThen, "another agent picked while the Prompter's token comes: no tab opens");
+    await page.unroute(`${PROMPTER}/api/agent-token`);
+
     // A failed producer token with the switch on: no Prompter tab, the switch on and free again.
     await page.route(`${base}/api/agent-token`, (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
     const before = context.pages().length;

@@ -52,7 +52,7 @@ With "Show questions on my Prompter too" on (the default), the connect click als
 - When the Prompter cannot be reached (it is down, it takes more than 3 seconds (`PROMPTER_TOKEN_MS`), or this is a preview address the Prompter does not answer), the line or message works without it and the switch's tooltip says the questions show here only.
 - The tab opens only after the copy worked. When the browser blocks the new tab, or the copy failed and the text shows below the buttons to copy by hand (a new tab would take its focus), the switch becomes a button, "Open my Prompter", and a press opens the tab.
 - A Prompter tab the host closes says nothing on its way out, so the page looks at it once a second: once it is closed, the switch reads ended and the button no longer says both.
-- A second click while the Prompter's token is still on its way shares that request, and only the newest click copies and opens a tab.
+- A second click while the Prompter's token is still on its way shares that request, and only the newest click copies and opens a tab. A click whose connection ended while the Prompter's token was on its way (Disconnect, another agent picked) copies nothing, shows nothing to copy by hand and opens no tab.
 - A token no tab took yet is used again by the next click, never a second one: the Prompter has no route this page could call to revoke a token, so one no tab holds simply ends after its eight hours.
 - A Prompter that fails never stops the producer: rule 10 and the MCP instructions tell the agent to stop using the Prompter, say so once and keep going here.
 - Always a new tab: a Prompter tab reused by name would only change its hash and never say ready.
