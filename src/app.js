@@ -81,6 +81,8 @@ const PROMPTER_SW = "Show questions on my Prompter too";
 // The switch's own on/off (TOOLS-464): kept here, because while the tab waits for a click (blocked or held) the control
 // is a plain "Open my Prompter" button with no checked state.
 let prompterOn = prompterSw.getAttribute("aria-checked") === "true";
+/** The connect click whose copy may still land: a newer click, or the connection ending, moves it on (copyWay). */
+let copyRound = 0;
 const dot = (kind) => Object.assign(document.createElement("span"), { className: `dot dot--${kind}` });
 const tag = (text) => Object.assign(document.createElement("span"), { className: "tag", textContent: text });
 const offMark = () => {
@@ -219,7 +221,7 @@ const agent = createAgentLink({
     socket: (protocols) => new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/relay`, protocols),
   },
   // A connection that ends (Disconnect, a failed token, another pick) ends the Prompter's half too: its tab is told.
-  onChange: (view) => { if (view.state === "off" && prompter.view().state !== "off") prompter.disconnect(); show.agentLink(view.state); viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
+  onChange: (view) => { if (view.state === "off") copyRound += 1; if (view.state === "off" && prompter.view().state !== "off") prompter.disconnect(); show.agentLink(view.state); viewers.agentLink(view.state, AGENT_WAYS[agentKey()].name); renderAgent(view); renderLoad(); renderChatBtn(); renderChat(); renderCard(); renderEnding(view.state); },
   show: agentShow,
   load: loadFromAgent,
   report: reportFromAgent,
@@ -245,10 +247,9 @@ renderAgent(agent.view());
 // (the line or message works without it when the Prompter cannot be reached or is slow: PROMPTER_TOKEN_MS), and its
 // tab opens once the copy is done: opening it earlier would take the focus the clipboard write needs. When the copy
 // failed, the message box holds the text to copy by hand, so the tab waits for a click on the switch. Only the newest
-// click copies and opens: an older one still on its way leaves the clipboard and the tabs alone.
-let copyRound = 0;
+// click copies and opens: an older one still on its way, or one whose connection ended meanwhile (Disconnect, another
+// pick), leaves the clipboard, the message box and the tabs alone.
 async function copyWay(kind) {
-  const round = ++copyRound;
   way = kind;
   const key = agentKey();
   const withPrompter = prompterOn;
@@ -256,7 +257,11 @@ async function copyWay(kind) {
     const linked = ptoken ? { origin: PROMPTER_ORIGIN, token: ptoken } : null;
     return kind === "mcp" ? mcpLine({ agent: key, origin: location.origin, token, prompter: linked }) : connectMessage({ origin: location.origin, token, agent: key, prompter: linked });
   };
-  const text = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]).then(([r, ptoken]) => (r && round === copyRound ? make(r.token, ptoken) : null));
+  // The connection starts before this click takes its round: letting an expired token go there ends the old
+  // connection, and that must not cancel this click's own copy.
+  const tokens = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]);
+  const round = ++copyRound;
+  const text = tokens.then(([r, ptoken]) => (r && round === copyRound ? make(r.token, ptoken) : null));
   const copied = await copyText(text);
   if (round !== copyRound) return;
   if (withPrompter) { if (copied) prompter.open(); else prompter.hold(); }
