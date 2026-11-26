@@ -49,7 +49,10 @@ With "Show questions on my Prompter too" on (the default), the connect click als
 
 - Connect with MCP: the line adds a second entry, `producer-prompter` (its own name, so a `prompter` entry the host made earlier is never removed), with the Prompter's token in its own export (`PROMPTER_TOKEN`), and opens one chat that may use both.
 - Copy connect message: the message gets a second block, one curl line that sends the cues to the Prompter's `push_suggestions`, and rule 10 says how to use it (see [the relay](agent-relay.md)).
-- When the Prompter cannot be reached (it is down, or this is a preview address the Prompter does not answer), the line or message works without it and the switch's tooltip says the questions show here only. When the browser blocks the new tab, the switch reads "Open my Prompter".
+- When the Prompter cannot be reached (it is down, it takes more than 3 seconds (`PROMPTER_TOKEN_MS`), or this is a preview address the Prompter does not answer), the line or message works without it and the switch's tooltip says the questions show here only.
+- The tab opens only after the copy worked. When the browser blocks the new tab, or the copy failed and the text shows below the buttons to copy by hand (a new tab would take its focus), the switch becomes a button, "Open my Prompter", and a press opens the tab.
+- A token no tab took yet is used again by the next click, never a second one: the Prompter has no route this page could call to revoke a token, so one no tab holds simply ends after its eight hours.
+- A Prompter that fails never stops the producer: rule 10 and the MCP instructions tell the agent to stop using the Prompter, say so once and keep going here.
 - Always a new tab: a Prompter tab reused by name would only change its hash and never say ready.
 
 ## Who removes the entry

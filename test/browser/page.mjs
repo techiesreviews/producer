@@ -494,15 +494,27 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
 
   // Copy: waiting, and the message on the clipboard with the loop, this page's address and a producer token. The same
   // click gets the Prompter's token and opens the Prompter (the stand-in), which takes the token by message only.
-  const opened = page.context().waitForEvent("page");
+  let opened = page.context().waitForEvent("page");
   await press(connect);
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…");
+  // A copy that failed leaves the message box to copy by hand: the new tab waits for a click, so it never takes the focus.
+  await page.waitForFunction(() => !document.getElementById("agentMessage").hidden || !document.getElementById("prompterSw").dataset.tip.startsWith("Getting"));
+  if (await page.locator("#agentMessage").isVisible()) {
+    await page.waitForFunction(() => document.getElementById("prompterSw").textContent.trim() === "Open my Prompter");
+    assert.deepEqual(await sw(), { label: "Open my Prompter", checked: null, locked: false, tip: "Copy the message first, then click to open your Prompter.", dot: null }, `${name}: the copy failed: the Prompter waits for a click, a plain button`);
+    assert.equal(await page.locator("#prompterSw").getAttribute("role"), "button", `${name}: not a switch while it opens the tab`);
+    assert.equal(await page.evaluate(() => document.activeElement.id), "agentMessage", `${name}: the message box keeps the focus`);
+    opened.catch(() => {}); // no tab opened by itself: that wait is let go
+    opened = page.context().waitForEvent("page");
+    await page.locator("#prompterSw").click();
+  }
   const tab = await opened;
+  assert.equal(await page.locator("#prompterSw").getAttribute("role"), "switch", `${name}: a switch again once the tab opened`);
   assert.equal(tab.url(), `${PROMPTER}/#producer`, `${name}: the Prompter opens linked, with no token in its address`);
   await tab.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
   assert.deepEqual(await tab.evaluate(() => __heard), [{ type: "prompter:token", token: PROMPTER_TOKEN }], `${name}: the Prompter tab got its token once, by message`);
   await page.waitForFunction(() => document.getElementById("prompterSw").dataset.tip?.startsWith("Your Prompter is open."));
-  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your Prompter is open. Waiting for your agent to link to it.", dot: "dot dot--think" }, `${name}: the switch says the Prompter waits, locked while connecting`);
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your Prompter is open. Waiting for your agent to link to it. Disconnect first to change it.", dot: "dot dot--think" }, `${name}: the switch says the Prompter waits, locked while connecting (and says so)`);
   const waiting = await state();
   assert.equal(waiting.state, "busy", `${name}: waiting is the busy look`);
   assert.equal(waiting.dot, "dot dot--think", `${name}: with the breathing dot`);
@@ -530,13 +542,14 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
   assert.deepEqual(context.result, { questions: [], segments: [], seq: 0 }, `${name}: the page answers get_context`);
   await page.waitForFunction(() => document.getElementById("connectBtn").dataset.state === "ok");
   const open = await page.evaluate(() => document.querySelector("#tip[data-on]")?.textContent ?? null);
-  assert.ok(open === null || open === "Click to disconnect.", `${name}: an open tooltip follows the new state (${open})`);
-  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: "Click to disconnect.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected (the Prompter still waits)`);
+  const DISCONNECT_TIP = "Click to disconnect. Your Prompter disconnects too.";
+  assert.ok(open === null || open === DISCONNECT_TIP, `${name}: an open tooltip follows the new state (${open})`);
+  assert.deepEqual(await state(), { label: "Claude Code connected", state: "ok", tip: DISCONNECT_TIP, dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected (the Prompter still waits; the press ends it too, and says so)`);
   // The agent links to the Prompter too: the button says both, the switch shows the steady dot.
   await tab.evaluate((base) => opener.postMessage({ type: "prompter:link", state: "on" }, base), base);
   await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Connected: Producer + Prompter");
   assert.deepEqual(await state(), { label: "Connected: Producer + Prompter", state: "ok", tip: "Click to disconnect both.", dot: "dot dot--ok", test: "Test", testTip: TEST_TIP, done: false }, `${name}: connected to both`);
-  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your agent is linked to your Prompter: your questions show there too.", dot: "dot dot--ok" }, `${name}: the switch says the Prompter is linked`);
+  assert.deepEqual(await sw(), { label: "Show questions on my Prompter too", checked: "true", locked: true, tip: "Your agent is linked to your Prompter: your questions show there too. Disconnect first to change it.", dot: "dot dot--ok" }, `${name}: the switch says the Prompter is linked`);
   // A message from another page, or from the Prompter's address but not the tab this page opened, changes nothing.
   await page.evaluate(() => postMessage({ type: "prompter:link", state: "off" }, "*"));
   await page.waitForTimeout(100);
@@ -1149,6 +1162,85 @@ export async function run({ browser, playwright, base, out }) {
     await context.close();
   }
   ok("a 320px phone connected through MCP fits and is finger-sized; a quiet agent frees the page to wait again");
+
+  // TOOLS-464: the Prompter's other paths, in Chromium, with its switch on: Connect with MCP; a new tab the browser
+  // blocks (the control becomes a plain button that opens it); a Prompter that refuses, fails or hangs (the producer's
+  // message goes alone, no tab opens); a failed producer token (no Prompter tab, the switch free again).
+  {
+    const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await ownAddress(context);
+    await standInPrompter(context, base);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    const page = await context.newPage();
+    await page.addInitScript(fakeRelay);
+    await page.goto(`${base}/`);
+    const sw = page.locator("#prompterSw");
+    const swNow = () => page.evaluate(() => { const b = document.getElementById("prompterSw"); return { label: b.textContent.trim(), role: b.getAttribute("role"), checked: b.getAttribute("aria-checked"), locked: b.getAttribute("aria-disabled") === "true", tip: b.dataset.tip }; });
+    const SW_ON = "On: connecting also opens your Prompter, linked, and your agent shows its questions there.";
+    // Picking another agent while the page waits gives the wait up (and ends the Prompter's half); then back to Claude Code.
+    const giveUp = async () => {
+      await page.locator('#agentSeg [data-v="codex"]').click();
+      await page.locator('#agentSeg [data-v="claude"]').click();
+      await page.mouse.move(1, 1);
+      await page.waitForFunction(() => !document.getElementById("prompterSw").hasAttribute("aria-disabled"));
+    };
+    const copiedNow = async () => {
+      for (let i = 0; i < 100; i++) { const t = await page.evaluate(() => navigator.clipboard.readText()); if (t) return t; await page.waitForTimeout(50); }
+      return "";
+    };
+
+    // Connect with MCP with the switch on: the line adds the Prompter's own entry and token; the tab opens and takes it.
+    let opened = context.waitForEvent("page");
+    await page.locator("#mcpBtn").click();
+    const tab = await opened;
+    assert.equal(tab.url(), `${PROMPTER}/#producer`, "Connect with MCP, switch on: the Prompter opens linked");
+    await tab.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
+    const line = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(line.includes(`export PROMPTER_TOKEN='${PROMPTER_TOKEN}'`) && line.includes("producer-prompter"), "Connect with MCP, switch on: the line adds the Prompter's entry with its own token");
+    await giveUp();
+    await tab.waitForFunction(() => __heard.at(-1)?.type === "prompter:disconnect");
+    await tab.close();
+
+    // A blocked new tab: the control is a plain "Open my Prompter" button, free to press, and opens it with the same token.
+    await page.evaluate(() => { const real = window.open; window.open = () => { window.open = real; return null; }; });
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => document.getElementById("prompterSw").textContent.trim() === "Open my Prompter");
+    assert.deepEqual(await swNow(), { label: "Open my Prompter", role: "button", checked: null, locked: false, tip: "Your browser blocked the Prompter tab. Click to open it." }, "a blocked tab: a plain button that opens it, not a switch that is on");
+    opened = context.waitForEvent("page");
+    await sw.click();
+    const tab2 = await opened;
+    await tab2.waitForFunction(() => __heard.some((m) => m.type === "prompter:token"));
+    assert.deepEqual(await tab2.evaluate(() => __heard), [{ type: "prompter:token", token: PROMPTER_TOKEN }], "a blocked tab, opened from the button, gets its token once, by message");
+    assert.equal(await sw.getAttribute("role"), "switch", "a switch again once the tab opened");
+    await giveUp();
+    await tab2.close();
+
+    // A Prompter that refuses, fails or hangs (PROMPTER_TOKEN_MS): the producer's message goes alone and no tab opens.
+    for (const [why, fail] of [["refuses", (route) => route.fulfill({ status: 503, body: "down" })], ["fails", (route) => route.abort()], ["hangs", () => {}]]) {
+      await page.route(`${PROMPTER}/api/agent-token`, fail);
+      await page.evaluate(() => navigator.clipboard.writeText(""));
+      const pages = context.pages().length;
+      await page.locator("#connectBtn").click();
+      await page.waitForFunction(() => document.getElementById("prompterSw").dataset.tip.startsWith("Your Prompter could not be reached."), null, { timeout: 8000 });
+      const text = await copiedNow();
+      assert.ok(text.includes("T='") && !text.includes(PROMPTER), `a Prompter that ${why}: the producer's message is copied, without the Prompter's line`);
+      assert.equal(context.pages().length, pages, `a Prompter that ${why}: no tab opens`);
+      assert.equal(await sw.getAttribute("data-tip"), "Your Prompter could not be reached. Your questions show here only. Disconnect first to change it.", `a Prompter that ${why}: the switch says so`);
+      await giveUp();
+      await page.unroute(`${PROMPTER}/api/agent-token`);
+    }
+
+    // A failed producer token with the switch on: no Prompter tab, the switch on and free again.
+    await page.route(`${base}/api/agent-token`, (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
+    const before = context.pages().length;
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "No connection · try again");
+    await page.waitForTimeout(300);
+    assert.equal(context.pages().length, before, "a failed producer token: no Prompter tab");
+    assert.deepEqual(await swNow(), { label: "Show questions on my Prompter too", role: "switch", checked: "true", locked: false, tip: SW_ON }, "a failed producer token: the switch is on and free again");
+    await context.close();
+  }
+  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, a failed producer token");
 
   // Step 2 when things go wrong, in Chromium: no token (the Worker says too many tries), no clipboard (the message
   // shows, selected, to copy by hand), and the real relay socket under the page's policy.

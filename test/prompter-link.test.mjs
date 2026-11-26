@@ -3,7 +3,7 @@
 // only to that tab, at the Prompter's address, once it says ready. The tab tells its link state back; Disconnect ends it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPrompterLink, PROMPTER_MESSAGES, PROMPTER_ORIGIN, prompterToken } from "../src/prompter-link.mjs";
+import { createPrompterLink, PROMPTER_MESSAGES, PROMPTER_ORIGIN, PROMPTER_TOKEN_MS, prompterToken } from "../src/prompter-link.mjs";
 
 // A token-shaped stand-in, built from pieces so no file holds one.
 const FAKE = ["tp1", "m0abcdef", "x".repeat(43)].join("-");
@@ -177,6 +177,56 @@ test("a second click while the tab waits keeps its token and tab; after Disconne
   link.open();
   assert.equal(calls.token, 2, "a new round, a new token");
   assert.equal(calls.open.length, 2, "and a new tab");
+});
+
+test("a Prompter that hangs: after PROMPTER_TOKEN_MS the round reads failed, so the producer's own message goes without it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls = { open: [] };
+  const hang = createPrompterLink({ net: { token: () => new Promise(() => {}), open: (url) => calls.open.push(url) }, onChange: () => {} });
+  const got = hang.prepare();
+  assert.equal(hang.view().state, "fetching");
+  t.mock.timers.tick(PROMPTER_TOKEN_MS);
+  assert.equal(await got, null);
+  assert.equal(hang.view().state, "failed");
+  hang.open();
+  assert.equal(calls.open.length, 0, "no tab without a token");
+  assert.ok(PROMPTER_TOKEN_MS <= 3000, "short enough to keep the click's clipboard and new-tab window");
+});
+
+test("a token in hand that no tab holds yet (ready, blocked, held) is used again by the next click, not fetched anew", async () => {
+  for (const before of ["ready", "blocked", "held"]) {
+    let allow = before !== "blocked";
+    const win = tab();
+    let fetched = 0;
+    const link = createPrompterLink({
+      net: { token: async () => { fetched += 1; return { ok: true, json: async () => ({ token: FAKE }) }; }, open: () => (allow ? win : null) },
+      onChange: () => {},
+    });
+    await link.prepare();
+    if (before === "blocked") link.open();
+    if (before === "held") link.hold();
+    assert.equal(link.view().state, before);
+    allow = true;
+    assert.equal(await link.prepare(), FAKE, before);
+    assert.equal(fetched, 1, `${before}: one token, never two left working`);
+  }
+});
+
+test("a copy that failed holds the tab back: the switch opens it from a click, once the host copied by hand", async () => {
+  const { link, calls, win, from } = rig();
+  await link.prepare();
+  link.hold();
+  assert.equal(link.view().state, "held");
+  assert.equal(calls.open.length, 0, "the new tab would take the focus from the message box");
+  link.open();
+  assert.equal(link.view().state, "opened");
+  from({ type: PROMPTER_MESSAGES.ready });
+  assert.deepEqual(win.posted[0].data, { type: PROMPTER_MESSAGES.token, token: FAKE });
+  const off = rig();
+  await off.link.prepare();
+  off.link.disconnect();
+  off.link.hold();
+  assert.equal(off.link.view().state, "off", "nothing to hold without a token");
 });
 
 test("a closed tab is not kept: the next round gets a new token and tab", async () => {

@@ -78,7 +78,7 @@ test("the page keeps nothing, logs nothing and talks only to its own agent relay
   assert.doesNotMatch(script, banned);
   assert.doesNotMatch(script, /^\s*(import|export)\s/m, "the inlined script is plain code");
   // Three calls: this site's agent token and the relay's WebSocket (card 08), and the Prompter's agent token (TOOLS-464),
-  // a POST with no body and no extra header, so its preflight asks for nothing the Prompter does not allow. Nothing else.
+  // a POST with no body and no extra header: a simple CORS request, so the browser sends no preflight. Nothing else.
   assert.deepEqual([...script.matchAll(/\bfetch\b[^)]*\)/g)].map((m) => m[0]), [
     "fetch(`${PROMPTER_ORIGIN}/api/agent-token`, { method: \"POST\", cache: \"no-store\" })",
     'fetch("/api/agent-token", { method: "POST", cache: "no-store" })',
