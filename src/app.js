@@ -198,7 +198,11 @@ function renderPrompterSw(agentState, on) {
   const tip = `${PROMPTER_TIPS[state] ?? idle}${locked ? " Disconnect first to change it." : ""}`;
   const busy = state === "fetching" || state === "opened" || state === "waiting";
   const mark = busy ? [" ", dot("think")] : state === "on" ? [" ", dot("ok")] : [];
-  // A button that opens the tab draws no switch track: an off switch there would read as the wrong control.
+  // A button that opens the tab looks like the buttons beside it and draws no switch track: an off switch there would
+  // read as the wrong control.
+  prompterSw.classList.toggle("tb", asks);
+  prompterSw.classList.toggle("switch", !asks);
+  prompterSw.classList.toggle("switch--wrap", !asks);
   label(prompterSw, null, tip, ...(asks ? [] : [prompterSwTrack]), asks ? "Open my Prompter" : PROMPTER_SW, ...mark);
   // The control's words change without focus, so a screen reader hears the link's turns on the hidden line, once each.
   if (state !== prompterSaid) {
