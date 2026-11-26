@@ -77,6 +77,7 @@ const testBtn = document.getElementById("testBtn");
 const messageBox = document.getElementById("agentMessage");
 const prompterSw = document.getElementById("prompterSw");
 const prompterSwTrack = prompterSw.querySelector(".switch__track");
+const prompterSay = document.getElementById("prompterSay");
 const PROMPTER_SW = "Show questions on my Prompter too";
 // The switch's own on/off (TOOLS-464): kept here, because while the tab waits for a click (blocked or held) the control
 // is a plain "Open my Prompter" button with no checked state.
@@ -180,6 +181,9 @@ const PROMPTER_TIPS = {
   held: "Copy the message first, then click to open your Prompter.",
   ended: "Your Prompter tab disconnected. Your questions show here only.",
 };
+/** The link's turns a screen reader hears on #prompterSay; the steps on the way there stay quiet. */
+const PROMPTER_SAID = ["on", "elsewhere", "failed", "blocked", "held", "ended"];
+let prompterSaid = "off";
 /** The tab waits for a click on the control (the browser blocked it, or the copy failed). */
 const prompterAsks = () => ["blocked", "held"].includes(prompter.view().state);
 function renderPrompterSw(agentState, on) {
@@ -194,7 +198,13 @@ function renderPrompterSw(agentState, on) {
   const tip = `${PROMPTER_TIPS[state] ?? idle}${locked ? " Disconnect first to change it." : ""}`;
   const busy = state === "fetching" || state === "opened" || state === "waiting";
   const mark = busy ? [" ", dot("think")] : state === "on" ? [" ", dot("ok")] : [];
-  label(prompterSw, null, tip, prompterSwTrack, asks ? "Open my Prompter" : PROMPTER_SW, ...mark);
+  // A button that opens the tab draws no switch track: an off switch there would read as the wrong control.
+  label(prompterSw, null, tip, ...(asks ? [] : [prompterSwTrack]), asks ? "Open my Prompter" : PROMPTER_SW, ...mark);
+  // The control's words change without focus, so a screen reader hears the link's turns on the hidden line, once each.
+  if (state !== prompterSaid) {
+    prompterSaid = state;
+    prompterSay.textContent = PROMPTER_SAID.includes(state) ? PROMPTER_TIPS[state] : "";
+  }
 }
 
 // The Prompter half of the connection (TOOLS-464, src/prompter-link.mjs). Its own token route answers this site only.
