@@ -1288,6 +1288,35 @@ export async function run({ browser, playwright, base, out }) {
     assert.equal(context.pages().length, pagesThen, "another agent picked while the Prompter's token comes: no tab opens");
     await page.unroute(`${PROMPTER}/api/agent-token`);
 
+    // An older click whose clipboard write fails late, after the other way was pressed and its line copied: the older
+    // click's message (its token given up by then) never shows to copy by hand, and the focus stays where it was.
+    await page.evaluate(() => {
+      const real = navigator.clipboard.write.bind(navigator.clipboard);
+      navigator.clipboard.write = (items) => {
+        navigator.clipboard.write = real;
+        return new Promise((_, reject) => { window.__failHeldCopy = () => reject(new DOMException("held, then refused", "NotAllowedError")); });
+      };
+    });
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await page.locator("#connectBtn").click();
+    await page.waitForFunction(() => document.getElementById("connectBtn").textContent === "Waiting for Claude Code…" && !document.getElementById("prompterSw").dataset.tip.startsWith("Getting"));
+    opened = context.waitForEvent("page");
+    await page.locator("#mcpBtn").click();
+    const tab4 = await opened;
+    const newest = await copiedNow();
+    assert.ok(newest.includes("claude mcp add"), "the other way pressed while an older copy hangs: the newest click's line is copied");
+    await page.bringToFront();
+    await page.locator("#mcpBtn").focus();
+    await page.evaluate(() => window.__failHeldCopy());
+    await page.waitForTimeout(300);
+    assert.deepEqual(
+      await page.evaluate(async () => ({ box: !document.getElementById("agentMessage").hidden, focus: document.activeElement.id, copied: await navigator.clipboard.readText() })),
+      { box: false, focus: "mcpBtn", copied: newest },
+      "an older click's copy that fails late: its out-of-date message never shows, the focus stays, the newest line stays copied",
+    );
+    await giveUp();
+    await tab4.close();
+
     // A failed producer token with the switch on: no Prompter tab, the switch on and free again.
     await page.route(`${base}/api/agent-token`, (route) => route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"Too many requests"}' }));
     const before = context.pages().length;
@@ -1298,7 +1327,7 @@ export async function run({ browser, playwright, base, out }) {
     assert.deepEqual(await swNow(), { label: "Show questions on my Prompter too", role: "switch", checked: "true", locked: false, tip: SW_ON }, "a failed producer token: the switch is on and free again");
     await context.close();
   }
-  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, two quick clicks, a closed Prompter tab, a failed producer token");
+  ok("the Prompter's other paths: Connect with MCP with the switch on, a blocked tab opened from its button, a Prompter that refuses, fails or hangs, two quick clicks, a closed Prompter tab, an older copy that fails late, a failed producer token");
 
   // A 320px phone with both connected (the Prompter switch on, its tab linked), at normal and at 200% text: the
   // combined label and every control fit, with no sideways scroll.

@@ -262,13 +262,16 @@ async function copyWay(kind) {
   const tokens = Promise.all([agent.connect(), withPrompter ? prompter.prepare() : null]);
   const round = ++copyRound;
   const text = tokens.then(([r, ptoken]) => (r && round === copyRound ? make(r.token, ptoken) : null));
-  const copied = await copyText(text);
+  const copied = await copyText(text, round);
   if (round !== copyRound) return;
   if (withPrompter) { if (copied) prompter.open(); else prompter.hold(); }
 }
 
-/** Copies the text once it is in; true when it reached the clipboard. */
-async function copyText(text) {
+/**
+ * Copies the text once it is in; true when it reached the clipboard. A write that fails shows the text to copy by
+ * hand only while its click (`round`) is still the newest: a write can fail late, after a newer click copied.
+ */
+async function copyText(text, round) {
   try {
     if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
       await navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((t) => { if (!t) throw new Error("no message"); return new Blob([t], { type: "text/plain" }); }) })]);
@@ -280,7 +283,7 @@ async function copyText(text) {
     return true;
   } catch {
     const t = await text;
-    if (!t) return false;
+    if (!t || round !== copyRound) return false;
     copyFailed = true;
     messageBox.value = t;
     messageBox.hidden = false;
