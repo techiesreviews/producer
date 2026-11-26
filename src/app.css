@@ -222,6 +222,9 @@ body { min-block-size: 100dvh; display: flex; flex-direction: column; }
 /* At large text on a narrow phone a long word may not fit beside the track: then the words go under it. */
 .switch--wrap { flex: 0 1 auto; flex-wrap: wrap; min-inline-size: 0; white-space: normal; text-align: start; }
 .switch--wrap .switch__track { flex: none; }
+/* While it asks, the Prompter's control is a button ("Open my Prompter"): it may wrap too, so large text on a narrow
+   phone never pushes the page sideways. */
+#prompterSw.tb { flex: 0 1 auto; min-inline-size: 0; white-space: normal; text-align: start; }
 @media (pointer: coarse) { .switch { min-block-size: 2.75rem; } }
 @media (prefers-reduced-motion: reduce) { .switch__track, .switch__track::after { transition: none; } }
 

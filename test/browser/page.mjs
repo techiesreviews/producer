@@ -1406,6 +1406,33 @@ export async function run({ browser, playwright, base, out }) {
   }
   ok("a 320px phone with both connected fits, at normal and 200% text");
 
+  // The same phone when the browser blocks the Prompter's tab: the control is the "Open my Prompter" button, and it
+  // fits too, at normal and at 200% text.
+  for (const big of [false, true]) {
+    const context = await browser.newContext({ viewport: { width: 320, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: ANDROID });
+    await ownAddress(context);
+    await standInPrompter(context, base);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    const page = await context.newPage();
+    await page.addInitScript(fakeRelay);
+    await page.goto(`${base}/`);
+    if (big) await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+    await page.evaluate(() => { window.open = () => null; });
+    await page.locator("#mcpBtn").tap();
+    await page.waitForFunction(() => document.getElementById("prompterSw").textContent.trim() === "Open my Prompter");
+    const fit = await page.evaluate(() => {
+      const b = document.getElementById("prompterSw");
+      return { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, box: b.getBoundingClientRect().toJSON(), clipped: b.scrollWidth > b.clientWidth + 1 };
+    });
+    const size = big ? "200% text" : "normal text";
+    assert.ok(fit.scrollWidth <= fit.width, `320px, a blocked tab, ${size}: no sideways scroll (${fit.scrollWidth} > ${fit.width})`);
+    assert.ok(fit.box.left >= 0 && fit.box.right <= fit.width + 0.5, `320px, a blocked tab, ${size}: "Open my Prompter" fits the window`);
+    assert.ok(!fit.clipped, `320px, a blocked tab, ${size}: "Open my Prompter" shows its whole label`);
+    assert.ok(fit.box.height >= 44, `320px, a blocked tab, ${size}: "Open my Prompter" is finger-sized (${fit.box.height}px)`);
+    await context.close();
+  }
+  ok("a 320px phone with a blocked Prompter tab fits, at normal and 200% text");
+
   // Step 2 when things go wrong, in Chromium: no token (the Worker says too many tries), no clipboard (the message
   // shows, selected, to copy by hand), and the real relay socket under the page's policy.
   {
