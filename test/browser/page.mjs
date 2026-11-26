@@ -504,6 +504,7 @@ async function checkAgent(page, name, out, { base, touch, clipboard }) {
     assert.deepEqual(await sw(), { label: "Open my Prompter", checked: null, locked: false, tip: "Copy the message first, then click to open your Prompter.", dot: null }, `${name}: the copy failed: the Prompter waits for a click, a plain button`);
     assert.equal(await page.locator("#prompterSw").getAttribute("role"), "button", `${name}: not a switch while it opens the tab`);
     assert.equal(await page.locator("#prompterSw .switch__track").count(), 0, `${name}: a button that opens the tab draws no switch track`);
+    assert.ok(await page.evaluate(() => { const b = document.getElementById("prompterSw"); return b.classList.contains("tb") && parseFloat(getComputedStyle(b).borderTopWidth) > 0; }), `${name}: it looks like the outlined buttons beside it`);
     assert.equal(await page.locator("#prompterSay").textContent(), "Copy the message first, then click to open your Prompter.", `${name}: a screen reader hears that the Prompter waits for a click`);
     assert.equal(await page.evaluate(() => document.activeElement.id), "agentMessage", `${name}: the message box keeps the focus`);
     opened.catch(() => {}); // no tab opened by itself: that wait is let go
@@ -1209,6 +1210,7 @@ export async function run({ browser, playwright, base, out }) {
     await page.waitForFunction(() => document.getElementById("prompterSw").textContent.trim() === "Open my Prompter");
     assert.deepEqual(await swNow(), { label: "Open my Prompter", role: "button", checked: null, locked: false, tip: "Your browser blocked the Prompter tab. Click to open it." }, "a blocked tab: a plain button that opens it, not a switch that is on");
     assert.equal(await page.locator("#prompterSw .switch__track").count(), 0, "a blocked tab: the button draws no switch track");
+    assert.ok(await page.evaluate(() => { const b = document.getElementById("prompterSw"); return b.classList.contains("tb") && parseFloat(getComputedStyle(b).borderTopWidth) > 0; }), "a blocked tab: it looks like the outlined buttons beside it");
     assert.equal(await page.locator("#prompterSay").textContent(), "Your browser blocked the Prompter tab. Click to open it.", "a blocked tab: a screen reader hears that a press is needed");
     opened = context.waitForEvent("page");
     await sw.click();
@@ -1217,6 +1219,8 @@ export async function run({ browser, playwright, base, out }) {
     assert.deepEqual(await tab2.evaluate(() => __heard), [{ type: "prompter:token", token: PROMPTER_TOKEN }], "a blocked tab, opened from the button, gets its token once, by message");
     assert.equal(await sw.getAttribute("role"), "switch", "a switch again once the tab opened");
     assert.equal(await page.locator("#prompterSw .switch__track").count(), 1, "a switch again: its track is back");
+    assert.ok(await page.evaluate(() => { const b = document.getElementById("prompterSw"); return b.classList.contains("switch") && !b.classList.contains("tb"); }), "a switch again: the switch look is back");
+    assert.equal(await page.locator("#prompterSay").textContent(), "", "the steps on the way (opening, waiting) stay quiet");
     await giveUp();
     await tab2.close();
 
@@ -1231,6 +1235,7 @@ export async function run({ browser, playwright, base, out }) {
       assert.ok(text.includes("T='") && !text.includes(PROMPTER), `a Prompter that ${why}: the producer's message is copied, without the Prompter's line`);
       assert.equal(context.pages().length, pages, `a Prompter that ${why}: no tab opens`);
       assert.equal(await sw.getAttribute("data-tip"), "Your Prompter could not be reached. Your questions show here only. Disconnect first to change it.", `a Prompter that ${why}: the switch says so`);
+      assert.equal(await page.locator("#prompterSay").textContent(), "Your Prompter could not be reached. Your questions show here only.", `a Prompter that ${why}: a screen reader hears it`);
       await giveUp();
       await page.unroute(`${PROMPTER}/api/agent-token`);
     }
